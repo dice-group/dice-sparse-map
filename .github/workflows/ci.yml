@@ -1,0 +1,104 @@
+name: CI
+
+on: [push, pull_request, release]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+            name: linux-x64-clang-9,
+            os: ubuntu-18.04,
+            cxx: clang++-9,
+            cmake-build-type: Release
+          }
+        - {
+            name: macos-x64-gcc,
+            os:  macos-10.15,
+            cxx: g++,
+            cmake-build-type: Release
+          }
+        - {
+            name: macos-x64-clang,
+            os:  macos-10.15,
+            cxx: clang++,
+            cmake-build-type: Release
+          }
+        - {
+            name: linux-x64-clang-12-sanitize,
+            os: ubuntu-20.04,
+            cxx: clang++-12,
+            cxx-flags: "-fsanitize=address,undefined",
+            cmake-build-type: Release
+          }
+        - {
+            name: linux-x64-gcc-10-coverage,
+            os: ubuntu-20.04,
+            cxx: g++-10,
+            cxx-flags: --coverage,
+            gcov-tool: gcov-10,
+            cmake-build-type: Debug
+          }
+        - {
+          name: linux-x64-clang-11,
+          os: ubuntu-20.04,
+          cxx: clang++-11,
+          cmake-build-type: Release
+        }
+        - {
+          name: linux-x64-clang-12,
+          os: ubuntu-22.04,
+          cxx: clang++-12,
+          cmake-build-type: Release
+        }
+        - {
+          name: linux-x64-clang-13,
+          os: ubuntu-22.04,
+          cxx: clang++-13,
+          cmake-build-type: Release
+        }
+        - {
+          name: linux-x64-clang-14,
+          os: ubuntu-22.04,
+          cxx: clang++-14,
+          cmake-build-type: Release
+        }
+        - {
+          name: linux-x64-gcc-11,
+          os: ubuntu-22.04,
+          cxx: g++-11,
+          cmake-build-type: Release
+        }
+    name: ${{matrix.config.name}}
+    runs-on: ${{matrix.config.os}}
+    steps:
+    - uses: actions/checkout@v2
+
+    # Linux or macOS
+    - name: Install boost (Linux or macOS)
+      run: vcpkg install boost-test boost-container boost-interprocess
+      if: runner.os == 'Linux' || runner.os == 'macOS'
+
+    - name: Configure CMake (Linux or macOS)
+      run: cmake -DCMAKE_BUILD_TYPE=${{matrix.config.cmake-build-type}} -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -S ${{github.workspace}}/tests -B ${{github.workspace}}/build
+      env:
+        CXX: ${{matrix.config.cxx}}
+        CXXFLAGS: ${{matrix.config.cxx-flags}}
+      if: runner.os == 'Linux' || runner.os == 'macOS'
+
+    - name: Build (Linux or macOS)
+      run: cmake --build ${{github.workspace}}/build --verbose
+      if: runner.os == 'Linux' || runner.os == 'macOS'
+
+    - name: Test (Linux or macOS)
+      run: ${{github.workspace}}/build/tsl_sparse_map_tests
+      if: runner.os == 'Linux' || runner.os == 'macOS'
+
+    - name: Coverage
+      run: |
+        sudo apt-get install -y lcov
+        lcov -c -b ${{github.workspace}}/include -d ${{github.workspace}}/build -o ${{github.workspace}}/coverage.info --no-external --gcov-tool ${{matrix.config.gcov-tool}}
+        bash <(curl -s https://codecov.io/bash) -f ${{github.workspace}}/coverage.info
+      if: ${{matrix.config.name == 'linux-x64-gcc-10-coverage'}}
