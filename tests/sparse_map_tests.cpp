@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <Dice/sparse-map/sparse_map.hpp>
+#include <dice/sparse-map/sparse_map.hpp>
 
 #include <boost/mpl/list.hpp>
 #include <boost/test/unit_test.hpp>
@@ -42,55 +42,55 @@
 BOOST_AUTO_TEST_SUITE(test_sparse_map)
 
 using test_types = boost::mpl::list<
-    Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>,
-    Dice::sparse_map::sparse_map<std::string, std::string>,
+    dice::sparse_map::sparse_map<std::int64_t, std::int64_t>,
+    dice::sparse_map::sparse_map<std::string, std::string>,
     // Test with hash having a lot of collisions
-    Dice::sparse_map::sparse_map<std::int64_t, std::int64_t, mod_hash<9>>,
-    Dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>>,
-    Dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>>,
-    Dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>>,
-    Dice::sparse_map::sparse_map<self_reference_member_test, self_reference_member_test,
+    dice::sparse_map::sparse_map<std::int64_t, std::int64_t, mod_hash<9>>,
+    dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>>,
+    dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>>,
+    dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>>,
+    dice::sparse_map::sparse_map<self_reference_member_test, self_reference_member_test,
                     mod_hash<9>>,
 
     // Others GrowthPolicy
-    Dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>,
+    dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>,
                     std::equal_to<move_only_test>,
                     std::allocator<std::pair<move_only_test, move_only_test>>,
-                    Dice::sparse_map::sh::power_of_two_growth_policy<4>>,
-    Dice::sparse_map::sparse_pg_map<move_only_test, move_only_test, mod_hash<9>>,
-    Dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>,
+                    dice::sparse_map::sh::power_of_two_growth_policy<4>>,
+    dice::sparse_map::sparse_pg_map<move_only_test, move_only_test, mod_hash<9>>,
+    dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>,
                     std::equal_to<move_only_test>,
                     std::allocator<std::pair<move_only_test, move_only_test>>,
-                    Dice::sparse_map::sh::mod_growth_policy<>>,
+                    dice::sparse_map::sh::mod_growth_policy<>>,
 
-    Dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>,
+    dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>,
                     std::equal_to<copy_only_test>,
                     std::allocator<std::pair<copy_only_test, copy_only_test>>,
-                    Dice::sparse_map::sh::power_of_two_growth_policy<4>>,
-    Dice::sparse_map::sparse_pg_map<copy_only_test, copy_only_test, mod_hash<9>>,
-    Dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>,
+                    dice::sparse_map::sh::power_of_two_growth_policy<4>>,
+    dice::sparse_map::sparse_pg_map<copy_only_test, copy_only_test, mod_hash<9>>,
+    dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>,
                     std::equal_to<copy_only_test>,
                     std::allocator<std::pair<copy_only_test, copy_only_test>>,
-                    Dice::sparse_map::sh::mod_growth_policy<>>,
+                    dice::sparse_map::sh::mod_growth_policy<>>,
 
     // Strong exception guarantee
-    Dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>,
+    dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>,
                     std::equal_to<std::string>,
                     std::allocator<std::pair<std::string, std::string>>,
-                    Dice::sparse_map::sh::power_of_two_growth_policy<2>,
-                    Dice::sparse_map::sh::exception_safety::strong>,
+                    dice::sparse_map::sh::power_of_two_growth_policy<2>,
+                    dice::sparse_map::sh::exception_safety::strong>,
 
     // Others sparsity
-    Dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>,
+    dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>,
                     std::equal_to<std::string>,
                     std::allocator<std::pair<std::string, std::string>>,
-                    Dice::sparse_map::sh::power_of_two_growth_policy<2>,
-                    Dice::sparse_map::sh::exception_safety::basic, Dice::sparse_map::sh::sparsity::high>,
-    Dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>,
+                    dice::sparse_map::sh::power_of_two_growth_policy<2>,
+                    dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+    dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>,
                     std::equal_to<std::string>,
                     std::allocator<std::pair<std::string, std::string>>,
-                    Dice::sparse_map::sh::power_of_two_growth_policy<2>,
-                    Dice::sparse_map::sh::exception_safety::basic, Dice::sparse_map::sh::sparsity::low>>;
+                    dice::sparse_map::sh::power_of_two_growth_policy<2>,
+                    dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
 
 /**
  * insert
@@ -143,7 +143,7 @@ BOOST_AUTO_TEST_CASE(test_range_insert) {
     values_to_insert[i] = std::make_pair(i, i + 1);
   }
 
-  Dice::sparse_map::sparse_map<int, int> map = {{-1, 1}, {-2, 2}};
+  dice::sparse_map::sparse_map<int, int> map = {{-1, 1}, {-2, 2}};
   map.insert(std::next(values_to_insert.begin(), 10),
              values_to_insert.end() - 5);
 
@@ -158,7 +158,7 @@ BOOST_AUTO_TEST_CASE(test_range_insert) {
 }
 
 BOOST_AUTO_TEST_CASE(test_insert_with_hint) {
-  Dice::sparse_map::sparse_map<int, int> map{{1, 0}, {2, 1}, {3, 2}};
+  dice::sparse_map::sparse_map<int, int> map{{1, 0}, {2, 1}, {3, 2}};
 
   // Wrong hint
   BOOST_CHECK(map.insert(map.find(2), std::make_pair(3, 4)) == map.find(3));
@@ -184,7 +184,7 @@ BOOST_AUTO_TEST_CASE(test_insert_with_hint) {
  * emplace_hint
  */
 BOOST_AUTO_TEST_CASE(test_emplace_hint) {
-  Dice::sparse_map::sparse_map<int, int> map{{1, 0}, {2, 1}, {3, 2}};
+  dice::sparse_map::sparse_map<int, int> map{{1, 0}, {2, 1}, {3, 2}};
 
   // Wrong hint
   BOOST_CHECK(map.emplace_hint(map.find(2), std::piecewise_construct,
@@ -224,8 +224,8 @@ BOOST_AUTO_TEST_CASE(test_emplace_hint) {
  * emplace
  */
 BOOST_AUTO_TEST_CASE(test_emplace) {
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test> map;
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test>::iterator it;
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test> map;
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test>::iterator it;
   bool inserted;
 
   std::tie(it, inserted) =
@@ -247,8 +247,8 @@ BOOST_AUTO_TEST_CASE(test_emplace) {
  * try_emplace
  */
 BOOST_AUTO_TEST_CASE(test_try_emplace) {
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test> map;
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test>::iterator it;
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test> map;
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test>::iterator it;
   bool inserted;
 
   std::tie(it, inserted) = map.try_emplace(10, 1);
@@ -264,8 +264,8 @@ BOOST_AUTO_TEST_CASE(test_try_emplace) {
 
 BOOST_AUTO_TEST_CASE(test_try_emplace_2) {
   // Insert x values with try_emplace, insert them again, check with find.
-  Dice::sparse_map::sparse_map<std::string, move_only_test> map;
-  Dice::sparse_map::sparse_map<std::string, move_only_test>::iterator it;
+  dice::sparse_map::sparse_map<std::string, move_only_test> map;
+  dice::sparse_map::sparse_map<std::string, move_only_test>::iterator it;
   bool inserted;
 
   const std::size_t nb_values = 1000;
@@ -296,7 +296,7 @@ BOOST_AUTO_TEST_CASE(test_try_emplace_2) {
 }
 
 BOOST_AUTO_TEST_CASE(test_try_emplace_hint) {
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test> map(0);
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test> map(0);
 
   // end() hint, new value
   auto it = map.try_emplace(map.find(10), 10, 1);
@@ -318,8 +318,8 @@ BOOST_AUTO_TEST_CASE(test_try_emplace_hint) {
  * insert_or_assign
  */
 BOOST_AUTO_TEST_CASE(test_insert_or_assign) {
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test> map;
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test>::iterator it;
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test> map;
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test>::iterator it;
   bool inserted;
 
   std::tie(it, inserted) = map.insert_or_assign(10, move_only_test(1));
@@ -334,7 +334,7 @@ BOOST_AUTO_TEST_CASE(test_insert_or_assign) {
 }
 
 BOOST_AUTO_TEST_CASE(test_insert_or_assign_hint) {
-  Dice::sparse_map::sparse_map<std::int64_t, move_only_test> map(0);
+  dice::sparse_map::sparse_map<std::int64_t, move_only_test> map(0);
 
   // end() hint, new value
   auto it = map.insert_or_assign(map.find(10), 10, move_only_test(1));
@@ -357,7 +357,7 @@ BOOST_AUTO_TEST_CASE(test_insert_or_assign_hint) {
  */
 BOOST_AUTO_TEST_CASE(test_range_erase_all) {
   // insert x values, delete all
-  using HMap = Dice::sparse_map::sparse_map<std::string, std::int64_t>;
+  using HMap = dice::sparse_map::sparse_map<std::string, std::int64_t>;
 
   const std::size_t nb_values = 1000;
   HMap map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -369,7 +369,7 @@ BOOST_AUTO_TEST_CASE(test_range_erase_all) {
 
 BOOST_AUTO_TEST_CASE(test_range_erase) {
   // insert x values, delete all except 10 first and 780 last values
-  using HMap = Dice::sparse_map::sparse_map<std::string, std::int64_t>;
+  using HMap = dice::sparse_map::sparse_map<std::string, std::int64_t>;
 
   const std::size_t nb_values = 1000;
   HMap map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -491,14 +491,14 @@ BOOST_AUTO_TEST_CASE(test_range_erase_same_iterators) {
   // returned mutable iterator is valid.
   const std::size_t nb_values = 100;
   auto map =
-      utils::get_filled_hash_map<Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
+      utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
           nb_values);
 
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>::const_iterator it_const =
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t>::const_iterator it_const =
       map.cbegin();
   std::advance(it_const, 10);
 
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>::iterator it_mutable =
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t>::iterator it_mutable =
       map.erase(it_const, it_const);
   BOOST_CHECK(it_const == it_mutable);
   BOOST_CHECK(map.mutable_iterator(it_const) == it_mutable);
@@ -515,7 +515,7 @@ BOOST_AUTO_TEST_CASE(test_rehash_empty) {
   // test rehash(0), test find/erase/insert on map.
   const std::size_t nb_values = 100;
   auto map =
-      utils::get_filled_hash_map<Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
+      utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
           nb_values);
 
   const std::size_t bucket_count = map.bucket_count();
@@ -539,17 +539,17 @@ BOOST_AUTO_TEST_CASE(test_rehash_empty) {
  * operator== and operator!=
  */
 BOOST_AUTO_TEST_CASE_TEMPLATE(test_compare, HMap, test_types) {
-  const Dice::sparse_map::sparse_map<std::string, std::int64_t> map1 = {
+  const dice::sparse_map::sparse_map<std::string, std::int64_t> map1 = {
       {"a", 1}, {"e", 5}, {"d", 4}, {"c", 3}, {"b", 2}};
-  const Dice::sparse_map::sparse_map<std::string, std::int64_t> map1_copy = {
+  const dice::sparse_map::sparse_map<std::string, std::int64_t> map1_copy = {
       {"e", 5}, {"c", 3}, {"b", 2}, {"a", 1}, {"d", 4}};
-  const Dice::sparse_map::sparse_map<std::string, std::int64_t> map2 = {
+  const dice::sparse_map::sparse_map<std::string, std::int64_t> map2 = {
       {"e", 5}, {"c", 3}, {"b", 2}, {"a", 1}, {"d", 4}, {"f", 6}};
-  const Dice::sparse_map::sparse_map<std::string, std::int64_t> map3 = {
+  const dice::sparse_map::sparse_map<std::string, std::int64_t> map3 = {
       {"e", 5}, {"c", 3}, {"b", 2}, {"a", 1}};
-  const Dice::sparse_map::sparse_map<std::string, std::int64_t> map4 = {
+  const dice::sparse_map::sparse_map<std::string, std::int64_t> map4 = {
       {"a", 1}, {"e", 5}, {"d", 4}, {"c", 3}, {"b", 26}};
-  const Dice::sparse_map::sparse_map<std::string, std::int64_t> map5 = {
+  const dice::sparse_map::sparse_map<std::string, std::int64_t> map5 = {
       {"a", 1}, {"e", 5}, {"d", 4}, {"c", 3}, {"z", 2}};
 
   BOOST_CHECK(map1 == map1_copy);
@@ -591,7 +591,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(test_compare, HMap, test_types) {
  */
 BOOST_AUTO_TEST_CASE(test_clear) {
   // insert x values, clear map
-  using HMap = Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>;
+  using HMap = dice::sparse_map::sparse_map<std::int64_t, std::int64_t>;
 
   const std::size_t nb_values = 1000;
   auto map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -613,7 +613,7 @@ BOOST_AUTO_TEST_CASE(test_modify_value_through_iterator) {
   // insert x values, modify value of even keys, check values
   const std::size_t nb_values = 100;
   auto map =
-      utils::get_filled_hash_map<Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
+      utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
           nb_values);
 
   for (auto it = map.begin(); it != map.end(); it++) {
@@ -636,53 +636,53 @@ BOOST_AUTO_TEST_CASE(test_modify_value_through_iterator) {
  */
 BOOST_AUTO_TEST_CASE(test_extreme_bucket_count_value_construction) {
   BOOST_CHECK_THROW(
-      (Dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
+      (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
                        std::allocator<std::pair<int, int>>,
-                       Dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+                       dice::sparse_map::sh::power_of_two_growth_policy<2>>(
           std::numeric_limits<std::size_t>::max())),
       std::length_error);
 
   BOOST_CHECK_THROW(
-      (Dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
+      (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
                        std::allocator<std::pair<int, int>>,
-                       Dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+                       dice::sparse_map::sh::power_of_two_growth_policy<2>>(
           std::numeric_limits<std::size_t>::max() / 2 + 1)),
       std::length_error);
 
   BOOST_CHECK_THROW(
-      (Dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
+      (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
                        std::allocator<std::pair<int, int>>,
-                       Dice::sparse_map::sh::prime_growth_policy>(
+                       dice::sparse_map::sh::prime_growth_policy>(
           std::numeric_limits<std::size_t>::max())),
       std::length_error);
 
   BOOST_CHECK_THROW(
-      (Dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
+      (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
                        std::allocator<std::pair<int, int>>,
-                       Dice::sparse_map::sh::prime_growth_policy>(
+                       dice::sparse_map::sh::prime_growth_policy>(
           std::numeric_limits<std::size_t>::max() / 2)),
       std::length_error);
 
   BOOST_CHECK_THROW(
-      (Dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
+      (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
                        std::allocator<std::pair<int, int>>,
-                       Dice::sparse_map::sh::mod_growth_policy<>>(
+                       dice::sparse_map::sh::mod_growth_policy<>>(
           std::numeric_limits<std::size_t>::max())),
       std::length_error);
 }
 
 BOOST_AUTO_TEST_CASE(test_range_construct) {
-  Dice::sparse_map::sparse_map<int, int> map = {{2, 1}, {1, 0}, {3, 2}};
+  dice::sparse_map::sparse_map<int, int> map = {{2, 1}, {1, 0}, {3, 2}};
 
-  Dice::sparse_map::sparse_map<int, int> map2(map.begin(), map.end());
-  Dice::sparse_map::sparse_map<int, int> map3(map.cbegin(), map.cend());
+  dice::sparse_map::sparse_map<int, int> map2(map.begin(), map.end());
+  dice::sparse_map::sparse_map<int, int> map3(map.cbegin(), map.cend());
 }
 
 /**
  * operator=(std::initializer_list)
  */
 BOOST_AUTO_TEST_CASE(test_assign_operator) {
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
   BOOST_CHECK_EQUAL(map.size(), 2);
 
   map = {{1, 3}, {2, 4}};
@@ -701,7 +701,7 @@ BOOST_AUTO_TEST_CASE(test_assign_operator) {
 BOOST_AUTO_TEST_CASE(test_move_constructor) {
   // insert x values in map, move map into map_move with move constructor, check
   // map and map_move, insert additional values in map_move, check map_move
-  using HMap = Dice::sparse_map::sparse_map<std::string, move_only_test>;
+  using HMap = dice::sparse_map::sparse_map<std::string, move_only_test>;
 
   const std::size_t nb_values = 100;
   HMap map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -720,8 +720,8 @@ BOOST_AUTO_TEST_CASE(test_move_constructor) {
 }
 
 BOOST_AUTO_TEST_CASE(test_move_constructor_empty) {
-  Dice::sparse_map::sparse_map<std::string, move_only_test> map(0);
-  Dice::sparse_map::sparse_map<std::string, move_only_test> map_move(std::move(map));
+  dice::sparse_map::sparse_map<std::string, move_only_test> map(0);
+  dice::sparse_map::sparse_map<std::string, move_only_test> map_move(std::move(map));
 
   BOOST_CHECK(map.empty());
   BOOST_CHECK(map_move.empty());
@@ -733,7 +733,7 @@ BOOST_AUTO_TEST_CASE(test_move_constructor_empty) {
 BOOST_AUTO_TEST_CASE(test_move_operator) {
   // insert x values in map, move map into map_move, check map and map_move,
   // insert additional values in map_move, check map_move
-  using HMap = Dice::sparse_map::sparse_map<std::string, move_only_test>;
+  using HMap = dice::sparse_map::sparse_map<std::string, move_only_test>;
 
   const std::size_t nb_values = 100;
   HMap map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -753,8 +753,8 @@ BOOST_AUTO_TEST_CASE(test_move_operator) {
 }
 
 BOOST_AUTO_TEST_CASE(test_move_operator_empty) {
-  Dice::sparse_map::sparse_map<std::string, move_only_test> map(0);
-  Dice::sparse_map::sparse_map<std::string, move_only_test> map_move;
+  dice::sparse_map::sparse_map<std::string, move_only_test> map(0);
+  dice::sparse_map::sparse_map<std::string, move_only_test> map_move;
   map_move = (std::move(map));
 
   BOOST_CHECK(map.empty());
@@ -765,7 +765,7 @@ BOOST_AUTO_TEST_CASE(test_move_operator_empty) {
 }
 
 BOOST_AUTO_TEST_CASE(test_reassign_moved_object_move_constructor) {
-  using HMap = Dice::sparse_map::sparse_map<std::string, std::string>;
+  using HMap = dice::sparse_map::sparse_map<std::string, std::string>;
 
   HMap map = {{"Key1", "Value1"}, {"Key2", "Value2"}, {"Key3", "Value3"}};
   HMap map_move(std::move(map));
@@ -778,7 +778,7 @@ BOOST_AUTO_TEST_CASE(test_reassign_moved_object_move_constructor) {
 }
 
 BOOST_AUTO_TEST_CASE(test_reassign_moved_object_move_operator) {
-  using HMap = Dice::sparse_map::sparse_map<std::string, std::string>;
+  using HMap = dice::sparse_map::sparse_map<std::string, std::string>;
 
   HMap map = {{"Key1", "Value1"}, {"Key2", "Value2"}, {"Key3", "Value3"}};
   HMap map_move = std::move(map);
@@ -791,7 +791,7 @@ BOOST_AUTO_TEST_CASE(test_reassign_moved_object_move_operator) {
 }
 
 BOOST_AUTO_TEST_CASE(test_use_after_move_constructor) {
-  using HMap = Dice::sparse_map::sparse_map<std::string, move_only_test>;
+  using HMap = dice::sparse_map::sparse_map<std::string, move_only_test>;
 
   const std::size_t nb_values = 100;
   HMap map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -813,7 +813,7 @@ BOOST_AUTO_TEST_CASE(test_use_after_move_constructor) {
 }
 
 BOOST_AUTO_TEST_CASE(test_use_after_move_operator) {
-  using HMap = Dice::sparse_map::sparse_map<std::string, move_only_test>;
+  using HMap = dice::sparse_map::sparse_map<std::string, move_only_test>;
 
   const std::size_t nb_values = 100;
   HMap map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -836,7 +836,7 @@ BOOST_AUTO_TEST_CASE(test_use_after_move_operator) {
 }
 
 BOOST_AUTO_TEST_CASE(test_copy_constructor_and_operator) {
-  using HMap = Dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>>;
+  using HMap = dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>>;
 
   const std::size_t nb_values = 100;
   HMap map = utils::get_filled_hash_map<HMap>(nb_values);
@@ -854,8 +854,8 @@ BOOST_AUTO_TEST_CASE(test_copy_constructor_and_operator) {
 }
 
 BOOST_AUTO_TEST_CASE(test_copy_constructor_empty) {
-  Dice::sparse_map::sparse_map<std::string, int> map(0);
-  Dice::sparse_map::sparse_map<std::string, int> map_copy(map);
+  dice::sparse_map::sparse_map<std::string, int> map(0);
+  dice::sparse_map::sparse_map<std::string, int> map_copy(map);
 
   BOOST_CHECK(map.empty());
   BOOST_CHECK(map_copy.empty());
@@ -865,8 +865,8 @@ BOOST_AUTO_TEST_CASE(test_copy_constructor_empty) {
 }
 
 BOOST_AUTO_TEST_CASE(test_copy_operator_empty) {
-  Dice::sparse_map::sparse_map<std::string, int> map(0);
-  Dice::sparse_map::sparse_map<std::string, int> map_copy(16);
+  dice::sparse_map::sparse_map<std::string, int> map(0);
+  dice::sparse_map::sparse_map<std::string, int> map_copy(16);
   map_copy = map;
 
   BOOST_CHECK(map.empty());
@@ -881,7 +881,7 @@ BOOST_AUTO_TEST_CASE(test_copy_operator_empty) {
  */
 BOOST_AUTO_TEST_CASE(test_at) {
   // insert x values, use at for known and unknown values.
-  const Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
+  const dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
 
   BOOST_CHECK_EQUAL(map.at(0), 10);
   BOOST_CHECK_EQUAL(map.at(-2), 20);
@@ -892,7 +892,7 @@ BOOST_AUTO_TEST_CASE(test_at) {
  * contains
  */
 BOOST_AUTO_TEST_CASE(test_contains) {
-  const Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
+  const dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
 
   BOOST_CHECK(map.contains(0));
   BOOST_CHECK(map.contains(-2));
@@ -903,7 +903,7 @@ BOOST_AUTO_TEST_CASE(test_contains) {
  * equal_range
  */
 BOOST_AUTO_TEST_CASE(test_equal_range) {
-  const Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
+  const dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
 
   auto it_pair = map.equal_range(0);
   BOOST_REQUIRE_EQUAL(std::distance(it_pair.first, it_pair.second), 1);
@@ -919,7 +919,7 @@ BOOST_AUTO_TEST_CASE(test_equal_range) {
  */
 BOOST_AUTO_TEST_CASE(test_access_operator) {
   // insert x values, use at for known and unknown values.
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{0, 10}, {-2, 20}};
 
   BOOST_CHECK_EQUAL(map[0], 10);
   BOOST_CHECK_EQUAL(map[-2], 20);
@@ -932,42 +932,42 @@ BOOST_AUTO_TEST_CASE(test_access_operator) {
  * swap
  */
 BOOST_AUTO_TEST_CASE(test_swap) {
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{1, 10}, {8, 80}, {3, 30}};
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map2 = {{4, 40}, {5, 50}};
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{1, 10}, {8, 80}, {3, 30}};
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map2 = {{4, 40}, {5, 50}};
 
   using std::swap;
   swap(map, map2);
 
   BOOST_CHECK(map ==
-              (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{{4, 40}, {5, 50}}));
-  BOOST_CHECK(map2 == (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
+              (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{{4, 40}, {5, 50}}));
+  BOOST_CHECK(map2 == (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
                           {1, 10}, {8, 80}, {3, 30}}));
 
   map.insert({6, 60});
   map2.insert({4, 40});
 
-  BOOST_CHECK(map == (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
+  BOOST_CHECK(map == (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
                          {4, 40}, {5, 50}, {6, 60}}));
-  BOOST_CHECK(map2 == (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
+  BOOST_CHECK(map2 == (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
                           {1, 10}, {8, 80}, {3, 30}, {4, 40}}));
 }
 
 BOOST_AUTO_TEST_CASE(test_swap_empty) {
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{1, 10}, {8, 80}, {3, 30}};
-  Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map2;
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{1, 10}, {8, 80}, {3, 30}};
+  dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map2;
 
   using std::swap;
   swap(map, map2);
 
-  BOOST_CHECK(map == (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{}));
-  BOOST_CHECK(map2 == (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
+  BOOST_CHECK(map == (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{}));
+  BOOST_CHECK(map2 == (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
                           {1, 10}, {8, 80}, {3, 30}}));
 
   map.insert({6, 60});
   map2.insert({4, 40});
 
-  BOOST_CHECK(map == (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{{6, 60}}));
-  BOOST_CHECK(map2 == (Dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
+  BOOST_CHECK(map == (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{{6, 60}}));
+  BOOST_CHECK(map2 == (dice::sparse_map::sparse_map<std::int64_t, std::int64_t>{
                           {1, 10}, {8, 80}, {3, 30}, {4, 40}}));
 }
 
@@ -977,7 +977,7 @@ BOOST_AUTO_TEST_CASE(test_swap_empty) {
 BOOST_AUTO_TEST_CASE(test_serialize_deserialize_empty) {
   // serialize empty map; deserialize in new map; check equal.
   // for deserialization, test it with and without hash compatibility.
-  const Dice::sparse_map::sparse_map<std::string, move_only_test> empty_map(0);
+  const dice::sparse_map::sparse_map<std::string, move_only_test> empty_map(0);
 
   serializer serial;
   empty_map.serialize(serial);
@@ -995,7 +995,7 @@ BOOST_AUTO_TEST_CASE(test_serialize_deserialize_few) {
   // insert x values that fits into one sparse bucket; delete some values;
   // serialize map; deserialize in new map; check equal. for deserialization,
   // test it with and without hash compatibility.
-  const Dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map{
+  const dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map{
       {10, 100}, {4, 14}, {9, 201}};
 
   serializer serial;
@@ -1016,7 +1016,7 @@ BOOST_AUTO_TEST_CASE(test_serialize_deserialize) {
   // compatibility.
   const std::size_t nb_values = 1000;
 
-  Dice::sparse_map::sparse_map<std::string, move_only_test> map;
+  dice::sparse_map::sparse_map<std::string, move_only_test> map;
   for (std::size_t i = 0; i < nb_values + 40; i++) {
     map.insert(
         {utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
@@ -1050,7 +1050,7 @@ BOOST_AUTO_TEST_CASE(test_serialize_deserialize_with_different_hash) {
 
   const std::size_t nb_values = 1000;
 
-  Dice::sparse_map::sparse_map<std::string, move_only_test> map;
+  dice::sparse_map::sparse_map<std::string, move_only_test> map;
   for (std::size_t i = 0; i < nb_values; i++) {
     map.insert(
         {utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
@@ -1062,7 +1062,7 @@ BOOST_AUTO_TEST_CASE(test_serialize_deserialize_with_different_hash) {
 
   deserializer dserial(serial.str());
   auto map_deserialized =
-      Dice::sparse_map::sparse_map<std::string, move_only_test, hash_str_diff>::deserialize(
+      dice::sparse_map::sparse_map<std::string, move_only_test, hash_str_diff>::deserialize(
           dserial, false);
 
   BOOST_CHECK_EQUAL(map_deserialized.size(), map.size());
@@ -1101,7 +1101,7 @@ BOOST_AUTO_TEST_CASE(test_key_equal) {
     }
   };
 
-  Dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t, hash, key_equal> map;
+  dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t, hash, key_equal> map;
   BOOST_CHECK(map.insert({2, 10}).second);
   BOOST_CHECK_EQUAL(map.at(2), 10);
   BOOST_CHECK_EQUAL(map.at(3), 10);
@@ -1125,7 +1125,7 @@ BOOST_AUTO_TEST_CASE(
     }
   };
 
-  Dice::sparse_map::sparse_map<unsigned int, unsigned int, identity_hash> map;
+  dice::sparse_map::sparse_map<unsigned int, unsigned int, identity_hash> map;
   map.max_load_factor(0.8f);
   map.rehash(64);
 
@@ -1231,7 +1231,7 @@ BOOST_AUTO_TEST_CASE(test_heterogeneous_lookups) {
   const int* const addr2 = ptr2.get();
   const int* const addr_unknown = &other;
 
-  Dice::sparse_map::sparse_map<std::unique_ptr<int>, int, hash_ptr, equal_to_ptr> map;
+  dice::sparse_map::sparse_map<std::unique_ptr<int>, int, hash_ptr, equal_to_ptr> map;
   map.insert({std::move(ptr1), 4});
   map.insert({std::move(ptr2), 5});
   map.insert({std::move(ptr3), 6});
@@ -1265,7 +1265,7 @@ BOOST_AUTO_TEST_CASE(test_heterogeneous_lookups) {
  * Various operations on empty map
  */
 BOOST_AUTO_TEST_CASE(test_empty_map) {
-  Dice::sparse_map::sparse_map<std::string, int> map(0);
+  dice::sparse_map::sparse_map<std::string, int> map(0);
 
   BOOST_CHECK_EQUAL(map.bucket_count(), 0);
   BOOST_CHECK_EQUAL(map.size(), 0);
@@ -1301,9 +1301,9 @@ BOOST_AUTO_TEST_CASE(test_empty_map) {
  * Test precalculated hash
  */
 BOOST_AUTO_TEST_CASE(test_precalculated_hash) {
-  Dice::sparse_map::sparse_map<int, int, identity_hash<int>> map = {
+  dice::sparse_map::sparse_map<int, int, identity_hash<int>> map = {
       {1, -1}, {2, -2}, {3, -3}, {4, -4}, {5, -5}, {6, -6}};
-  const Dice::sparse_map::sparse_map<int, int, identity_hash<int>> map_const = map;
+  const dice::sparse_map::sparse_map<int, int, identity_hash<int>> map_const = map;
 
   /**
    * find

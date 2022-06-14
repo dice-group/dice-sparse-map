@@ -1,8 +1,6 @@
-#include <Dice/sparse-map/sparse_map.hpp>
-
-#include <iostream>
+#include <dice/sparse-map/sparse_map.hpp>
 
 int main() {
-    Dice::sparse_map::sparse_map<int, int> x;
+    dice::sparse_map::sparse_map<int, int> x;
     x[1] = 1;
 }
