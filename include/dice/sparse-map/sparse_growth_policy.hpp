@@ -34,7 +34,7 @@
 #include <ratio>
 #include <stdexcept>
 
-namespace Dice::sparse_map::sh {
+namespace dice::sparse_map::sh {
 
 /**
  * Grow the hash table by a factor of GrowthFactor keeping the bucket count to a
@@ -192,7 +192,7 @@ class mod_growth_policy {
 
 /**
  * Grow the hash table by using prime numbers as bucket count. Slower than
- * Dice::sh::power_of_two_growth_policy in general but will probably distribute
+ * dice::sh::power_of_two_growth_policy in general but will probably distribute
  * the values around better in the buckets with a poor hash function.
  *
  * To allow the compiler to optimize the modulo operation, a lookup table is
@@ -294,6 +294,6 @@ class prime_growth_policy {
   unsigned int m_iprime;
 };
 
-}  // namespace Dice
+}  // namespace dice
 
 #endif

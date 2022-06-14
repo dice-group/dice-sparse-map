@@ -15,9 +15,9 @@ class ProjectConanFile(ConanFile):
 
     # Binary configuration
     settings = "os", "compiler", "build_type", "arch"
-    options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": False, "fPIC": True, "boost:header_only": True}
-    exports_sources = "include/*", "CMakeLists.txt", "cmake/*"
+    options = {"shared": [True, False], "fPIC": [True, False]} # todo: remove when the boost dependency is not needed anymore
+    default_options = {"shared": False, "fPIC": True, "boost:header_only": True} # todo: remove when the boost dependency is not needed anymore
+    exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
     requires = "boost/1.69.0"
 
     generators = ("CMakeDeps", "CMakeToolchain")
@@ -36,7 +36,7 @@ class ProjectConanFile(ConanFile):
             self.description = re.search(r"project\([^)]*DESCRIPTION\s+\"([^\"]+)\"[^)]*\)", cmake_file).group(1)
 
 
-    def config_options(self):
+    def config_options(self):  # todo: remove when the boost dependency is not needed anymore
         if self.settings.os == "Windows":
             del self.options.fPIC
 
@@ -58,7 +58,11 @@ class ProjectConanFile(ConanFile):
 
     def package(self):
         self._configure_cmake().install()
-        rmdir(os.path.join(self.package_folder, "cmake"))
+        for file in os.listdir(self.folders.package_folder):
+            if file != "include":
+                rmdir(os.path.join(self.package_folder, file))
+        self.copy(pattern="LICENSE*", dst="licenses", src=self.folders.source_folder)
 
-    def package_info(self):
-        self.cpp_info.set_property("cmake_target_aliases", ["Dice::sparse-map"])
+    def package_id(self):
+        self.info.header_only()
+

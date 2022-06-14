@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <Dice/sparse-map/sparse_set.hpp>
+#include <dice/sparse-map/sparse_set.hpp>
 
 #include <boost/mpl/list.hpp>
 #include <boost/test/unit_test.hpp>
@@ -38,24 +38,24 @@
 BOOST_AUTO_TEST_SUITE(test_sparse_set)
 
 using test_types =
-    boost::mpl::list<Dice::sparse_map::sparse_set<std::int64_t>,
-                     Dice::sparse_map::sparse_set<std::string>,
-                     Dice::sparse_map::sparse_set<self_reference_member_test>,
-                     Dice::sparse_map::sparse_set<move_only_test>,
-                     Dice::sparse_map::sparse_pg_set<self_reference_member_test>,
-                     Dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>,
+    boost::mpl::list<dice::sparse_map::sparse_set<std::int64_t>,
+                     dice::sparse_map::sparse_set<std::string>,
+                     dice::sparse_map::sparse_set<self_reference_member_test>,
+                     dice::sparse_map::sparse_set<move_only_test>,
+                     dice::sparse_map::sparse_pg_set<self_reference_member_test>,
+                     dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>,
                                      std::equal_to<move_only_test>,
                                      std::allocator<move_only_test>,
-                                     Dice::sparse_map::sh::prime_growth_policy>,
-                     Dice::sparse_map::sparse_set<self_reference_member_test,
+                                     dice::sparse_map::sh::prime_growth_policy>,
+                     dice::sparse_map::sparse_set<self_reference_member_test,
                                      std::hash<self_reference_member_test>,
                                      std::equal_to<self_reference_member_test>,
                                      std::allocator<self_reference_member_test>,
-                                     Dice::sparse_map::sh::mod_growth_policy<>>,
-                     Dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>,
+                                     dice::sparse_map::sh::mod_growth_policy<>>,
+                     dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>,
                                      std::equal_to<move_only_test>,
                                      std::allocator<move_only_test>,
-                                     Dice::sparse_map::sh::mod_growth_policy<>>>;
+                                     dice::sparse_map::sh::mod_growth_policy<>>>;
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(test_insert, HSet, test_types) {
   // insert x values, insert them again, check values
@@ -89,11 +89,11 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(test_insert, HSet, test_types) {
 }
 
 BOOST_AUTO_TEST_CASE(test_compare) {
-  const Dice::sparse_map::sparse_set<std::string> set1 = {"a", "e", "d", "c", "b"};
-  const Dice::sparse_map::sparse_set<std::string> set1_copy = {"e", "c", "b", "a", "d"};
-  const Dice::sparse_map::sparse_set<std::string> set2 = {"e", "c", "b", "a", "d", "f"};
-  const Dice::sparse_map::sparse_set<std::string> set3 = {"e", "c", "b", "a"};
-  const Dice::sparse_map::sparse_set<std::string> set4 = {"a", "e", "d", "c", "z"};
+  const dice::sparse_map::sparse_set<std::string> set1 = {"a", "e", "d", "c", "b"};
+  const dice::sparse_map::sparse_set<std::string> set1_copy = {"e", "c", "b", "a", "d"};
+  const dice::sparse_map::sparse_set<std::string> set2 = {"e", "c", "b", "a", "d", "f"};
+  const dice::sparse_map::sparse_set<std::string> set3 = {"e", "c", "b", "a"};
+  const dice::sparse_map::sparse_set<std::string> set4 = {"a", "e", "d", "c", "z"};
 
   BOOST_CHECK(set1 == set1_copy);
   BOOST_CHECK(set1_copy == set1);
@@ -122,7 +122,7 @@ BOOST_AUTO_TEST_CASE(test_insert_pointer) {
   std::string value;
   std::string* value_ptr = &value;
 
-  Dice::sparse_map::sparse_set<std::string*> set;
+  dice::sparse_map::sparse_set<std::string*> set;
   set.insert(value_ptr);
   set.emplace(value_ptr);
 
@@ -138,7 +138,7 @@ BOOST_AUTO_TEST_CASE(test_serialize_deserialize_reserve) {
   // deserialize in new set; check equal. for deserialization,
   // test it with and without hash compatibility.
   for (std::size_t nb_values : {0, 1, 3, 17, 1000}) {
-    Dice::sparse_map::sparse_set<move_only_test> set;
+    dice::sparse_map::sparse_set<move_only_test> set;
     set.reserve(nb_values);
     for (std::size_t i = 0; i < nb_values; i++) {
       set.insert(utils::get_key<move_only_test>(i));
@@ -162,7 +162,7 @@ BOOST_AUTO_TEST_CASE(test_serialize_deserialize) {
   // set; check equal. for deserialization, test it with and without hash
   // compatibility.
   for (std::size_t nb_values : {0, 1, 3, 17, 1000}) {
-    Dice::sparse_map::sparse_set<move_only_test> set;
+    dice::sparse_map::sparse_set<move_only_test> set;
     for (std::size_t i = 0; i < nb_values + 40; i++) {
       set.insert(utils::get_key<move_only_test>(i));
     }

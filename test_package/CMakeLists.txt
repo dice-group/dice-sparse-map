@@ -6,8 +6,7 @@ find_package(dice-sparse-map REQUIRED)
 add_executable(example example.cpp)
 
 target_link_libraries(example PUBLIC
-#        dice-sparse-map::dice-sparse-map)
-Dice::sparse-map)
+        dice-sparse-map::dice-sparse-map)
 
 set_target_properties(
         example PROPERTIES
