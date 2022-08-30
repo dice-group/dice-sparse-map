@@ -5,7 +5,6 @@ project(tsl_sparse_map_tests)
 add_executable(tsl_sparse_map_tests "main.cpp"
         "custom_allocator_tests.cpp"
         "policy_tests.cpp"
-        "popcount_tests.cpp"
         "sparse_map_tests.cpp"
         "sparse_set_tests.cpp"
         "fancy_pointer/sparse_array_tests.cpp"
