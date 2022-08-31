@@ -864,10 +864,14 @@ class sparse_hash : private Allocator,
 
    public:
     using iterator_category = std::forward_iterator_tag;
-    using value_type = const typename sparse_hash::value_type;
+    using value_type = typename std::conditional<IsConst,
+                                  const typename sparse_hash::value_type,
+                                  typename sparse_hash::value_type>::type;
     using difference_type = std::ptrdiff_t;
     using reference = value_type &;
-    using pointer = typename sparse_hash::const_pointer;
+    using pointer = typename std::conditional<IsConst,
+                                  typename sparse_hash::const_pointer,
+                                  typename sparse_hash::pointer>::type;
 
     sparse_iterator() noexcept {}
 
