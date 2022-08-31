@@ -89,9 +89,6 @@ template <class Key, class Hash = std::hash<Key>,
           dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 class sparse_set {
  private:
-  template <typename U>
-  using has_is_transparent = dice::sparse_map::detail_sparse_hash::has_is_transparent<U>;
-
   class KeySelect {
    public:
     using key_type = Key;
@@ -281,9 +278,8 @@ class sparse_set {
    * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    * comparable to `Key`.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   size_type erase(const K &key) {
     return m_ht.erase(key);
   }
@@ -296,9 +292,8 @@ class sparse_set {
    * behaviour is undefined. Useful to speed-up the lookup if you already have
    * the hash.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   size_type erase(const K &key, std::size_t precalculated_hash) {
     return m_ht.erase(key, precalculated_hash);
   }
@@ -325,9 +320,8 @@ class sparse_set {
    * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    * comparable to `Key`.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   size_type count(const K &key) const {
     return m_ht.count(key);
   }
@@ -340,9 +334,8 @@ class sparse_set {
    * behaviour is undefined. Useful to speed-up the lookup if you already have
    * the hash.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   size_type count(const K &key, std::size_t precalculated_hash) const {
     return m_ht.count(key, precalculated_hash);
   }
@@ -373,9 +366,8 @@ class sparse_set {
    * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    * comparable to `Key`.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   iterator find(const K &key) {
     return m_ht.find(key);
   }
@@ -388,9 +380,8 @@ class sparse_set {
    * behaviour is undefined. Useful to speed-up the lookup if you already have
    * the hash.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   iterator find(const K &key, std::size_t precalculated_hash) {
     return m_ht.find(key, precalculated_hash);
   }
@@ -398,9 +389,8 @@ class sparse_set {
   /**
    * @copydoc find(const K& key)
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   const_iterator find(const K &key) const {
     return m_ht.find(key);
   }
@@ -413,9 +403,8 @@ class sparse_set {
    * behaviour is undefined. Useful to speed-up the lookup if you already have
    * the hash.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   const_iterator find(const K &key, std::size_t precalculated_hash) const {
     return m_ht.find(key, precalculated_hash);
   }
@@ -436,9 +425,8 @@ class sparse_set {
    * KeyEqual::is_transparent exists. If so, K must be hashable and comparable
    * to Key.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   bool contains(const K &key) const {
     return m_ht.contains(key);
   }
@@ -450,9 +438,8 @@ class sparse_set {
    * hash value should be the same as hash_function()(key). Useful to speed-up
    * the lookup if you already have the hash.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   bool contains(const K &key, std::size_t precalculated_hash) const {
     return m_ht.contains(key, precalculated_hash);
   }
@@ -489,9 +476,8 @@ class sparse_set {
    * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    * comparable to `Key`.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   std::pair<iterator, iterator> equal_range(const K &key) {
     return m_ht.equal_range(key);
   }
@@ -504,9 +490,8 @@ class sparse_set {
    * behaviour is undefined. Useful to speed-up the lookup if you already have
    * the hash.
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   std::pair<iterator, iterator> equal_range(const K &key,
                                             std::size_t precalculated_hash) {
     return m_ht.equal_range(key, precalculated_hash);
@@ -515,9 +500,8 @@ class sparse_set {
   /**
    * @copydoc equal_range(const K& key)
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   std::pair<const_iterator, const_iterator> equal_range(const K &key) const {
     return m_ht.equal_range(key);
   }
@@ -525,9 +509,8 @@ class sparse_set {
   /**
    * @copydoc equal_range(const K& key, std::size_t precalculated_hash)
    */
-  template <
-      class K, class KE = KeyEqual,
-      typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+  template <class K, class KE = KeyEqual>
+  requires has_is_transparent<KE>
   std::pair<const_iterator, const_iterator> equal_range(
       const K &key, std::size_t precalculated_hash) const {
     return m_ht.equal_range(key, precalculated_hash);

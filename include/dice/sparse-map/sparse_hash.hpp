@@ -39,6 +39,7 @@
 #include <utility>
 #include <vector>
 #include <bit> // std::popcount
+#include <concepts>
 
 #include "dice/sparse-map/sparse_growth_policy.hpp"
 #include "boost/container/vector.hpp"
@@ -72,6 +73,12 @@ enum class sparsity { high, medium, low };
             return const_cast<T>(iter);
         }
     };
+
+  template<typename U> 
+  concept has_is_transparent = requires 
+  {
+    typename U::is_transparent;
+  };
 
 namespace detail_sparse_hash {
     /* to_address can convert any raw or fancy pointer into a raw pointer.
@@ -110,26 +117,21 @@ namespace detail_sparse_hash {
     }
 #endif
 
-
-template <typename T>
-struct make_void {
-  using type = void;
-};
-
-template <typename T, typename = void>
-struct has_is_transparent : std::false_type {};
-
-template <typename T>
-struct has_is_transparent<T,
-                          typename make_void<typename T::is_transparent>::type>
-    : std::true_type {};
-
 template <typename U>
 struct is_power_of_two_policy : std::false_type {};
 
 template <std::size_t GrowthFactor>
 struct is_power_of_two_policy<dice::sparse_map::sh::power_of_two_growth_policy<GrowthFactor>>
     : std::true_type {};
+
+template <typename T>
+concept power_of_two_policy = is_power_of_two_policy<T>::value;
+
+template <typename U>
+concept has_mapped_type = !std::same_as<U, void>; 
+
+template<typename T>
+concept is_nothrow_move_constructible = std::is_nothrow_move_constructible<T>::value;
 
 inline constexpr bool is_power_of_two(std::size_t value) {
   return value != 0 && (value & (value - 1)) == 0;
@@ -190,6 +192,7 @@ static T deserialize_value(Deserializer &deserializer) {
   return deserializer.Deserializer::template operator()<T>();
 #endif
 }
+
 
 /**
  * WARNING: the sparse_array class doesn't free the ressources allocated through
@@ -702,9 +705,8 @@ class sparse_array {
    * success, we set m_values to this new area. Even if slower, it's the only
    * way to preserve to strong exception guarantee.
    */
-  template <typename... Args, typename U = value_type,
-            typename std::enable_if<
-                std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
+  template <typename... Args>
+  requires is_nothrow_move_constructible<value_type>
   void insert_at_offset(allocator_type &alloc, size_type offset,
                         Args &&...value_args) {
     if (m_nb_elements < m_capacity) {
@@ -716,18 +718,16 @@ class sparse_array {
     }
   }
 
-  template <typename... Args, typename U = value_type,
-            typename std::enable_if<!std::is_nothrow_move_constructible<
-                U>::value>::type * = nullptr>
+  template <typename... Args>
+  requires (!is_nothrow_move_constructible<value_type>)
   void insert_at_offset(allocator_type &alloc, size_type offset,
                         Args &&...value_args) {
     insert_at_offset_realloc(alloc, offset, m_nb_elements + 1,
                              std::forward<Args>(value_args)...);
   }
 
-  template <typename... Args, typename U = value_type,
-            typename std::enable_if<
-                std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
+  template <typename... Args>
+  requires is_nothrow_move_constructible<value_type>
   void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset,
                                    Args &&...value_args) {
     tsl_sh_assert(offset <= m_nb_elements);
@@ -750,9 +750,8 @@ class sparse_array {
     }
   }
 
-  template <typename... Args, typename U = value_type,
-            typename std::enable_if<
-                std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
+  template <typename... Args>
+  requires is_nothrow_move_constructible<value_type>
   void insert_at_offset_realloc(allocator_type &alloc, size_type offset,
                                 size_type new_capacity, Args &&...value_args) {
     tsl_sh_assert(new_capacity > m_nb_elements);
@@ -784,9 +783,8 @@ class sparse_array {
     m_capacity = new_capacity;
   }
 
-  template <typename... Args, typename U = value_type,
-            typename std::enable_if<!std::is_nothrow_move_constructible<
-                U>::value>::type * = nullptr>
+  template <typename... Args>
+  requires (!is_nothrow_move_constructible<value_type>)
   void insert_at_offset_realloc(allocator_type &alloc, size_type offset,
                                 size_type new_capacity, Args &&...value_args) {
     tsl_sh_assert(new_capacity > m_nb_elements);
@@ -837,9 +835,8 @@ class sparse_array {
    * set m_values to this new area. Even if slower, it's the only way to
    * preserve to strong exception guarantee.
    */
-  template <typename... Args, typename U = value_type,
-            typename std::enable_if<
-                std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
+  template <typename... Args>
+  requires is_nothrow_move_constructible<value_type>
   void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
     tsl_sh_assert(offset < m_nb_elements);
 
@@ -851,9 +848,8 @@ class sparse_array {
     }
   }
 
-  template <typename... Args, typename U = value_type,
-            typename std::enable_if<!std::is_nothrow_move_constructible<
-                U>::value>::type * = nullptr>
+  template <typename... Args>
+  requires (!is_nothrow_move_constructible<value_type>)
   void erase_at_offset(allocator_type &alloc, size_type offset) {
     tsl_sh_assert(offset < m_nb_elements);
 
@@ -942,9 +938,6 @@ class sparse_hash : private Allocator,
                     private KeyEqual,
                     private GrowthPolicy {
  private:
-  template <typename U>
-  using has_mapped_type =
-      typename std::integral_constant<bool, !std::is_same<U, void>::value>;
 
   static_assert(
       noexcept(std::declval<GrowthPolicy>().bucket_for_hash(std::size_t(0))),
@@ -1020,8 +1013,8 @@ class sparse_hash : private Allocator,
     sparse_iterator() noexcept {}
 
     // Copy constructor from iterator to const_iterator.
-    template <bool TIsConst = IsConst,
-              typename std::enable_if<TIsConst>::type * = nullptr>
+    template <bool TIsConst = IsConst>
+    requires TIsConst
     sparse_iterator(const sparse_iterator<!TIsConst> &other) noexcept
         : m_sparse_buckets_it(other.m_sparse_buckets_it),
           m_sparse_array_it(other.m_sparse_array_it) {}
@@ -1035,16 +1028,14 @@ class sparse_hash : private Allocator,
       return KeySelect()(*m_sparse_array_it);
     }
 
-    template <class U = ValueSelect,
-              typename std::enable_if<has_mapped_type<U>::value &&
-                                      IsConst>::type * = nullptr>
+    template <class U = ValueSelect>
+    requires (has_mapped_type<U> && IsConst) 
     const typename U::value_type &value() const {
       return U()(*m_sparse_array_it);
     }
 
-    template <class U = ValueSelect,
-              typename std::enable_if<has_mapped_type<U>::value &&
-                                      !IsConst>::type * = nullptr>
+    template <class U = ValueSelect>
+    requires (has_mapped_type<U> && !IsConst) 
     typename U::value_type &value() {
       return U()(*m_sparse_array_it);
     }
@@ -1516,31 +1507,27 @@ class sparse_hash : private Allocator,
   /*
    * Lookup
    */
-  template <
-      class K, class U = ValueSelect,
-      typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
+  template <class K, class U = ValueSelect>
+  requires has_mapped_type<U>
   typename U::value_type &at(const K &key) {
     return at(key, hash_key(key));
   }
 
-  template <
-      class K, class U = ValueSelect,
-      typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
+  template <class K, class U = ValueSelect>
+  requires has_mapped_type<U>
   typename U::value_type &at(const K &key, std::size_t hash) {
     return const_cast<typename U::value_type &>(
         static_cast<const sparse_hash *>(this)->at(key, hash));
   }
 
-  template <
-      class K, class U = ValueSelect,
-      typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
+  template <class K, class U = ValueSelect>
+  requires has_mapped_type<U>
   const typename U::value_type &at(const K &key) const {
     return at(key, hash_key(key));
   }
 
-  template <
-      class K, class U = ValueSelect,
-      typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
+  template <class K, class U = ValueSelect>
+  requires has_mapped_type<U>
   const typename U::value_type &at(const K &key, std::size_t hash) const {
     auto it = find(key, hash);
     if (it != cend()) {
@@ -1550,9 +1537,8 @@ class sparse_hash : private Allocator,
     }
   }
 
-  template <
-      class K, class U = ValueSelect,
-      typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
+  template <class K, class U = ValueSelect>
+  requires has_mapped_type<U>
   typename U::value_type &operator[](K &&key) {
     return try_emplace(std::forward<K>(key)).first.value();
   }
@@ -1718,9 +1704,8 @@ class sparse_hash : private Allocator,
     return bucket;
   }
 
-  template <class U = GrowthPolicy,
-            typename std::enable_if<is_power_of_two_policy<U>::value>::type * =
-                nullptr>
+  template <class U = GrowthPolicy>
+  requires power_of_two_policy<U>
   size_type next_bucket(size_type ibucket, size_type iprobe) const {
     (void)iprobe;
     if (Probing == dice::sparse_map::sh::probing::linear) {
@@ -1731,9 +1716,8 @@ class sparse_hash : private Allocator,
     }
   }
 
-  template <class U = GrowthPolicy,
-            typename std::enable_if<!is_power_of_two_policy<U>::value>::type * =
-                nullptr>
+  template <class U = GrowthPolicy>
+  requires (!power_of_two_policy<U>)
   size_type next_bucket(size_type ibucket, size_type iprobe) const {
     (void)iprobe;
     if (Probing == dice::sparse_map::sh::probing::linear) {
@@ -1946,9 +1930,8 @@ class sparse_hash : private Allocator,
     tsl_sh_assert(m_nb_deleted_buckets == 0);
   }
 
-  template <dice::sparse_map::sh::exception_safety U = ExceptionSafety,
-            typename std::enable_if<U == dice::sparse_map::sh::exception_safety::basic>::type
-                * = nullptr>
+  template <dice::sparse_map::sh::exception_safety U = ExceptionSafety>
+  requires (U == dice::sparse_map::sh::exception_safety::basic)
   void rehash_impl(size_type count) {
     sparse_hash new_table(count, static_cast<Hash &>(*this),
                           static_cast<KeyEqual &>(*this),
@@ -1971,9 +1954,8 @@ class sparse_hash : private Allocator,
    * them if they are nothrow_move_constructible without triggering
    * any exception if we reserve enough space in the sparse arrays beforehand.
    */
-  template <dice::sparse_map::sh::exception_safety U = ExceptionSafety,
-            typename std::enable_if<
-                    U == dice::sparse_map::sh::exception_safety::strong>::type * = nullptr>
+  template <dice::sparse_map::sh::exception_safety U = ExceptionSafety>
+  requires (U == dice::sparse_map::sh::exception_safety::strong)
   void rehash_impl(size_type count) {
     sparse_hash new_table(count, static_cast<Hash &>(*this),
                           static_cast<KeyEqual &>(*this),
