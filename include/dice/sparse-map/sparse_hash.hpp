@@ -137,28 +137,6 @@ static T numeric_cast(U value,
 }
 
 /**
- * Fixed size type used to represent size_type values on serialization. Need to
- * be big enough to represent a std::size_t on 32 and 64 bits platforms, and
- * must be the same size on both platforms.
- */
-using slz_size_type = std::uint64_t;
-static_assert(std::numeric_limits<slz_size_type>::max() >=
-                  std::numeric_limits<std::size_t>::max(),
-              "slz_size_type must be >= std::size_t");
-
-template <class T, class Deserializer>
-static T deserialize_value(Deserializer &deserializer) {
-  // MSVC < 2017 is not conformant, circumvent the problem by removing the
-  // template keyword
-#if defined(_MSC_VER) && _MSC_VER < 1910
-  return deserializer.Deserializer::operator()<T>();
-#else
-  return deserializer.Deserializer::template operator()<T>();
-#endif
-}
-
-
-/**
  * WARNING: the sparse_array class doesn't free the ressources allocated through
  * the allocator passed in parameter in each method. You have to manually call
  * `clear(Allocator&)` when you don't need a sparse_array object anymore.
@@ -511,89 +489,6 @@ class sparse_array {
 
   static iterator mutable_iterator(const_iterator pos) {
     return ::dice::sparse_map::Remove_Const<iterator>::template remove<const_iterator>(pos);
-  }
-
-  template <class Serializer>
-  void serialize(Serializer &serializer) const {
-    const slz_size_type sparse_bucket_size = m_nb_elements;
-    serializer(sparse_bucket_size);
-
-    const slz_size_type bitmap_vals = m_bitmap_vals;
-    serializer(bitmap_vals);
-
-    const slz_size_type bitmap_deleted_vals = m_bitmap_deleted_vals;
-    serializer(bitmap_deleted_vals);
-
-    for (const value_type &value : *this) {
-      serializer(value);
-    }
-  }
-
-  template <class Deserializer>
-  static sparse_array deserialize_hash_compatible(Deserializer &deserializer,
-                                                  Allocator &alloc) {
-    const slz_size_type sparse_bucket_size =
-        deserialize_value<slz_size_type>(deserializer);
-    const slz_size_type bitmap_vals =
-        deserialize_value<slz_size_type>(deserializer);
-    const slz_size_type bitmap_deleted_vals =
-        deserialize_value<slz_size_type>(deserializer);
-
-    if (sparse_bucket_size > BITMAP_NB_BITS) {
-      throw std::runtime_error(
-          "Deserialized sparse_bucket_size is too big for the platform. "
-          "Maximum should be BITMAP_NB_BITS.");
-    }
-
-    sparse_array sarray;
-    if (sparse_bucket_size == 0) {
-      return sarray;
-    }
-
-    sarray.m_bitmap_vals = numeric_cast<bitmap_type>(
-        bitmap_vals, "Deserialized bitmap_vals is too big.");
-    sarray.m_bitmap_deleted_vals = numeric_cast<bitmap_type>(
-        bitmap_deleted_vals, "Deserialized bitmap_deleted_vals is too big.");
-
-    sarray.m_capacity = numeric_cast<size_type>(
-        sparse_bucket_size, "Deserialized sparse_bucket_size is too big.");
-    sarray.m_values = alloc.allocate(sarray.m_capacity);
-
-    try {
-      for (size_type ivalue = 0; ivalue < sarray.m_capacity; ivalue++) {
-        construct_value(alloc, sarray.m_values + ivalue,
-                        deserialize_value<value_type>(deserializer));
-        sarray.m_nb_elements++;
-      }
-    } catch (...) {
-      sarray.clear(alloc);
-      throw;
-    }
-
-    return sarray;
-  }
-
-  /**
-   * Deserialize the values of the bucket and insert them all in sparse_hash
-   * through sparse_hash.insert(...).
-   */
-  template <class Deserializer, class SparseHash>
-  static void deserialize_values_into_sparse_hash(Deserializer &deserializer,
-                                                  SparseHash &sparse_hash) {
-    const slz_size_type sparse_bucket_size =
-        deserialize_value<slz_size_type>(deserializer);
-
-    const slz_size_type bitmap_vals =
-        deserialize_value<slz_size_type>(deserializer);
-    static_cast<void>(bitmap_vals);  // Ignore, not needed
-
-    const slz_size_type bitmap_deleted_vals =
-        deserialize_value<slz_size_type>(deserializer);
-    static_cast<void>(bitmap_deleted_vals);  // Ignore, not needed
-
-    for (slz_size_type ivalue = 0; ivalue < sparse_bucket_size; ivalue++) {
-      sparse_hash.insert(deserialize_value<value_type>(deserializer));
-    }
   }
 
  private:
@@ -1637,16 +1532,6 @@ class sparse_hash : private Allocator,
                     sparse_array::mutable_iterator(pos.m_sparse_array_it));
   }
 
-  template <class Serializer>
-  void serialize(Serializer &serializer) const {
-    serialize_impl(serializer);
-  }
-
-  template <class Deserializer>
-  void deserialize(Deserializer &deserializer, bool hash_compatible) {
-    deserialize_impl(deserializer, hash_compatible);
-  }
-
  private:
   template <class K>
   std::size_t hash_key(const K &key) const {
@@ -1963,118 +1848,9 @@ class sparse_hash : private Allocator,
     }
   }
 
-  template <class Serializer>
-  void serialize_impl(Serializer &serializer) const {
-    const slz_size_type version = SERIALIZATION_PROTOCOL_VERSION;
-    serializer(version);
-
-    const slz_size_type bucket_count = m_bucket_count;
-    serializer(bucket_count);
-
-    const slz_size_type nb_sparse_buckets = m_sparse_buckets_data.size();
-    serializer(nb_sparse_buckets);
-
-    const slz_size_type nb_elements = m_nb_elements;
-    serializer(nb_elements);
-
-    const slz_size_type nb_deleted_buckets = m_nb_deleted_buckets;
-    serializer(nb_deleted_buckets);
-
-    const float max_load_factor = m_max_load_factor;
-    serializer(max_load_factor);
-
-    for (const auto &bucket : m_sparse_buckets_data) {
-      bucket.serialize(serializer);
-    }
-  }
-
-  template <class Deserializer>
-  void deserialize_impl(Deserializer &deserializer, bool hash_compatible) {
-    tsl_sh_assert(
-        m_bucket_count == 0 &&
-        m_sparse_buckets_data.empty());  // Current hash table must be empty
-
-    const slz_size_type version =
-        deserialize_value<slz_size_type>(deserializer);
-    // For now we only have one version of the serialization protocol.
-    // If it doesn't match there is a problem with the file.
-    if (version != SERIALIZATION_PROTOCOL_VERSION) {
-      throw std::runtime_error(
-          "Can't deserialize the sparse_map/set. The "
-          "protocol version header is invalid.");
-    }
-
-    const slz_size_type bucket_count_ds =
-        deserialize_value<slz_size_type>(deserializer);
-    const slz_size_type nb_sparse_buckets =
-        deserialize_value<slz_size_type>(deserializer);
-    const slz_size_type nb_elements =
-        deserialize_value<slz_size_type>(deserializer);
-    const slz_size_type nb_deleted_buckets =
-        deserialize_value<slz_size_type>(deserializer);
-    const float max_load_factor = deserialize_value<float>(deserializer);
-
-    if (!hash_compatible) {
-      this->max_load_factor(max_load_factor);
-      reserve(numeric_cast<size_type>(nb_elements,
-                                      "Deserialized nb_elements is too big."));
-      for (slz_size_type ibucket = 0; ibucket < nb_sparse_buckets; ibucket++) {
-        sparse_array::deserialize_values_into_sparse_hash(deserializer, *this);
-      }
-    } else {
-      m_bucket_count = numeric_cast<size_type>(
-          bucket_count_ds, "Deserialized bucket_count is too big.");
-
-      GrowthPolicy::operator=(GrowthPolicy(m_bucket_count));
-      // GrowthPolicy should not modify the bucket count we got from
-      // deserialization
-      if (m_bucket_count != bucket_count_ds) {
-        throw std::runtime_error(
-            "The GrowthPolicy is not the same even though "
-            "hash_compatible is true.");
-      }
-
-      if (nb_sparse_buckets !=
-          sparse_array::nb_sparse_buckets(m_bucket_count)) {
-        throw std::runtime_error("Deserialized nb_sparse_buckets is invalid.");
-      }
-
-      m_nb_elements = numeric_cast<size_type>(
-          nb_elements, "Deserialized nb_elements is too big.");
-      m_nb_deleted_buckets = numeric_cast<size_type>(
-          nb_deleted_buckets, "Deserialized nb_deleted_buckets is too big.");
-
-      m_sparse_buckets_data.reserve(numeric_cast<size_type>(
-          nb_sparse_buckets, "Deserialized nb_sparse_buckets is too big."));
-      for (slz_size_type ibucket = 0; ibucket < nb_sparse_buckets; ibucket++) {
-        m_sparse_buckets_data.emplace_back(
-            sparse_array::deserialize_hash_compatible(
-                deserializer, static_cast<Allocator &>(*this)));
-      }
-
-      if (!m_sparse_buckets_data.empty()) {
-        m_sparse_buckets_data.back().set_as_last();
-        m_sparse_buckets = m_sparse_buckets_data.data();
-      }
-
-      this->max_load_factor(max_load_factor);
-      if (load_factor() > this->max_load_factor()) {
-        throw std::runtime_error(
-            "Invalid max_load_factor. Check that the serializer and "
-            "deserializer support "
-            "floats correctly as they can be converted implicitely to ints.");
-      }
-    }
-  }
-
  public:
   static const size_type DEFAULT_INIT_BUCKET_COUNT = 0;
   static constexpr float DEFAULT_MAX_LOAD_FACTOR = 0.5f;
-
-  /**
-   * Protocol version currenlty used for serialization.
-   */
-  static const slz_size_type SERIALIZATION_PROTOCOL_VERSION = 1;
 
   using sparse_array_ptr = typename std::allocator_traits<allocator_type>::template rebind_traits<sparse_array>::pointer;
   /**
