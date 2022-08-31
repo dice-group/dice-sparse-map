@@ -81,42 +81,6 @@ enum class sparsity { high, medium, low };
   };
 
 namespace detail_sparse_hash {
-    /* to_address can convert any raw or fancy pointer into a raw pointer.
-     * It is needed for the allocator construct and destroy calls.
-     * This specific implementation is based on boost 1.71.0.
-     */
-#if __cplusplus >= 201400L  // with 14-features
-    template <typename T>
-    T *to_address(T *v) noexcept { return v; }
-
-    namespace fancy_ptr_detail {
-        template <typename T>
-        inline T *ptr_address(T *v, int) noexcept { return v; }
-
-        template <typename T>
-        inline auto ptr_address(const T &v, int) noexcept
-        -> decltype(std::pointer_traits<T>::to_address(v)) {
-            return std::pointer_traits<T>::to_address(v);
-        }
-        template <typename T>
-        inline auto ptr_address(const T &v, long) noexcept {
-            return fancy_ptr_detail::ptr_address(v.operator->(), 0);
-        }
-    } // namespace detail
-
-    template <typename T> inline auto to_address(const T &v) noexcept {
-        return fancy_ptr_detail::ptr_address(v, 0);
-    }
-#else // without 14-features
-    template <typename T>
-    inline T *to_address(T *v) noexcept { return v; }
-
-    template <typename T>
-    inline typename std::pointer_traits<T>::element_type * to_address(const T &v) noexcept {
-        return detail_sparse_hash::to_address(v.operator->());
-    }
-#endif
-
 template <typename U>
 struct is_power_of_two_policy : std::false_type {};
 
@@ -637,11 +601,11 @@ class sparse_array {
   static void construct_value(allocator_type &alloc, pointer value,
                               Args &&... value_args) {
     std::allocator_traits<allocator_type>::construct(
-        alloc, detail_sparse_hash::to_address(value), std::forward<Args>(value_args)...);
+        alloc, std::to_address(value), std::forward<Args>(value_args)...);
   }
 
   static void destroy_value(allocator_type &alloc, pointer value) noexcept {
-    std::allocator_traits<allocator_type>::destroy(alloc, detail_sparse_hash::to_address(value));
+    std::allocator_traits<allocator_type>::destroy(alloc, std::to_address(value));
   }
 
   static void destroy_and_deallocate_values(
@@ -1042,8 +1006,7 @@ class sparse_hash : private Allocator,
 
     reference operator*() const { return *m_sparse_array_it; }
 
-    //with fancy pointers addressof might be problematic.
-    pointer operator->() const { return std::addressof(*m_sparse_array_it); }
+    pointer operator->() const { return std::to_address(m_sparse_array_it); }
 
     sparse_iterator &operator++() {
       tsl_sh_assert(m_sparse_array_it != nullptr);
