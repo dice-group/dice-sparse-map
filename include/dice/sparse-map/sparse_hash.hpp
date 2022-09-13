@@ -43,6 +43,7 @@
 
 #include "dice/sparse-map/sparse_growth_policy.hpp"
 #include "boost/container/vector.hpp"
+#include "dice/sparse-map/vec.hpp"
 
 #ifdef TSL_DEBUG
 #define tsl_sh_assert(expr) assert(expr)
@@ -807,7 +808,6 @@ class sparse_hash : private Allocator,
  public:
   template <bool IsConst>
   class sparse_iterator;
-  class vec;
 
   using key_type = typename KeySelect::key_type;
   using value_type = ValueType;
@@ -830,7 +830,7 @@ class sparse_hash : private Allocator,
   using sparse_buckets_allocator = typename std::allocator_traits<
       allocator_type>::template rebind_alloc<sparse_array>;
   using sparse_buckets_container =
-      boost::container::vector<sparse_array, sparse_buckets_allocator>;
+      vec<sparse_array, sparse_buckets_allocator>;
  public:
   /**
    * The `operator*()` and `operator->()` methods return a const reference and
@@ -904,7 +904,7 @@ class sparse_hash : private Allocator,
       return U()(*m_sparse_array_it);
     }
 
-    reference operator*() const { return *m_sparse_array_it; }
+    reference operator*() const { return *std::to_address(m_sparse_array_it); }
 
     pointer operator->() const { return std::to_address(m_sparse_array_it); }
 
@@ -1897,202 +1897,6 @@ class sparse_hash : private Allocator,
    */
   size_type m_load_threshold_clear_deleted;
   float m_max_load_factor;
-
-  public:
-  class vec {
-    public:
-      using sparse_array = dice::sparse_map::detail_sparse_hash::sparse_array<ValueType, Allocator, Sparsity>;
-      using sparse_array_ptr = typename std::allocator_traits<allocator_type>::template rebind_traits<sparse_array>::pointer;
-      using value_type = sparse_array;
-      using container_allocator_traits 
-      = typename std::allocator_traits<typename std::allocator_traits<allocator_type>::template rebind_alloc<sparse_array>>;
-      using container_allocator 
-      = typename std::allocator_traits<allocator_type>::template rebind_alloc<sparse_array>;
-      using iterator = sparse_array_ptr;
-      using const_iterator =  const sparse_array_ptr;
-      using reference = value_type&;
-      using const_reference = const value_type&;
-
-      vec() = delete;
-
-      explicit vec(const container_allocator& a) 
-        : m_allocator(a), 
-          m_sparse_buckets(nullptr),
-          m_size(0),
-          m_capacity(0) {}
-
-      explicit vec(size_type n, const container_allocator& a = container_allocator()) 
-      : m_allocator(a),
-        m_size(0),
-        m_capacity(n) {
-        if (n == 0) [[unlikely]] {
-          m_sparse_buckets = nullptr;
-        } 
-        else {
-          m_sparse_buckets = container_allocator_traits::allocate(m_allocator, n);
-        }
-      }
-
-      vec(const vec& other) = delete;
-
-      vec(vec&& other) noexcept 
-        : m_size(other.m_size), 
-          m_capacity(other.m_capacity), 
-          m_sparse_buckets(other.m_sparse_buckets),
-          m_allocator(std::move(other.m_allocator)) {
-            other.m_sparse_buckets = nullptr;
-          }
-
-      ~vec() noexcept {
-        clear();
-      }
-
-      size_type size() const noexcept {
-        return m_size;
-      } 
-
-      size_type max_size() const noexcept {
-        return ~size_type(0);
-      } 
-
-      size_type capacity() const noexcept {
-        return m_capacity;
-      }
-
-      iterator begin() noexcept { return m_sparse_buckets; }
-      const_iterator begin() const noexcept { return m_sparse_buckets; }
-      iterator end() noexcept { return m_sparse_buckets + m_size; }
-      const_iterator end() const noexcept { return m_sparse_buckets + m_size; }
-
-      const_iterator cbegin() const noexcept { return m_sparse_buckets; }
-      const_iterator cend() const noexcept { return m_sparse_buckets + m_size; }
-
-      reference operator[](size_type n) {
-        return m_sparse_buckets[n];
-      }
-
-      const_reference operator[](size_type n) const {
-        return m_sparse_buckets[n];
-      }
-
-      reference front() {
-        return *m_sparse_buckets;
-      }
-
-      const_reference front() const {
-        return *m_sparse_buckets;
-      }
-      reference back() {
-        return *(m_sparse_buckets + m_size - 1);
-      }
-      const_reference back() const {
-        return *(m_sparse_buckets + m_size - 1);
-      }
-
-      sparse_array_ptr data() noexcept { return m_sparse_buckets; }
-      const sparse_array_ptr data() const noexcept { return m_sparse_buckets; }
-
-      template <class... Args>
-      reference emplace_back(Args&&... args) {
-        if (m_size != m_capacity) {
-          container_allocator_traits::construct(m_allocator, m_sparse_buckets + m_size, std::forward<Args>(args)...);
-        } 
-        else {
-          size_type new_capacity = this->nextCapacity();
-          size_type byte_sz = new_capacity * sizeof(value_type);
-          size_type sz = byte_sz / sizeof(value_type);
-          auto new_sparse_buckets = container_allocator_traits::allocate(m_allocator, sz);
-          
-          container_allocator_traits::construct(m_allocator, new_sparse_buckets + m_size, std::forward<Args>(args)...);
-          if(m_capacity != 0) {
-            std::memcpy(new_sparse_buckets, m_sparse_buckets, m_size * sizeof(value_type));
-            container_allocator_traits::deallocate(m_allocator, m_sparse_buckets, m_capacity);
-          }
-
-          m_sparse_buckets = new_sparse_buckets;
-          m_capacity = new_capacity;
-        }
-        ++m_size;
-        return back();
-      }
-
-      void swap(vec& other) {
-        std::swap(m_size, other.m_size);
-        std::swap(m_capacity, other.m_capacity);
-        std::swap(m_sparse_buckets, other.m_sparse_buckets);
-        std::swap(m_allocator, other.m_allocator);
-      }
-
-      void resize(size_type n) {
-        if (n <= m_size) {
-          return;
-        } else {
-          reserve(n);
-        }
-      }
-
-      bool empty() const noexcept { return m_size == 0; }
-
-      void reserve(size_type n) {
-        if (n <= m_capacity) {
-          return;
-        }
-        auto new_sparse_buckets = container_allocator_traits::allocate(m_allocator, n);
-        if(m_capacity != 0) {
-          std::memcpy(new_sparse_buckets, m_sparse_buckets, m_size * sizeof(value_type));
-          container_allocator_traits::deallocate(m_allocator, m_sparse_buckets, m_capacity);
-        }
-
-        m_sparse_buckets = new_sparse_buckets;
-        m_capacity = n;
-      }
-
-      void clear() noexcept { 
-        if(m_sparse_buckets == nullptr) {
-           return;
-        }
-        auto first = m_sparse_buckets;
-        auto last = m_sparse_buckets + m_size;
-
-        for (; first != last; ++first) {
-          container_allocator_traits::destroy(m_allocator, std::to_address(first));
-        }
-        
-        container_allocator_traits::deallocate(m_allocator, m_sparse_buckets, m_capacity);
-        m_size = 0;
-        m_capacity = 0;
-        m_sparse_buckets = nullptr;
-      }
-
-      vec& operator=(vec&& other) {
-        if (this == &other) [[unlikely]] {
-          return *this;
-        }
-        std::swap(m_size, other.m_size);
-        std::swap(m_capacity, other.m_capacity);
-        std::swap(m_sparse_buckets, other.m_sparse_buckets);
-        std::swap(m_allocator, other.m_allocator);
-
-        return *this;
-      }
-    
-    private:
-      size_type nextCapacity() const noexcept {
-        if (m_capacity == 0) {
-          return std::max(64 / sizeof(value_type), size_type(1));
-        }
-        if (m_capacity > 4096 * 32 / sizeof(value_type)) {
-          return m_capacity * 2;
-        }
-        return (m_capacity * 3 + 1) / 2;
-      }
-
-    private:
-      size_type m_size;
-      size_type m_capacity;
-      sparse_array_ptr m_sparse_buckets;
-      container_allocator m_allocator;
-  };
 };
 
 }  // namespace detail_sparse_hash
