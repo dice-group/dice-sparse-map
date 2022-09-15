@@ -6,14 +6,6 @@
 
 enum class sparsity { high, medium, low };
 
-template <typename T>
-  struct Remove_Const {
-    template <typename V>
-    static T remove(V iter) {
-      return const_cast<T>(iter);
-  }
-};
-
 template <typename U>
 struct is_power_of_two_policy : std::false_type {};
 
@@ -169,7 +161,7 @@ class sparse_array {
         m_capacity(capacity),
         m_last_array(false) {
     if (m_capacity > 0) {
-      auto alloc = const_cast<Allocator&>(const_alloc);
+      auto alloc = Allocator(const_alloc);
       m_values = alloc.allocate(m_capacity);
       tsl_sh_assert(m_values !=
                     nullptr);  // allocate should throw if there is a failure
@@ -189,7 +181,7 @@ class sparse_array {
       return;
     }
 
-    auto alloc = const_cast<Allocator&>(const_alloc);
+    auto alloc = Allocator(const_alloc);
     m_values = alloc.allocate(m_capacity);
     tsl_sh_assert(m_values !=
                   nullptr);  // allocate should throw if there is a failure
@@ -231,7 +223,7 @@ class sparse_array {
       return;
     }
 
-    auto alloc = const_cast<Allocator&>(const_alloc);
+    auto alloc = Allocator(const_alloc);
     m_values = alloc.allocate(m_capacity);
     tsl_sh_assert(m_values !=
                   nullptr);  // allocate should throw if there is a failure

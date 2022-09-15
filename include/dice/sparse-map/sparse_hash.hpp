@@ -284,7 +284,7 @@ class sparse_array {
         m_capacity(capacity),
         m_last_array(false) {
     if (m_capacity > 0) {
-      auto alloc = const_cast<Allocator&>(const_alloc);
+      auto alloc = Allocator(const_alloc);
       m_values = alloc.allocate(m_capacity);
       tsl_sh_assert(m_values !=
                     nullptr);  // allocate should throw if there is a failure
@@ -304,7 +304,7 @@ class sparse_array {
       return;
     }
 
-    auto alloc = const_cast<Allocator&>(const_alloc);
+    auto alloc = Allocator(const_alloc);
     m_values = alloc.allocate(m_capacity);
     tsl_sh_assert(m_values !=
                   nullptr);  // allocate should throw if there is a failure
@@ -346,7 +346,7 @@ class sparse_array {
       return;
     }
 
-    auto alloc = const_cast<Allocator&>(const_alloc);
+    auto alloc = Allocator(const_alloc);
     m_values = alloc.allocate(m_capacity);
     tsl_sh_assert(m_values !=
                   nullptr);  // allocate should throw if there is a failure
@@ -486,10 +486,6 @@ class sparse_array {
     swap(m_nb_elements, other.m_nb_elements);
     swap(m_capacity, other.m_capacity);
     swap(m_last_array, other.m_last_array);
-  }
-
-  static iterator mutable_iterator(const_iterator pos) {
-    return ::dice::sparse_map::Remove_Const<iterator>::template remove<const_iterator>(pos);
   }
 
  private:
@@ -992,10 +988,10 @@ class sparse_hash : private Allocator,
 
     // Check in the constructor instead of outside of a function to avoid
     // compilation issues when value_type is not complete.
-    static_assert(std::is_nothrow_move_constructible<value_type>::value ||
+    /*static_assert(std::is_nothrow_move_constructible<value_type>::value ||
                       std::is_copy_constructible<value_type>::value,
                   "Key, and T if present, must be nothrow move constructible "
-                  "and/or copy constructible.");
+                  "and/or copy constructible.");*/
   }
 
   ~sparse_hash() { clear(); }
@@ -1379,8 +1375,12 @@ class sparse_hash : private Allocator,
   template <class K, class U = ValueSelect>
   requires has_mapped_type<U>
   typename U::value_type &at(const K &key, std::size_t hash) {
-    return const_cast<typename U::value_type &>(
-        static_cast<const sparse_hash *>(this)->at(key, hash));
+    auto it = find(key, hash);
+    if (it != end()) {
+      return it.value();
+    } else {
+      throw std::out_of_range("Couldn't find key.");
+    }
   }
 
   template <class K, class U = ValueSelect>
@@ -1532,9 +1532,16 @@ class sparse_hash : private Allocator,
     auto it_sparse_buckets =
         m_sparse_buckets_data.begin() +
         std::distance(m_sparse_buckets_data.cbegin(), pos.m_sparse_buckets_it);
+  
+    if(it_sparse_buckets == m_sparse_buckets_data.end()) {
+      return iterator(it_sparse_buckets, nullptr);
+    }
 
-    return iterator(it_sparse_buckets,
-                    sparse_array::mutable_iterator(pos.m_sparse_array_it));
+    auto it_sparse_array =
+      std::to_address(it_sparse_buckets)->begin() +
+        std::distance(std::to_address(it_sparse_buckets)->cbegin(), pos.m_sparse_array_it);
+      
+    return iterator(it_sparse_buckets, it_sparse_array);
   }
 
  private:
