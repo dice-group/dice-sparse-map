@@ -8,7 +8,8 @@
 BOOST_AUTO_TEST_SUITE(test_vec)
 
 using pair = std::pair<int,int>;
-using arr = sparse_array<pair, std::allocator<pair>, sparsity::medium>;
+using arr = dice::sparse_map::detail_sparse_hash::sparse_array<pair, std::allocator<pair>, dice::sparse_map::sh::sparsity::medium>;
+using dice::sparse_map::detail_sparse_hash::vec;
 
 template<typename T>
 using allocator_type = std::allocator<T>;
