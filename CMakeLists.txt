@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(dice-sparse-map
-        VERSION 0.2.0
+        VERSION 0.2.1
         DESCRIPTION "C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers.")
 
 include(cmake/boilerplate_init.cmake)
@@ -18,11 +18,6 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME} INTERFACE
         Boost::headers
         )
-
-set_target_properties(${PROJECT_NAME} PROPERTIES
-        CXX_STANDARD 20
-        CXX_EXTENSIONS OFF
-        CXX_STANDARD_REQUIRED ON)
 
 if(MSVC)
     target_sources(${PROJECT_NAME} INTERFACE
