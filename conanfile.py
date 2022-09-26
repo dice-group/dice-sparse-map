@@ -12,6 +12,7 @@ class Recipe(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
     requires = "boost/1.79.0"
+    generators = "cmake_find_package"
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
