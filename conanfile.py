@@ -1,8 +1,9 @@
 import os
 import re
 
-from conans import CMake, ConanFile, load
-from conans.util.files import rmdir
+from conan import ConanFile
+from conan.tools.cmake import CMake, cmake_layout
+from conan.tools.files import rmdir, copy, load
 
 
 class Recipe(ConanFile):
@@ -12,29 +13,34 @@ class Recipe(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
     requires = "boost/1.79.0"
-    generators = "cmake_find_package"
+    generators = ("CMakeDeps", "CMakeToolchain")
+    no_copy_source = True
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
-            cmake_file = load(os.path.join(self.recipe_folder, "CMakeLists.txt"))
+            cmake_file = load(self, os.path.join(self.recipe_folder, "CMakeLists.txt"))
             self.name = re.search(r"project\(\s*([a-z\-]+)\s+VERSION", cmake_file).group(1)
 
     def set_version(self):
         if not hasattr(self, 'version') or self.version is None:
-            cmake_file = load(os.path.join(self.recipe_folder, "CMakeLists.txt"))
+            cmake_file = load(self, os.path.join(self.recipe_folder, "CMakeLists.txt"))
             self.version = re.search(r"project\([^)]*VERSION\s+(\d+\.\d+.\d+)[^)]*\)", cmake_file).group(1)
         if not hasattr(self, 'description') or self.description is None:
-            cmake_file = load(os.path.join(self.recipe_folder, "CMakeLists.txt"))
+            cmake_file = load(self, os.path.join(self.recipe_folder, "CMakeLists.txt"))
             self.description = re.search(r"project\([^)]*DESCRIPTION\s+\"([^\"]+)\"[^)]*\)", cmake_file).group(1)
+
+    def layout(self):
+        cmake_layout(self)
+
+    def package_id(self):
+        self.info.header_only()
 
     def package(self):
         cmake = CMake(self)
         cmake.configure()
         cmake.install()
-        for file in os.listdir(self.folders.package_folder):
-            if file != "include":
-                rmdir(os.path.join(self.package_folder, file))
-        self.copy(pattern="LICENSE*", dst="licenses", src=self.folders.source_folder)
 
-    def package_id(self):
-        self.info.header_only()
+        for dir in ("lib", "res", "share"):
+            rmdir(self, os.path.join(self.package_folder, dir))
+
+        copy(self, "LICENSE*", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
