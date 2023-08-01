@@ -5,7 +5,6 @@
 #include <boost/test/unit_test.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
 #include <dice/sparse-map/sparse_hash.hpp>
-#include <dice/sparse-map/boost_offset_pointer.hpp>
 #include "CustomAllocator.hpp"
 
 /* Tests are analogous to the  tests in sparse_array_tests.cpp.

@@ -69,20 +69,6 @@ namespace dice::sparse_map {
 		};
 	}// namespace sh
 
-	/* Replacement for const_cast in sparse_array.
-	 * Can be overloaded for specific fancy pointers
-	 * (see: include/dice/boost_offset_pointer.h).
-	 * This is just a workaround.
-	 * The clean way would be to change the implementation to stop using const_cast.
-	 */
-	template<typename T>
-	struct Remove_Const {
-		template<typename V>
-		static T remove(V iter) {
-			return const_cast<T>(iter);
-		}
-	};
-
 	namespace detail_sparse_hash {
 		template<typename T>
 		struct make_void {
@@ -402,6 +388,17 @@ namespace dice::sparse_map {
 				tsl_sh_assert(m_capacity == 0 && m_nb_elements == 0 && m_values == nullptr);
 			}
 
+			/**
+			 * @safety This function is only safe to call if the underlying object is non-const
+			 */
+			static iterator unsafe_mutable_iterator(const_iterator pos) noexcept {
+				if constexpr (std::is_pointer_v<const_iterator>) {
+					return const_cast<iterator>(pos);
+				} else {
+					return iterator{const_cast<value_type *>(std::to_address(pos))};
+				}
+			}
+
 			iterator begin() noexcept { return m_values; }
 			iterator end() noexcept { return m_values + m_nb_elements; }
 			const_iterator begin() const noexcept { return cbegin(); }
@@ -504,10 +501,6 @@ namespace dice::sparse_map {
 				swap(m_nb_elements, other.m_nb_elements);
 				swap(m_capacity, other.m_capacity);
 				swap(m_last_array, other.m_last_array);
-			}
-
-			static iterator mutable_iterator(const_iterator pos) {
-				return ::dice::sparse_map::Remove_Const<iterator>::template remove<const_iterator>(pos);
 			}
 
 			template<class Serializer>
@@ -1058,6 +1051,17 @@ namespace dice::sparse_map {
 				sparse_array_iterator m_sparse_array_it;
 			};
 
+			iterator mutable_iterator(const_iterator pos) noexcept {
+				// SAFETY: this is non-const therefore the underlying buckets are also non-const
+				// as evidenced by the fact that we can call begin on them
+				auto it_sparse_buckets = m_sparse_buckets_data.begin() + std::distance(m_sparse_buckets_data.cbegin(), pos.m_sparse_buckets_it);
+
+				// SAFETY: this is non-const therefore the underlying sparse array is also non-const
+				auto it_array = sparse_array::unsafe_mutable_iterator(pos.m_sparse_array_it);
+
+				return iterator(it_sparse_buckets, it_array);
+			}
+
 		public:
 			sparse_hash(size_type bucket_count, const Hash &hash, const KeyEqual &equal,
 						const Allocator &alloc, float max_load_factor)
@@ -1452,28 +1456,22 @@ namespace dice::sparse_map {
 
 			template<class K> requires (has_mapped_type)
 			mapped_reference at(const K &key) {
-				return at(key, m_h(key));
+				return at_impl(*this, key, m_h(key));
 			}
 
 			template<class K> requires (has_mapped_type)
 			mapped_reference at(const K &key, std::size_t hash) {
-				return const_cast<mapped_reference>(
-						static_cast<const sparse_hash *>(this)->at(key, hash));
+				return at_impl(*this, key, hash);
 			}
 
 			template<class K> requires (has_mapped_type)
 			mapped_const_reference at(const K &key) const {
-				return at(key, m_h(key));
+				return at_impl(*this, key, m_h(key));
 			}
 
 			template<class K> requires (has_mapped_type)
 			mapped_const_reference at(const K &key, std::size_t hash) const {
-				auto it = find(key, hash);
-				if (it != cend()) {
-					return it->second;
-				} else {
-					throw std::out_of_range("Couldn't find key.");
-				}
+				return at_impl(*this, key, hash);
 			}
 
 			template<class K> requires (has_mapped_type)
@@ -1507,22 +1505,22 @@ namespace dice::sparse_map {
 
 			template<class K>
 			iterator find(const K &key) {
-				return find_impl(key, m_h(key));
+				return find_impl(*this, key, m_h(key));
 			}
 
 			template<class K>
 			iterator find(const K &key, std::size_t hash) {
-				return find_impl(key, hash);
+				return find_impl(*this, key, hash);
 			}
 
 			template<class K>
 			const_iterator find(const K &key) const {
-				return find_impl(key, m_h(key));
+				return find_impl(*this, key, m_h(key));
 			}
 
 			template<class K>
 			const_iterator find(const K &key, std::size_t hash) const {
-				return find_impl(key, hash);
+				return find_impl(*this, key, hash);
 			}
 
 			template<class K>
@@ -1590,15 +1588,6 @@ namespace dice::sparse_map {
 			hasher hash_function() const { return m_h; }
 
 			key_equal key_eq() const { return m_keq; }
-
-			iterator mutable_iterator(const_iterator pos) {
-				auto it_sparse_buckets =
-						m_sparse_buckets_data.begin() +
-						std::distance(m_sparse_buckets_data.cbegin(), pos.m_sparse_buckets_it);
-
-				return iterator(it_sparse_buckets,
-								sparse_array::mutable_iterator(pos.m_sparse_array_it));
-			}
 
 			template<class Serializer>
 			void serialize(Serializer &serializer) const {
@@ -1796,15 +1785,10 @@ namespace dice::sparse_map {
 				}
 			}
 
-			template<class K>
-			iterator find_impl(const K &key, std::size_t hash) {
-				return mutable_iterator(
-						static_cast<const sparse_hash *>(this)->find(key, hash));
-			}
-
-			template<class K>
-			const_iterator find_impl(const K &key, std::size_t hash) const {
-				std::size_t ibucket = bucket_for_hash(hash);
+			template<typename Self, class K>
+			static auto find_impl(Self &&self, const K &key, std::size_t hash) {
+				static constexpr bool is_const = std::is_const_v<std::remove_reference_t<Self>>;
+				std::size_t ibucket = self.bucket_for_hash(hash);
 
 				std::size_t probe = 0;
 				while (true) {
@@ -1812,25 +1796,32 @@ namespace dice::sparse_map {
 					const auto index_in_sparse_bucket =
 							sparse_array::index_in_sparse_bucket(ibucket);
 
-					if (m_sparse_buckets == static_empty_sparse_bucket_ptr()) {
-						return cend();
+					if (self.m_sparse_buckets == static_empty_sparse_bucket_ptr()) {
+						return self.end();
 					}
-					if (m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
-						auto value_it =
-								m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
-						if (m_keq(key, KeyValueSelect::key(*value_it))) {
-							return const_iterator(m_sparse_buckets_data.cbegin() + sparse_ibucket,
-												  value_it);
+					if (self.m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
+						auto value_it = self.m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
+						if (self.m_keq(key, KeyValueSelect::key(*value_it))) {
+							return sparse_iterator<is_const>{self.m_sparse_buckets_data.begin() + sparse_ibucket, value_it};
 						}
-					} else if (!m_sparse_buckets[sparse_ibucket].has_deleted_value(
+					} else if (!self.m_sparse_buckets[sparse_ibucket].has_deleted_value(
 									   index_in_sparse_bucket) ||
-							   probe >= m_bucket_count) {
-						return cend();
+							   probe >= self.m_bucket_count) {
+						return self.end();
 					}
 
 					probe++;
-					ibucket = next_bucket(ibucket, probe);
+					ibucket = self.next_bucket(ibucket, probe);
 				}
+			}
+
+			template<typename Self, typename K>
+			static decltype(auto) at_impl(Self &&self, K const &key, std::size_t hash) {
+				if (auto it = find_impl(self, key, hash); it != self.end()) {
+					return KeyValueSelect::value(*it);
+				}
+
+				throw std::out_of_range{"Couldn't find key."};
 			}
 
 			void clear_deleted_buckets() {

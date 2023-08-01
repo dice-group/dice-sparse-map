@@ -31,7 +31,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "dice/sparse-map/boost_offset_pointer.hpp"
 #include "dice/sparse-map/sparse_hash.hpp"
 
 namespace dice::sparse_map {
@@ -639,14 +638,6 @@ namespace dice::sparse_map {
 
 		[[nodiscard]] hasher hash_function() const { return m_ht.hash_function(); }
 		[[nodiscard]] key_equal key_eq() const { return m_ht.key_eq(); }
-
-
-		/**
-   		 * Convert a `const_iterator` to an `iterator`.
-   		 */
-		[[nodiscard]] iterator mutable_iterator(const_iterator pos) {
-			return m_ht.mutable_iterator(pos);
-		}
 
 		/**
    		 * Serialize the map through the `serializer` parameter.
