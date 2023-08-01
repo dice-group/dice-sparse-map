@@ -25,6 +25,7 @@
 #define DICE_SPARSE_MAP_SPARSE_HASH_HPP
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <climits>
 #include <cmath>
@@ -42,14 +43,6 @@
 #include "boost/container/vector.hpp"
 #include "dice/sparse-map/sparse_growth_policy.hpp"
 
-#ifdef __INTEL_COMPILER
-#include <immintrin.h>// For _popcnt32 and _popcnt64
-#endif
-
-#ifdef _MSC_VER
-#include <intrin.h>// For __cpuid, __popcnt and __popcnt64
-#endif
-
 #ifdef TSL_DEBUG
 #define tsl_sh_assert(expr) assert(expr)
 #else
@@ -59,128 +52,22 @@
 namespace dice::sparse_map {
 
 	namespace sh {
-		enum class probing { linear,
-							 quadratic };
+		enum class probing {
+			linear,
+			quadratic
+		};
 
-		enum class exception_safety { basic,
-									  strong };
+		enum class exception_safety {
+			basic,
+			strong
+		};
 
-		enum class sparsity { high,
-							  medium,
-							  low };
+		enum class sparsity {
+			high,
+			medium,
+			low
+		};
 	}// namespace sh
-
-	namespace detail_popcount {
-		/**
-		 * Define the popcount(ll) methods and pick-up the best depending on the
-		 * compiler.
-		 */
-
-		// From Wikipedia: https://en.wikipedia.org/wiki/Hamming_weight
-		inline int fallback_popcountll(unsigned long long int x) {
-			static_assert(
-					sizeof(unsigned long long int) == sizeof(std::uint64_t),
-					"sizeof(unsigned long long int) must be equal to sizeof(std::uint64_t). "
-					"Open a feature request if you need support for a platform where it "
-					"isn't the case.");
-
-			const std::uint64_t m1 = 0x5555555555555555ull;
-			const std::uint64_t m2 = 0x3333333333333333ull;
-			const std::uint64_t m4 = 0x0f0f0f0f0f0f0f0full;
-			const std::uint64_t h01 = 0x0101010101010101ull;
-
-			x -= (x >> 1ull) & m1;
-			x = (x & m2) + ((x >> 2ull) & m2);
-			x = (x + (x >> 4ull)) & m4;
-			return static_cast<int>((x * h01) >> (64ull - 8ull));
-		}
-
-		inline int fallback_popcount(unsigned int x) {
-			static_assert(sizeof(unsigned int) == sizeof(std::uint32_t) ||
-								  sizeof(unsigned int) == sizeof(std::uint64_t),
-						  "sizeof(unsigned int) must be equal to sizeof(std::uint32_t) "
-						  "or sizeof(std::uint64_t). "
-						  "Open a feature request if you need support for a platform "
-						  "where it isn't the case.");
-
-			if (sizeof(unsigned int) == sizeof(std::uint32_t)) {
-				const std::uint32_t m1 = 0x55555555;
-				const std::uint32_t m2 = 0x33333333;
-				const std::uint32_t m4 = 0x0f0f0f0f;
-				const std::uint32_t h01 = 0x01010101;
-
-				x -= (x >> 1) & m1;
-				x = (x & m2) + ((x >> 2) & m2);
-				x = (x + (x >> 4)) & m4;
-				return static_cast<int>((x * h01) >> (32 - 8));
-			} else {
-				return fallback_popcountll(x);
-			}
-		}
-
-#if defined(__clang__) || defined(__GNUC__)
-		inline int popcountll(unsigned long long int value) {
-			return __builtin_popcountll(value);
-		}
-
-		inline int popcount(unsigned int value) { return __builtin_popcount(value); }
-
-#elif defined(_MSC_VER)
-		/**
- * We need to check for popcount support at runtime on Windows with __cpuid
- * See https://msdn.microsoft.com/en-us/library/bb385231.aspx
- */
-		inline bool has_popcount_support() {
-			int cpu_infos[4];
-			__cpuid(cpu_infos, 1);
-			return (cpu_infos[2] & (1 << 23)) != 0;
-		}
-
-		inline int popcountll(unsigned long long int value) {
-#ifdef _WIN64
-			static_assert(
-					sizeof(unsigned long long int) == sizeof(std::int64_t),
-					"sizeof(unsigned long long int) must be equal to sizeof(std::int64_t). ");
-
-			static const bool has_popcount = has_popcount_support();
-			return has_popcount
-						   ? static_cast<int>(__popcnt64(static_cast<std::int64_t>(value)))
-						   : fallback_popcountll(value);
-#else
-			return fallback_popcountll(value);
-#endif
-		}
-
-		inline int popcount(unsigned int value) {
-			static_assert(sizeof(unsigned int) == sizeof(std::int32_t),
-						  "sizeof(unsigned int) must be equal to sizeof(std::int32_t). ");
-
-			static const bool has_popcount = has_popcount_support();
-			return has_popcount
-						   ? static_cast<int>(__popcnt(static_cast<std::int32_t>(value)))
-						   : fallback_popcount(value);
-		}
-
-#elif defined(__INTEL_COMPILER)
-		inline int popcountll(unsigned long long int value) {
-			static_assert(sizeof(unsigned long long int) == sizeof(__int64), "");
-			return _popcnt64(static_cast<__int64>(value));
-		}
-
-		inline int popcount(unsigned int value) {
-			return _popcnt32(static_cast<int>(value));
-		}
-
-#else
-		inline int popcountll(unsigned long long int x) {
-			return fallback_popcountll(x);
-		}
-
-		inline int popcount(unsigned int x) { return fallback_popcount(x); }
-
-#endif
-	}// namespace detail_popcount
-
 
 	/* Replacement for const_cast in sparse_array.
 	 * Can be overloaded for specific fancy pointers
@@ -197,56 +84,10 @@ namespace dice::sparse_map {
 	};
 
 	namespace detail_sparse_hash {
-		/* to_address can convert any raw or fancy pointer into a raw pointer.
-		 * It is needed for the allocator construct and destroy calls.
-		 * This specific implementation is based on boost 1.71.0.
-		 */
-#if __cplusplus >= 201400L// with 14-features
-		template<typename T>
-		T *to_address(T *v) noexcept { return v; }
-
-		namespace fancy_ptr_detail {
-			template<typename T>
-			inline T *ptr_address(T *v, int) noexcept { return v; }
-
-			template<typename T>
-			inline auto ptr_address(const T &v, int) noexcept
-					-> decltype(std::pointer_traits<T>::to_address(v)) {
-				return std::pointer_traits<T>::to_address(v);
-			}
-			template<typename T>
-			inline auto ptr_address(const T &v, long) noexcept {
-				return fancy_ptr_detail::ptr_address(v.operator->(), 0);
-			}
-		}// namespace fancy_ptr_detail
-
-		template<typename T>
-		inline auto to_address(const T &v) noexcept {
-			return fancy_ptr_detail::ptr_address(v, 0);
-		}
-#else// without 14-features
-		template<typename T>
-		inline T *to_address(T *v) noexcept { return v; }
-
-		template<typename T>
-		inline typename std::pointer_traits<T>::element_type *to_address(const T &v) noexcept {
-			return detail_sparse_hash::to_address(v.operator->());
-		}
-#endif
-
-
 		template<typename T>
 		struct make_void {
 			using type = void;
 		};
-
-		template<typename T, typename = void>
-		struct has_is_transparent : std::false_type {};
-
-		template<typename T>
-		struct has_is_transparent<T,
-								  typename make_void<typename T::is_transparent>::type>
-			: std::true_type {};
 
 		template<typename U>
 		struct is_power_of_two_policy : std::false_type {};
@@ -757,11 +598,11 @@ namespace dice::sparse_map {
 			static void construct_value(allocator_type &alloc, pointer value,
 										Args &&...value_args) {
 				std::allocator_traits<allocator_type>::construct(
-						alloc, detail_sparse_hash::to_address(value), std::forward<Args>(value_args)...);
+						alloc, std::to_address(value), std::forward<Args>(value_args)...);
 			}
 
 			static void destroy_value(allocator_type &alloc, pointer value) noexcept {
-				std::allocator_traits<allocator_type>::destroy(alloc, detail_sparse_hash::to_address(value));
+				std::allocator_traits<allocator_type>::destroy(alloc, std::to_address(value));
 			}
 
 			static void destroy_and_deallocate_values(
@@ -775,12 +616,7 @@ namespace dice::sparse_map {
 			}
 
 			static size_type popcount(bitmap_type val) noexcept {
-				if (sizeof(bitmap_type) <= sizeof(unsigned int)) {
-					return static_cast<size_type>(
-							dice::sparse_map::detail_popcount::popcount(static_cast<unsigned int>(val)));
-				} else {
-					return static_cast<size_type>(dice::sparse_map::detail_popcount::popcountll(val));
-				}
+				return std::popcount(val);
 			}
 
 			size_type index_to_offset(size_type index) const noexcept {
@@ -1066,33 +902,38 @@ namespace dice::sparse_map {
 		 * `sparse_array::index_in_sparse_bucket(ibucket)`.
 		 */
 		template<class ValueType, class KeySelect, class ValueSelect, class Hash,
-				 class KeyEqual, class Allocator, class GrowthPolicy,
+				 class KeyEqual, class Allocator, dice::sparse_map::sh::growth_policy GrowthPolicy,
 				 dice::sparse_map::sh::exception_safety ExceptionSafety, dice::sparse_map::sh::sparsity Sparsity,
 				 dice::sparse_map::sh::probing Probing>
-		class sparse_hash : private Allocator,
-							private Hash,
-							private KeyEqual,
-							private GrowthPolicy {
+		class sparse_hash {
 		private:
-			template<typename U>
-			using has_mapped_type =
-					typename std::integral_constant<bool, !std::is_same<U, void>::value>;
+			template<typename VSel>
+			struct GetMappedType {
+				using type = typename VSel::value_type;
+				using const_reference = const type &;
+				using reference = type &;
+			};
 
-			static_assert(
-					noexcept(std::declval<GrowthPolicy>().bucket_for_hash(std::size_t(0))),
-					"GrowthPolicy::bucket_for_hash must be noexcept.");
-			static_assert(noexcept(std::declval<GrowthPolicy>().clear()),
-						  "GrowthPolicy::clear must be noexcept.");
+			template<>
+			struct GetMappedType<void> {
+				using type = void;
+				using const_reference = void;
+				using reference = void;
+			};
 
 		public:
 			template<bool IsConst>
 			class sparse_iterator;
 
 			using key_type = typename KeySelect::key_type;
+			using mapped_type = typename GetMappedType<ValueSelect>::type;
+			using mapped_const_reference = typename GetMappedType<ValueSelect>::const_reference;
+			using mapped_reference = typename GetMappedType<ValueSelect>::reference;
 			using value_type = ValueType;
 			using hasher = Hash;
 			using key_equal = KeyEqual;
 			using allocator_type = Allocator;
+			using growth_policy = GrowthPolicy;
 			using reference = value_type &;
 			using const_reference = const value_type &;
 			using size_type = typename std::allocator_traits<allocator_type>::size_type;
@@ -1103,6 +944,8 @@ namespace dice::sparse_map {
 			using const_iterator = sparse_iterator<true>;
 
 		private:
+			static constexpr bool has_mapped_type = !std::is_same_v<mapped_type, void>;
+
 			using sparse_array =
 					dice::sparse_map::detail_sparse_hash::sparse_array<ValueType, Allocator, Sparsity>;
 
@@ -1125,14 +968,13 @@ namespace dice::sparse_map {
 				friend class sparse_hash;
 
 			private:
-				using sparse_bucket_iterator = typename std::conditional<
-						IsConst, typename sparse_buckets_container::const_iterator,
-						typename sparse_buckets_container::iterator>::type;
+				using sparse_bucket_iterator = std::conditional_t<IsConst,
+																  typename sparse_buckets_container::const_iterator,
+																  typename sparse_buckets_container::iterator>;
 
-				using sparse_array_iterator =
-						typename std::conditional<IsConst,
-												  typename sparse_array::const_iterator,
-												  typename sparse_array::iterator>::type;
+				using sparse_array_iterator = std::conditional_t<IsConst,
+																 typename sparse_array::const_iterator,
+																 typename sparse_array::iterator>;
 
 				/**
 				 * sparse_array_it should be nullptr if sparse_bucket_it ==
@@ -1153,9 +995,7 @@ namespace dice::sparse_map {
 				sparse_iterator() noexcept {}
 
 				// Copy constructor from iterator to const_iterator.
-				template<bool TIsConst = IsConst,
-						 typename std::enable_if<TIsConst>::type * = nullptr>
-				sparse_iterator(const sparse_iterator<!TIsConst> &other) noexcept
+				sparse_iterator(const sparse_iterator<!IsConst> &other) noexcept requires (IsConst)
 					: m_sparse_buckets_it(other.m_sparse_buckets_it),
 					  m_sparse_array_it(other.m_sparse_array_it) {}
 
@@ -1168,18 +1008,12 @@ namespace dice::sparse_map {
 					return KeySelect()(*m_sparse_array_it);
 				}
 
-				template<class U = ValueSelect,
-						 typename std::enable_if<has_mapped_type<U>::value &&
-												 IsConst>::type * = nullptr>
-				const typename U::value_type &value() const {
-					return U()(*m_sparse_array_it);
+				mapped_const_reference value() const requires (has_mapped_type && IsConst) {
+					return ValueSelect()(*m_sparse_array_it);
 				}
 
-				template<class U = ValueSelect,
-						 typename std::enable_if<has_mapped_type<U>::value &&
-												 !IsConst>::type * = nullptr>
-				typename U::value_type &value() {
-					return U()(*m_sparse_array_it);
+				mapped_reference value() requires (has_mapped_type && !IsConst) {
+					return ValueSelect()(*m_sparse_array_it);
 				}
 
 				reference operator*() const { return *m_sparse_array_it; }
@@ -1216,15 +1050,14 @@ namespace dice::sparse_map {
 					return tmp;
 				}
 
-				friend bool operator==(const sparse_iterator &lhs,
-									   const sparse_iterator &rhs) {
-					return lhs.m_sparse_buckets_it == rhs.m_sparse_buckets_it &&
-						   lhs.m_sparse_array_it == rhs.m_sparse_array_it;
+				template<bool OIsConst>
+				bool operator==(const sparse_iterator<OIsConst> &other) const noexcept {
+					return m_sparse_buckets_it == other.m_sparse_buckets_it && m_sparse_array_it == other.m_sparse_array_it;
 				}
 
-				friend bool operator!=(const sparse_iterator &lhs,
-									   const sparse_iterator &rhs) {
-					return !(lhs == rhs);
+				template<bool OIsConst>
+				bool operator!=(const sparse_iterator &other) const noexcept {
+					return m_sparse_buckets_it != other.m_sparse_buckets_it || m_sparse_array_it != other.m_sparse_array_it;
 				}
 
 			private:
@@ -1235,29 +1068,30 @@ namespace dice::sparse_map {
 		public:
 			sparse_hash(size_type bucket_count, const Hash &hash, const KeyEqual &equal,
 						const Allocator &alloc, float max_load_factor)
-				: Allocator(alloc),
-				  Hash(hash),
-				  KeyEqual(equal),
-				  GrowthPolicy(bucket_count),
-				  m_sparse_buckets_data(alloc),
-				  //         m_sparse_buckets_data(std::allocator_traits<Allocator>::rebind_alloc<sparse_buckets_container::Allocator>(alloc)),
+				: m_sparse_buckets_data(alloc),
+				  //         m_sparse_buckets_data(std::allocator_traits<Allocator>::rebind_alloc<sparse_buckets_container::Allocator>(m_alloc)),
 				  m_sparse_buckets(static_empty_sparse_bucket_ptr()),
 				  m_bucket_count(bucket_count),
 				  m_nb_elements(0),
-				  m_nb_deleted_buckets(0) {
+				  m_nb_deleted_buckets(0),
+				  m_alloc{alloc},
+				  m_h{hash},
+				  m_keq{equal},
+				  m_gpol{bucket_count} {
+
 				if (m_bucket_count > max_bucket_count()) {
 					throw std::length_error("The map exceeds its maximum size.");
 				}
 
 				if (m_bucket_count > 0) {
 					/*
-				     * We can't use the `vector(size_type count, const Allocator& alloc)`
+				     * We can't use the `vector(size_type count, const Allocator& m_alloc)`
 				     * constructor as it's only available in C++14 and we need to support
 				     * C++11. We thus must resize after using the `vector(const Allocator&
-				     * alloc)` constructor.
+				     * m_alloc)` constructor.
 				     *
 				     * We can't use `vector(size_type count, const T& value, const Allocator&
-				     * alloc)` as it requires the value T to be copyable.
+				     * m_alloc)` as it requires the value T to be copyable.
 				     */
 					m_sparse_buckets_data.resize(
 							sparse_array::nb_sparse_buckets(bucket_count));
@@ -1280,20 +1114,17 @@ namespace dice::sparse_map {
 			~sparse_hash() { clear(); }
 
 			sparse_hash(const sparse_hash &other)
-				: Allocator(std::allocator_traits<
-							Allocator>::select_on_container_copy_construction(other)),
-				  Hash(other),
-				  KeyEqual(other),
-				  GrowthPolicy(other),
-				  m_sparse_buckets_data(
-						  std::allocator_traits<
-								  Allocator>::select_on_container_copy_construction(other)),
+				: m_sparse_buckets_data(std::allocator_traits<Allocator>::select_on_container_copy_construction(other.m_alloc)),
 				  m_bucket_count(other.m_bucket_count),
 				  m_nb_elements(other.m_nb_elements),
 				  m_nb_deleted_buckets(other.m_nb_deleted_buckets),
 				  m_load_threshold_rehash(other.m_load_threshold_rehash),
 				  m_load_threshold_clear_deleted(other.m_load_threshold_clear_deleted),
-				  m_max_load_factor(other.m_max_load_factor) {
+				  m_max_load_factor(other.m_max_load_factor),
+				  m_alloc{std::allocator_traits<Allocator>::select_on_container_copy_construction(other.m_alloc)},
+				  m_h{other.m_h},
+				  m_keq{other.m_keq},
+				  m_gpol{other.m_gpol} {
 				copy_buckets_from(other),
 						m_sparse_buckets = m_sparse_buckets_data.empty()
 												   ? static_empty_sparse_bucket_ptr()
@@ -1302,11 +1133,7 @@ namespace dice::sparse_map {
 
 			sparse_hash(sparse_hash &&other) noexcept(
 					std::is_nothrow_move_constructible<Allocator>::value && std::is_nothrow_move_constructible<Hash>::value && std::is_nothrow_move_constructible<KeyEqual>::value && std::is_nothrow_move_constructible<GrowthPolicy>::value && std::is_nothrow_move_constructible<sparse_buckets_container>::value)
-				: Allocator(std::move(other)),
-				  Hash(std::move(other)),
-				  KeyEqual(std::move(other)),
-				  GrowthPolicy(std::move(other)),
-				  m_sparse_buckets_data(std::move(other.m_sparse_buckets_data)),
+				: m_sparse_buckets_data(std::move(other.m_sparse_buckets_data)),
 				  m_sparse_buckets(m_sparse_buckets_data.empty()
 										   ? static_empty_sparse_bucket_ptr()
 										   : m_sparse_buckets_data.data()),
@@ -1315,8 +1142,12 @@ namespace dice::sparse_map {
 				  m_nb_deleted_buckets(other.m_nb_deleted_buckets),
 				  m_load_threshold_rehash(other.m_load_threshold_rehash),
 				  m_load_threshold_clear_deleted(other.m_load_threshold_clear_deleted),
-				  m_max_load_factor(other.m_max_load_factor) {
-				other.GrowthPolicy::clear();
+				  m_max_load_factor(other.m_max_load_factor),
+				  m_alloc{std::move(other.m_alloc)},
+				  m_h{std::move(other.m_h)},
+				  m_keq{std::move(other.m_keq)},
+				  m_gpol{std::move(other.m_gpol)} {
+				other.m_gpol.clear();
 				other.m_sparse_buckets_data.clear();
 				other.m_sparse_buckets = static_empty_sparse_bucket_ptr();
 				other.m_bucket_count = 0;
@@ -1330,24 +1161,20 @@ namespace dice::sparse_map {
 				if (this != &other) {
 					clear();
 
-					if (std::allocator_traits<
-								Allocator>::propagate_on_container_copy_assignment::value) {
-						Allocator::operator=(other);
+					if (std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value) {
+						m_alloc = other.m_alloc;
 					}
 
-					Hash::operator=(other);
-					KeyEqual::operator=(other);
-					GrowthPolicy::operator=(other);
+					m_h = other.m_h;
+					m_keq = other.m_keq;
+					m_gpol = other.m_gpol;
 
-					if (std::allocator_traits<
-								Allocator>::propagate_on_container_copy_assignment::value) {
-						m_sparse_buckets_data =
-								sparse_buckets_container(static_cast<const Allocator &>(other));
+					if (std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value) {
+						m_sparse_buckets_data = sparse_buckets_container(other.m_alloc);
 					} else {
 						if (m_sparse_buckets_data.size() !=
 							other.m_sparse_buckets_data.size()) {
-							m_sparse_buckets_data =
-									sparse_buckets_container(static_cast<const Allocator &>(*this));
+							m_sparse_buckets_data = sparse_buckets_container(m_alloc);
 						} else {
 							m_sparse_buckets_data.clear();
 						}
@@ -1372,12 +1199,10 @@ namespace dice::sparse_map {
 			sparse_hash &operator=(sparse_hash &&other) noexcept {
 				clear();
 
-				if (not std::allocator_traits<
-							Allocator>::propagate_on_container_move_assignment::value and
-					(static_cast<Allocator &>(*this) != static_cast<Allocator &>(other))) {
+				if (!std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value && m_alloc != other.m_alloc) {
 					move_buckets_from(std::move(other));
 				} else {
-					static_cast<Allocator &>(*this) = std::move(static_cast<Allocator &>(other));
+					m_alloc = std::move(other.m_alloc);
 					m_sparse_buckets_data = std::move(other.m_sparse_buckets_data);
 				}
 
@@ -1385,10 +1210,9 @@ namespace dice::sparse_map {
 										   ? static_empty_sparse_bucket_ptr()
 										   : m_sparse_buckets_data.data();
 
-				static_cast<Hash &>(*this) = std::move(static_cast<Hash &>(other));
-				static_cast<KeyEqual &>(*this) = std::move(static_cast<KeyEqual &>(other));
-				static_cast<GrowthPolicy &>(*this) =
-						std::move(static_cast<GrowthPolicy &>(other));
+				m_h = std::move(other.m_h);
+				m_keq = std::move(other.m_keq);
+				m_gpol = std::move(other.m_gpol);
 				m_bucket_count = other.m_bucket_count;
 				m_nb_elements = other.m_nb_elements;
 				m_nb_deleted_buckets = other.m_nb_deleted_buckets;
@@ -1396,7 +1220,7 @@ namespace dice::sparse_map {
 				m_load_threshold_clear_deleted = other.m_load_threshold_clear_deleted;
 				m_max_load_factor = other.m_max_load_factor;
 
-				other.GrowthPolicy::clear();
+				other.m_gpol.clear();
 				other.m_sparse_buckets_data.clear();
 				other.m_sparse_buckets = static_empty_sparse_bucket_ptr();
 				other.m_bucket_count = 0;
@@ -1460,7 +1284,7 @@ namespace dice::sparse_map {
 
 			void clear() noexcept {
 				for (auto &bucket : m_sparse_buckets_data) {
-					bucket.clear(*this);
+					bucket.clear(m_alloc);
 				}
 
 				m_nb_elements = 0;
@@ -1475,7 +1299,7 @@ namespace dice::sparse_map {
 			template<typename P>
 			iterator insert_hint(const_iterator hint, P &&value) {
 				if (hint != cend() &&
-					compare_keys(KeySelect()(*hint), KeySelect()(value))) {
+					m_keq(KeySelect()(*hint), KeySelect()(value))) {
 					return mutable_iterator(hint);
 				}
 
@@ -1514,7 +1338,7 @@ namespace dice::sparse_map {
 
 			template<class K, class M>
 			iterator insert_or_assign(const_iterator hint, K &&key, M &&obj) {
-				if (hint != cend() && compare_keys(KeySelect()(*hint), key)) {
+				if (hint != cend() && m_keq(KeySelect()(*hint), key)) {
 					auto it = mutable_iterator(hint);
 					it.value() = std::forward<M>(obj);
 
@@ -1543,7 +1367,7 @@ namespace dice::sparse_map {
 
 			template<class K, class... Args>
 			iterator try_emplace_hint(const_iterator hint, K &&key, Args &&...args) {
-				if (hint != cend() && compare_keys(KeySelect()(*hint), key)) {
+				if (hint != cend() && m_keq(KeySelect()(*hint), key)) {
 					return mutable_iterator(hint);
 				}
 
@@ -1558,7 +1382,7 @@ namespace dice::sparse_map {
 				tsl_sh_assert(pos != end() && m_nb_elements > 0);
 				//vector iterator with fancy pointers have a problem with ->
 				auto it_sparse_array_next =
-						(*pos.m_sparse_buckets_it).erase(*this, pos.m_sparse_array_it);
+						(*pos.m_sparse_buckets_it).erase(m_alloc, pos.m_sparse_array_it);
 				m_nb_elements--;
 				m_nb_deleted_buckets++;
 
@@ -1600,7 +1424,7 @@ namespace dice::sparse_map {
 
 			template<class K>
 			size_type erase(const K &key) {
-				return erase(key, hash_key(key));
+				return erase(key, m_h(key));
 			}
 
 			template<class K>
@@ -1612,16 +1436,14 @@ namespace dice::sparse_map {
 				using std::swap;
 
 				if (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
-					swap(static_cast<Allocator &>(*this), static_cast<Allocator &>(other));
+					swap(m_alloc, other.m_alloc);
 				} else {
-					tsl_sh_assert(static_cast<Allocator &>(*this) ==
-								  static_cast<Allocator &>(other));
+					tsl_sh_assert(m_alloc == other.m_alloc);
 				}
 
-				swap(static_cast<Hash &>(*this), static_cast<Hash &>(other));
-				swap(static_cast<KeyEqual &>(*this), static_cast<KeyEqual &>(other));
-				swap(static_cast<GrowthPolicy &>(*this),
-					 static_cast<GrowthPolicy &>(other));
+				swap(m_h, other.m_h);
+				swap(m_keq, other.m_keq);
+				swap(m_gpol, other.m_gpol);
 				swap(m_sparse_buckets_data, other.m_sparse_buckets_data);
 				swap(m_sparse_buckets, other.m_sparse_buckets);
 				swap(m_bucket_count, other.m_bucket_count);
@@ -1632,33 +1454,24 @@ namespace dice::sparse_map {
 				swap(m_max_load_factor, other.m_max_load_factor);
 			}
 
-
-			template<
-					class K, class U = ValueSelect,
-					typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
-			typename U::value_type &at(const K &key) {
-				return at(key, hash_key(key));
+			template<class K> requires (has_mapped_type)
+			mapped_reference at(const K &key) {
+				return at(key, m_h(key));
 			}
 
-			template<
-					class K, class U = ValueSelect,
-					typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
-			typename U::value_type &at(const K &key, std::size_t hash) {
-				return const_cast<typename U::value_type &>(
+			template<class K> requires (has_mapped_type)
+			mapped_reference at(const K &key, std::size_t hash) {
+				return const_cast<typename ValueSelect::value_type &>(
 						static_cast<const sparse_hash *>(this)->at(key, hash));
 			}
 
-			template<
-					class K, class U = ValueSelect,
-					typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
-			const typename U::value_type &at(const K &key) const {
-				return at(key, hash_key(key));
+			template<class K> requires (has_mapped_type)
+			mapped_const_reference at(const K &key) const {
+				return at(key, m_h(key));
 			}
 
-			template<
-					class K, class U = ValueSelect,
-					typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
-			const typename U::value_type &at(const K &key, std::size_t hash) const {
+			template<class K> requires (has_mapped_type)
+			mapped_const_reference at(const K &key, std::size_t hash) const {
 				auto it = find(key, hash);
 				if (it != cend()) {
 					return it.value();
@@ -1667,16 +1480,14 @@ namespace dice::sparse_map {
 				}
 			}
 
-			template<
-					class K, class U = ValueSelect,
-					typename std::enable_if<has_mapped_type<U>::value>::type * = nullptr>
-			typename U::value_type &operator[](K &&key) {
+			template<class K> requires (has_mapped_type)
+			mapped_reference operator[](K &&key) {
 				return try_emplace(std::forward<K>(key)).first.value();
 			}
 
 			template<class K>
 			bool contains(const K &key) const {
-				return contains(key, hash_key(key));
+				return contains(key, m_h(key));
 			}
 
 			template<class K>
@@ -1686,7 +1497,7 @@ namespace dice::sparse_map {
 
 			template<class K>
 			size_type count(const K &key) const {
-				return count(key, hash_key(key));
+				return count(key, m_h(key));
 			}
 
 			template<class K>
@@ -1700,7 +1511,7 @@ namespace dice::sparse_map {
 
 			template<class K>
 			iterator find(const K &key) {
-				return find_impl(key, hash_key(key));
+				return find_impl(key, m_h(key));
 			}
 
 			template<class K>
@@ -1710,7 +1521,7 @@ namespace dice::sparse_map {
 
 			template<class K>
 			const_iterator find(const K &key) const {
-				return find_impl(key, hash_key(key));
+				return find_impl(key, m_h(key));
 			}
 
 			template<class K>
@@ -1720,7 +1531,7 @@ namespace dice::sparse_map {
 
 			template<class K>
 			std::pair<iterator, iterator> equal_range(const K &key) {
-				return equal_range(key, hash_key(key));
+				return equal_range(key, m_h(key));
 			}
 
 			template<class K>
@@ -1731,7 +1542,7 @@ namespace dice::sparse_map {
 
 			template<class K>
 			std::pair<const_iterator, const_iterator> equal_range(const K &key) const {
-				return equal_range(key, hash_key(key));
+				return equal_range(key, m_h(key));
 			}
 
 			template<class K>
@@ -1780,9 +1591,9 @@ namespace dice::sparse_map {
 				rehash(size_type(std::ceil(float(count) / max_load_factor())));
 			}
 
-			hasher hash_function() const { return static_cast<const Hash &>(*this); }
+			hasher hash_function() const { return m_h; }
 
-			key_equal key_eq() const { return static_cast<const KeyEqual &>(*this); }
+			key_equal key_eq() const { return m_keq; }
 
 			iterator mutable_iterator(const_iterator pos) {
 				auto it_sparse_buckets =
@@ -1804,18 +1615,8 @@ namespace dice::sparse_map {
 			}
 
 		private:
-			template<class K>
-			std::size_t hash_key(const K &key) const {
-				return Hash::operator()(key);
-			}
-
-			template<class K1, class K2>
-			bool compare_keys(const K1 &key1, const K2 &key2) const {
-				return KeyEqual::operator()(key1, key2);
-			}
-
 			size_type bucket_for_hash(std::size_t hash) const {
-				const std::size_t bucket = GrowthPolicy::bucket_for_hash(hash);
+				const std::size_t bucket = m_gpol.bucket_for_hash(hash);
 				tsl_sh_assert(sparse_array::sparse_ibucket(bucket) <
 									  m_sparse_buckets_data.size() ||
 							  (bucket == 0 && m_sparse_buckets_data.empty()));
@@ -1823,23 +1624,17 @@ namespace dice::sparse_map {
 				return bucket;
 			}
 
-			template<class U = GrowthPolicy,
-					 typename std::enable_if<is_power_of_two_policy<U>::value>::type * =
-							 nullptr>
-			size_type next_bucket(size_type ibucket, size_type iprobe) const {
+			size_type next_bucket(size_type ibucket, size_type iprobe) const requires (is_power_of_two_policy<growth_policy>::value) {
 				(void) iprobe;
 				if (Probing == dice::sparse_map::sh::probing::linear) {
-					return (ibucket + 1) & this->m_mask;
+					return (ibucket + 1) & m_gpol.mask();
 				} else {
 					tsl_sh_assert(Probing == dice::sparse_map::sh::probing::quadratic);
-					return (ibucket + iprobe) & this->m_mask;
+					return (ibucket + iprobe) & m_gpol.mask();
 				}
 			}
 
-			template<class U = GrowthPolicy,
-					 typename std::enable_if<!is_power_of_two_policy<U>::value>::type * =
-							 nullptr>
-			size_type next_bucket(size_type ibucket, size_type iprobe) const {
+			size_type next_bucket(size_type ibucket, size_type iprobe) const requires (!is_power_of_two_policy<growth_policy>::value) {
 				(void) iprobe;
 				if (Probing == dice::sparse_map::sh::probing::linear) {
 					ibucket++;
@@ -1857,8 +1652,7 @@ namespace dice::sparse_map {
 
 				try {
 					for (const auto &bucket : other.m_sparse_buckets_data) {
-						m_sparse_buckets_data.emplace_back(bucket,
-														   static_cast<Allocator &>(*this));
+						m_sparse_buckets_data.emplace_back(bucket, m_alloc);
 					}
 				} catch (...) {
 					clear();
@@ -1874,8 +1668,7 @@ namespace dice::sparse_map {
 
 				try {
 					for (auto &&bucket : other.m_sparse_buckets_data) {
-						m_sparse_buckets_data.emplace_back(std::move(bucket),
-														   static_cast<Allocator &>(*this));
+						m_sparse_buckets_data.emplace_back(std::move(bucket), m_alloc);
 					}
 				} catch (...) {
 					clear();
@@ -1890,7 +1683,7 @@ namespace dice::sparse_map {
 			std::pair<iterator, bool> insert_impl(const K &key,
 												  Args &&...value_type_args) {
 				if (size() >= m_load_threshold_rehash) {
-					rehash_impl(GrowthPolicy::next_bucket_count());
+					rehash_impl(m_gpol.next_bucket_count());
 				} else if (size() + m_nb_deleted_buckets >=
 						   m_load_threshold_clear_deleted) {
 					clear_deleted_buckets();
@@ -1909,7 +1702,7 @@ namespace dice::sparse_map {
 				std::size_t sparse_ibucket_first_deleted = 0;
 				typename sparse_array::size_type index_in_sparse_bucket_first_deleted = 0;
 
-				const std::size_t hash = hash_key(key);
+				const std::size_t hash = m_h(key);
 				std::size_t ibucket = bucket_for_hash(hash);
 
 				std::size_t probe = 0;
@@ -1922,7 +1715,7 @@ namespace dice::sparse_map {
 						if (m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
 							auto value_it =
 									m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
-							if (compare_keys(key, KeySelect()(*value_it))) {
+							if (m_keq(key, KeySelect()(*value_it))) {
 								return std::make_pair(
 										iterator(m_sparse_buckets_data.begin() + sparse_ibucket,
 												 value_it),
@@ -1964,7 +1757,7 @@ namespace dice::sparse_map {
 					Args &&...value_type_args) {
 				// is not called when empty
 				auto value_it = m_sparse_buckets[sparse_ibucket].set(
-						*this, index_in_sparse_bucket, std::forward<Args>(value_type_args)...);
+						m_alloc, index_in_sparse_bucket, std::forward<Args>(value_type_args)...);
 				m_nb_elements++;
 
 				return std::make_pair(
@@ -1988,8 +1781,8 @@ namespace dice::sparse_map {
 					if (m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
 						auto value_it =
 								m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
-						if (compare_keys(key, KeySelect()(*value_it))) {
-							m_sparse_buckets[sparse_ibucket].erase(*this, value_it,
+						if (m_keq(key, KeySelect()(*value_it))) {
+							m_sparse_buckets[sparse_ibucket].erase(m_alloc, value_it,
 																   index_in_sparse_bucket);
 							m_nb_elements--;
 							m_nb_deleted_buckets++;
@@ -2029,7 +1822,7 @@ namespace dice::sparse_map {
 					if (m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
 						auto value_it =
 								m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
-						if (compare_keys(key, KeySelect()(*value_it))) {
+						if (m_keq(key, KeySelect()(*value_it))) {
 							return const_iterator(m_sparse_buckets_data.cbegin() + sparse_ibucket,
 												  value_it);
 						}
@@ -2055,9 +1848,7 @@ namespace dice::sparse_map {
 					 typename std::enable_if<U == dice::sparse_map::sh::exception_safety::basic>::type
 							 * = nullptr>
 			void rehash_impl(size_type count) {
-				sparse_hash new_table(count, static_cast<Hash &>(*this),
-									  static_cast<KeyEqual &>(*this),
-									  static_cast<Allocator &>(*this), m_max_load_factor);
+				sparse_hash new_table(count, m_h, m_keq, m_alloc, m_max_load_factor);
 
 				for (auto &bucket : m_sparse_buckets_data) {
 					for (auto &val : bucket) {
@@ -2065,7 +1856,7 @@ namespace dice::sparse_map {
 					}
 
 					// TODO try to reuse some of the memory
-					bucket.clear(*this);
+					bucket.clear(m_alloc);
 				}
 
 				new_table.swap(*this);
@@ -2080,9 +1871,7 @@ namespace dice::sparse_map {
 					 typename std::enable_if<
 							 U == dice::sparse_map::sh::exception_safety::strong>::type * = nullptr>
 			void rehash_impl(size_type count) {
-				sparse_hash new_table(count, static_cast<Hash &>(*this),
-									  static_cast<KeyEqual &>(*this),
-									  static_cast<Allocator &>(*this), m_max_load_factor);
+				sparse_hash new_table(count, m_h, m_keq, m_alloc, m_max_load_factor);
 
 				for (const auto &bucket : m_sparse_buckets_data) {
 					for (const auto &val : bucket) {
@@ -2097,7 +1886,7 @@ namespace dice::sparse_map {
 			void insert_on_rehash(K &&key_value) {
 				const key_type &key = KeySelect()(key_value);
 
-				const std::size_t hash = hash_key(key);
+				const std::size_t hash = m_h(key);
 				std::size_t ibucket = bucket_for_hash(hash);
 
 				std::size_t probe = 0;
@@ -2107,13 +1896,13 @@ namespace dice::sparse_map {
 							sparse_array::index_in_sparse_bucket(ibucket);
 
 					if (!m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
-						m_sparse_buckets[sparse_ibucket].set(*this, index_in_sparse_bucket,
+						m_sparse_buckets[sparse_ibucket].set(m_alloc, index_in_sparse_bucket,
 															 std::forward<K>(key_value));
 						m_nb_elements++;
 
 						return;
 					} else {
-						tsl_sh_assert(!compare_keys(
+						tsl_sh_assert(!m_keq(
 								key, KeySelect()(*m_sparse_buckets[sparse_ibucket].value(
 											 index_in_sparse_bucket))));
 					}
@@ -2185,7 +1974,7 @@ namespace dice::sparse_map {
 					m_bucket_count = numeric_cast<size_type>(
 							bucket_count_ds, "Deserialized bucket_count is too big.");
 
-					GrowthPolicy::operator=(GrowthPolicy(m_bucket_count));
+					m_gpol = GrowthPolicy(m_bucket_count);
 					// GrowthPolicy should not modify the bucket count we got from
 					// deserialization
 					if (m_bucket_count != bucket_count_ds) {
@@ -2209,7 +1998,7 @@ namespace dice::sparse_map {
 					for (slz_size_type ibucket = 0; ibucket < nb_sparse_buckets; ibucket++) {
 						m_sparse_buckets_data.emplace_back(
 								sparse_array::deserialize_hash_compatible(
-										deserializer, static_cast<Allocator &>(*this)));
+										deserializer, m_alloc));
 					}
 
 					if (!m_sparse_buckets_data.empty()) {
@@ -2275,6 +2064,11 @@ namespace dice::sparse_map {
 		     */
 			size_type m_load_threshold_clear_deleted;
 			float m_max_load_factor;
+
+			[[no_unique_address]] allocator_type m_alloc;
+			[[no_unique_address]] hasher m_h;
+			[[no_unique_address]] key_equal m_keq;
+			[[no_unique_address]] growth_policy m_gpol;
 		};
 
 	}// namespace detail_sparse_hash

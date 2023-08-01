@@ -80,7 +80,8 @@ namespace dice::sparse_map {
 	 * insert, invalidate the iterators.
 	 *  - erase: always invalidate the iterators.
 	 */
-	template<class Key, class T, class Hash = std::hash<Key>,
+	template<class Key, class T,
+			 class Hash = std::hash<Key>,
 			 class KeyEqual = std::equal_to<Key>,
 			 class Allocator = std::allocator<std::pair<Key, T>>,
 			 class GrowthPolicy = dice::sparse_map::sh::power_of_two_growth_policy<2>,
@@ -88,16 +89,14 @@ namespace dice::sparse_map {
 					 dice::sparse_map::sh::exception_safety::basic,
 			 dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 	class sparse_map {
-	private:
-		template<typename U>
-		using has_is_transparent = dice::sparse_map::detail_sparse_hash::has_is_transparent<U>;
+		static constexpr bool key_equal_is_transparent = requires {
+			typename KeyEqual::is_transparent;
+		};
 
-		class KeySelect {
-		public:
+		struct KeySelect {
 			using key_type = Key;
 
-			const key_type &operator()(
-					const std::pair<Key, T> &key_value) const noexcept {
+			const key_type &operator()(const std::pair<Key, T> &key_value) const noexcept {
 				return key_value.first;
 			}
 
@@ -106,12 +105,10 @@ namespace dice::sparse_map {
 			}
 		};
 
-		class ValueSelect {
-		public:
+		struct ValueSelect {
 			using value_type = T;
 
-			const value_type &operator()(
-					const std::pair<Key, T> &key_value) const noexcept {
+			const value_type &operator()(const std::pair<Key, T> &key_value) const noexcept {
 				return key_value.second;
 			}
 
@@ -120,9 +117,8 @@ namespace dice::sparse_map {
 			}
 		};
 
-		using ht = detail_sparse_hash::sparse_hash<
-				std::pair<Key, T>, KeySelect, ValueSelect, Hash, KeyEqual, Allocator,
-				GrowthPolicy, ExceptionSafety, Sparsity, dice::sparse_map::sh::probing::quadratic>;
+		using ht = detail_sparse_hash::sparse_hash<std::pair<Key, T>, KeySelect, ValueSelect, Hash, KeyEqual, Allocator,
+												   GrowthPolicy, ExceptionSafety, Sparsity, dice::sparse_map::sh::probing::quadratic>;
 
 	public:
 		using key_type = typename ht::key_type;
@@ -202,19 +198,19 @@ namespace dice::sparse_map {
 			return *this;
 		}
 
-		allocator_type get_allocator() const { return m_ht.get_allocator(); }
+		[[nodiscard]] allocator_type get_allocator() const { return m_ht.get_allocator(); }
 
-		iterator begin() noexcept { return m_ht.begin(); }
-		const_iterator begin() const noexcept { return m_ht.begin(); }
-		const_iterator cbegin() const noexcept { return m_ht.cbegin(); }
+		[[nodiscard]] iterator begin() noexcept { return m_ht.begin(); }
+		[[nodiscard]] const_iterator begin() const noexcept { return m_ht.begin(); }
+		[[nodiscard]] const_iterator cbegin() const noexcept { return m_ht.cbegin(); }
 
-		iterator end() noexcept { return m_ht.end(); }
-		const_iterator end() const noexcept { return m_ht.end(); }
-		const_iterator cend() const noexcept { return m_ht.cend(); }
+		[[nodiscard]] iterator end() noexcept { return m_ht.end(); }
+		[[nodiscard]] const_iterator end() const noexcept { return m_ht.end(); }
+		[[nodiscard]] const_iterator cend() const noexcept { return m_ht.cend(); }
 
-		bool empty() const noexcept { return m_ht.empty(); }
-		size_type size() const noexcept { return m_ht.size(); }
-		size_type max_size() const noexcept { return m_ht.max_size(); }
+		[[nodiscard]] bool empty() const noexcept { return m_ht.empty(); }
+		[[nodiscard]] size_type size() const noexcept { return m_ht.size(); }
+		[[nodiscard]] size_type max_size() const noexcept { return m_ht.max_size(); }
 
 		void clear() noexcept { m_ht.clear(); }
 
@@ -222,8 +218,7 @@ namespace dice::sparse_map {
 			return m_ht.insert(value);
 		}
 
-		template<class P, typename std::enable_if<std::is_constructible<
-								  value_type, P &&>::value>::type * = nullptr>
+		template<class P> requires (std::is_constructible_v<value_type, P &&>)
 		std::pair<iterator, bool> insert(P &&value) {
 			return m_ht.emplace(std::forward<P>(value));
 		}
@@ -236,8 +231,7 @@ namespace dice::sparse_map {
 			return m_ht.insert_hint(hint, value);
 		}
 
-		template<class P, typename std::enable_if<std::is_constructible<
-								  value_type, P &&>::value>::type * = nullptr>
+		template<class P> requires (std::is_constructible_v<value_type, P &&>)
 		iterator insert(const_iterator hint, P &&value) {
 			return m_ht.emplace_hint(hint, std::forward<P>(value));
 		}
@@ -342,9 +336,7 @@ namespace dice::sparse_map {
    		 * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    		 * comparable to `Key`.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+		template<class K> requires (key_equal_is_transparent)
 		size_type erase(const K &key) {
 			return m_ht.erase(key);
 		}
@@ -357,16 +349,14 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
+		template<class K> requires (key_equal_is_transparent)
 		size_type erase(const K &key, std::size_t precalculated_hash) {
 			return m_ht.erase(key, precalculated_hash);
 		}
 
 		void swap(sparse_map &other) { other.m_ht.swap(m_ht); }
 
-		T &at(const Key &key) { return m_ht.at(key); }
+		[[nodiscard]] T &at(const Key &key) { return m_ht.at(key); }
 
 		/**
    		 * Use the hash value `precalculated_hash` instead of hashing the key. The
@@ -374,28 +364,26 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		T &at(const Key &key, std::size_t precalculated_hash) {
+		[[nodiscard]] T &at(const Key &key, std::size_t precalculated_hash) {
 			return m_ht.at(key, precalculated_hash);
 		}
 
-		const T &at(const Key &key) const { return m_ht.at(key); }
+		[[nodiscard]] const T &at(const Key &key) const { return m_ht.at(key); }
 
 		/**
    		 * @copydoc at(const Key& key, std::size_t precalculated_hash)
    		 */
-		const T &at(const Key &key, std::size_t precalculated_hash) const {
+		[[nodiscard]] const T &at(const Key &key, std::size_t precalculated_hash) const {
 			return m_ht.at(key, precalculated_hash);
 		}
 
 		/**
-   		 s* This overload only participates in the overload resolution if the typedef
-   		 s* `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
-   		 s* comparable to `Key`.
-   		 s*/
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		T &at(const K &key) {
+   		 * This overload only participates in the overload resolution if the typedef
+   		 * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
+   		 * comparable to `Key`.
+   		 */
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] T &at(const K &key) {
 			return m_ht.at(key);
 		}
 
@@ -407,37 +395,31 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		T &at(const K &key, std::size_t precalculated_hash) {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] T &at(const K &key, std::size_t precalculated_hash) {
 			return m_ht.at(key, precalculated_hash);
 		}
 
 		/**
    		 * @copydoc at(const K& key)
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		const T &at(const K &key) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] const T &at(const K &key) const {
 			return m_ht.at(key);
 		}
 
 		/**
    		 * @copydoc at(const K& key, std::size_t precalculated_hash)
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		const T &at(const K &key, std::size_t precalculated_hash) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] const T &at(const K &key, std::size_t precalculated_hash) const {
 			return m_ht.at(key, precalculated_hash);
 		}
 
-		T &operator[](const Key &key) { return m_ht[key]; }
-		T &operator[](Key &&key) { return m_ht[std::move(key)]; }
+		[[nodiscard]] T &operator[](const Key &key) { return m_ht[key]; }
+		[[nodiscard]] T &operator[](Key &&key) { return m_ht[std::move(key)]; }
 
-		size_type count(const Key &key) const { return m_ht.count(key); }
+		[[nodiscard]] size_type count(const Key &key) const { return m_ht.count(key); }
 
 		/**
    		 * Use the hash value `precalculated_hash` instead of hashing the key. The
@@ -445,7 +427,7 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		size_type count(const Key &key, std::size_t precalculated_hash) const {
+		[[nodiscard]] size_type count(const Key &key, std::size_t precalculated_hash) const {
 			return m_ht.count(key, precalculated_hash);
 		}
 
@@ -454,10 +436,8 @@ namespace dice::sparse_map {
    		 * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    		 * comparable to `Key`.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		size_type count(const K &key) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] size_type count(const K &key) const {
 			return m_ht.count(key);
 		}
 
@@ -469,14 +449,12 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		size_type count(const K &key, std::size_t precalculated_hash) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] size_type count(const K &key, std::size_t precalculated_hash) const {
 			return m_ht.count(key, precalculated_hash);
 		}
 
-		iterator find(const Key &key) { return m_ht.find(key); }
+		[[nodiscard]] iterator find(const Key &key) { return m_ht.find(key); }
 
 		/**
    		 * Use the hash value `precalculated_hash` instead of hashing the key. The
@@ -484,16 +462,16 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		iterator find(const Key &key, std::size_t precalculated_hash) {
+		[[nodiscard]] iterator find(const Key &key, std::size_t precalculated_hash) {
 			return m_ht.find(key, precalculated_hash);
 		}
 
-		const_iterator find(const Key &key) const { return m_ht.find(key); }
+		[[nodiscard]] const_iterator find(const Key &key) const { return m_ht.find(key); }
 
 		/**
    		 * @copydoc find(const Key& key, std::size_t precalculated_hash)
    		 */
-		const_iterator find(const Key &key, std::size_t precalculated_hash) const {
+		[[nodiscard]] const_iterator find(const Key &key, std::size_t precalculated_hash) const {
 			return m_ht.find(key, precalculated_hash);
 		}
 
@@ -502,10 +480,8 @@ namespace dice::sparse_map {
    		 * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    		 * comparable to `Key`.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		iterator find(const K &key) {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] iterator find(const K &key) {
 			return m_ht.find(key);
 		}
 
@@ -517,20 +493,16 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		iterator find(const K &key, std::size_t precalculated_hash) {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] iterator find(const K &key, std::size_t precalculated_hash) {
 			return m_ht.find(key, precalculated_hash);
 		}
 
 		/**
    	 	 * @copydoc find(const K& key)
    	 	 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		const_iterator find(const K &key) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] const_iterator find(const K &key) const {
 			return m_ht.find(key);
 		}
 
@@ -542,21 +514,19 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		const_iterator find(const K &key, std::size_t precalculated_hash) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] const_iterator find(const K &key, std::size_t precalculated_hash) const {
 			return m_ht.find(key, precalculated_hash);
 		}
 
-		bool contains(const Key &key) const { return m_ht.contains(key); }
+		[[nodiscard]] bool contains(const Key &key) const { return m_ht.contains(key); }
 
 		/**
    		 * Use the hash value 'precalculated_hash' instead of hashing the key. The
    		 * hash value should be the same as hash_function()(key). Useful to speed-up
    		 * the lookup if you already have the hash.
    		 */
-		bool contains(const Key &key, std::size_t precalculated_hash) const {
+		[[nodiscard]] bool contains(const Key &key, std::size_t precalculated_hash) const {
 			return m_ht.contains(key, precalculated_hash);
 		}
 
@@ -565,10 +535,8 @@ namespace dice::sparse_map {
    		 * KeyEqual::is_transparent exists. If so, K must be hashable and comparable
    		 * to Key.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		bool contains(const K &key) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] bool contains(const K &key) const {
 			return m_ht.contains(key);
 		}
 
@@ -579,14 +547,12 @@ namespace dice::sparse_map {
    		 * hash value should be the same as hash_function()(key). Useful to speed-up
    		 * the lookup if you already have the hash.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		bool contains(const K &key, std::size_t precalculated_hash) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] bool contains(const K &key, std::size_t precalculated_hash) const {
 			return m_ht.contains(key, precalculated_hash);
 		}
 
-		std::pair<iterator, iterator> equal_range(const Key &key) {
+		[[nodiscard]] std::pair<iterator, iterator> equal_range(const Key &key) {
 			return m_ht.equal_range(key);
 		}
 
@@ -596,20 +562,20 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		std::pair<iterator, iterator> equal_range(const Key &key,
-												  std::size_t precalculated_hash) {
+		[[nodiscard]] std::pair<iterator, iterator> equal_range(const Key &key,
+																std::size_t precalculated_hash) {
 			return m_ht.equal_range(key, precalculated_hash);
 		}
 
-		std::pair<const_iterator, const_iterator> equal_range(const Key &key) const {
+		[[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(const Key &key) const {
 			return m_ht.equal_range(key);
 		}
 
 		/**
    		 * @copydoc equal_range(const Key& key, std::size_t precalculated_hash)
    		 */
-		std::pair<const_iterator, const_iterator> equal_range(
-				const Key &key, std::size_t precalculated_hash) const {
+		[[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(const Key &key,
+																			std::size_t precalculated_hash) const {
 			return m_ht.equal_range(key, precalculated_hash);
 		}
 
@@ -618,10 +584,8 @@ namespace dice::sparse_map {
    		 * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
    		 * comparable to `Key`.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		std::pair<iterator, iterator> equal_range(const K &key) {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] std::pair<iterator, iterator> equal_range(const K &key) {
 			return m_ht.equal_range(key);
 		}
 
@@ -633,53 +597,47 @@ namespace dice::sparse_map {
    		 * behaviour is undefined. Useful to speed-up the lookup if you already have
    		 * the hash.
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		std::pair<iterator, iterator> equal_range(const K &key,
-												  std::size_t precalculated_hash) {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] std::pair<iterator, iterator> equal_range(const K &key,
+																std::size_t precalculated_hash) {
 			return m_ht.equal_range(key, precalculated_hash);
 		}
 
 		/**
    		 * @copydoc equal_range(const K& key)
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		std::pair<const_iterator, const_iterator> equal_range(const K &key) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(const K &key) const {
 			return m_ht.equal_range(key);
 		}
 
 		/**
    		 * @copydoc equal_range(const K& key, std::size_t precalculated_hash)
    		 */
-		template<
-				class K, class KE = KeyEqual,
-				typename std::enable_if<has_is_transparent<KE>::value>::type * = nullptr>
-		std::pair<const_iterator, const_iterator> equal_range(
-				const K &key, std::size_t precalculated_hash) const {
+		template<class K> requires (key_equal_is_transparent)
+		[[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(const K &key,
+																			std::size_t precalculated_hash) const {
 			return m_ht.equal_range(key, precalculated_hash);
 		}
 
-		size_type bucket_count() const { return m_ht.bucket_count(); }
-		size_type max_bucket_count() const { return m_ht.max_bucket_count(); }
+		[[nodiscard]] size_type bucket_count() const { return m_ht.bucket_count(); }
+		[[nodiscard]] size_type max_bucket_count() const { return m_ht.max_bucket_count(); }
 
-		float load_factor() const { return m_ht.load_factor(); }
-		float max_load_factor() const { return m_ht.max_load_factor(); }
+		[[nodiscard]] float load_factor() const { return m_ht.load_factor(); }
+		[[nodiscard]] float max_load_factor() const { return m_ht.max_load_factor(); }
 		void max_load_factor(float ml) { m_ht.max_load_factor(ml); }
 
 		void rehash(size_type count) { m_ht.rehash(count); }
 		void reserve(size_type count) { m_ht.reserve(count); }
 
-		hasher hash_function() const { return m_ht.hash_function(); }
-		key_equal key_eq() const { return m_ht.key_eq(); }
+		[[nodiscard]] hasher hash_function() const { return m_ht.hash_function(); }
+		[[nodiscard]] key_equal key_eq() const { return m_ht.key_eq(); }
 
 
 		/**
    		 * Convert a `const_iterator` to an `iterator`.
    		 */
-		iterator mutable_iterator(const_iterator pos) {
+		[[nodiscard]] iterator mutable_iterator(const_iterator pos) {
 			return m_ht.mutable_iterator(pos);
 		}
 

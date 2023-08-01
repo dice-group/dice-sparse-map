@@ -885,7 +885,10 @@ BOOST_AUTO_TEST_CASE(test_at) {
 
   BOOST_CHECK_EQUAL(map.at(0), 10);
   BOOST_CHECK_EQUAL(map.at(-2), 20);
-  BOOST_CHECK_THROW(map.at(1), std::out_of_range);
+
+  std::int64_t no_discard_dummy;
+  BOOST_CHECK_THROW(no_discard_dummy = map.at(1), std::out_of_range);
+  (void) no_discard_dummy;
 }
 
 /**
@@ -1240,7 +1243,10 @@ BOOST_AUTO_TEST_CASE(test_heterogeneous_lookups) {
 
   BOOST_CHECK_EQUAL(map.at(addr1), 4);
   BOOST_CHECK_EQUAL(map.at(addr2), 5);
-  BOOST_CHECK_THROW(map.at(addr_unknown), std::out_of_range);
+
+  int no_discard_dummy;
+  BOOST_CHECK_THROW(no_discard_dummy = map.at(addr_unknown), std::out_of_range);
+  (void) no_discard_dummy;
 
   BOOST_REQUIRE(map.find(addr1) != map.end());
   BOOST_CHECK_EQUAL(*map.find(addr1)->first, 1);
@@ -1285,8 +1291,10 @@ BOOST_AUTO_TEST_CASE(test_empty_map) {
   BOOST_CHECK(!map.contains(""));
   BOOST_CHECK(!map.contains("test"));
 
-  BOOST_CHECK_THROW(map.at(""), std::out_of_range);
-  BOOST_CHECK_THROW(map.at("test"), std::out_of_range);
+  int no_discard_dummy;
+  BOOST_CHECK_THROW(no_discard_dummy = map.at(""), std::out_of_range);
+  BOOST_CHECK_THROW(no_discard_dummy = map.at("test"), std::out_of_range);
+  (void) no_discard_dummy;
 
   auto range = map.equal_range("test");
   BOOST_CHECK(range.first == range.second);

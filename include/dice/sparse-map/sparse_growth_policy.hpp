@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <array>
 #include <climits>
+#include <concepts>
 #include <cmath>
 #include <cstddef>
 #include <iterator>
@@ -35,6 +36,18 @@
 #include <stdexcept>
 
 namespace dice::sparse_map::sh {
+
+	template<typename G>
+	concept growth_policy = requires (G const cgpol, G gpol, std::size_t &min_bucket_count_in_out, std::size_t hash) {
+		G{min_bucket_count_in_out};
+		{ cgpol.bucket_for_hash(hash) } -> std::convertible_to<std::size_t>;
+		{ cgpol.next_bucket_count() } -> std::convertible_to<std::size_t>;
+		{ cgpol.max_bucket_count() } -> std::convertible_to<std::size_t>;
+		gpol.clear();
+
+		noexcept(cgpol.bucket_for_hash(hash));
+		noexcept(gpol.clear());
+	};
 
 	/**
 	 * Grow the hash table by a factor of GrowthFactor keeping the bucket count to a
@@ -101,6 +114,10 @@ namespace dice::sparse_map::sh {
          * called.
          */
 		void clear() noexcept { m_mask = 0; }
+
+		std::size_t mask() const noexcept {
+			return m_mask;
+		}
 
 	private:
 		static std::size_t round_up_to_power_of_two(std::size_t value) {
