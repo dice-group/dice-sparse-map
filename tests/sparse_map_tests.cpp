@@ -504,8 +504,8 @@ BOOST_AUTO_TEST_CASE(test_range_erase_same_iterators) {
   BOOST_CHECK(map.mutable_iterator(it_const) == it_mutable);
   BOOST_CHECK_EQUAL(map.size(), 100);
 
-  it_mutable.value() = -100;
-  BOOST_CHECK_EQUAL(it_const.value(), -100);
+  it_mutable->second = -100;
+  BOOST_CHECK_EQUAL(it_const->second, -100);
 }
 
 /**
@@ -617,8 +617,8 @@ BOOST_AUTO_TEST_CASE(test_modify_value_through_iterator) {
           nb_values);
 
   for (auto it = map.begin(); it != map.end(); it++) {
-    if (it.key() % 2 == 0) {
-      it.value() = -1;
+    if (it->first % 2 == 0) {
+      it->second = -1;
     }
   }
 

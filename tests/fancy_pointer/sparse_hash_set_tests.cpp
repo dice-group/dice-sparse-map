@@ -15,13 +15,15 @@ namespace details {
     template<typename Key>
     struct KeySelect {
         using key_type = Key;
-        const key_type &operator()(Key const &key) const noexcept { return key; }
-        key_type &operator()(Key &key) noexcept { return key; }
+		using both_type = Key const;
+
+		static key_type const &both(Key const &key) noexcept { return key; }
+        static key_type const &key(Key const &key) noexcept { return key; }
     };
 
     template<typename T, typename Alloc>
     using sparse_set = dice::sparse_map::detail_sparse_hash::sparse_hash<
-            T, KeySelect<T>, void, std::hash<T>, std::equal_to<T>, Alloc,
+            T, KeySelect<T>, std::hash<T>, std::equal_to<T>, Alloc,
             dice::sparse_map::sh::power_of_two_growth_policy<2>,
             dice::sparse_map::sh::exception_safety::basic,
             dice::sparse_map::sh::sparsity::medium,

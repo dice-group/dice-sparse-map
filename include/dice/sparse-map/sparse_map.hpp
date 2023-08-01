@@ -93,31 +93,38 @@ namespace dice::sparse_map {
 			typename KeyEqual::is_transparent;
 		};
 
-		struct KeySelect {
+		struct KVSelect {
 			using key_type = Key;
-
-			const key_type &operator()(const std::pair<Key, T> &key_value) const noexcept {
-				return key_value.first;
-			}
-
-			key_type &operator()(std::pair<Key, T> &key_value) noexcept {
-				return key_value.first;
-			}
-		};
-
-		struct ValueSelect {
 			using value_type = T;
+			using both_type = std::pair<Key const, T>;
 
-			const value_type &operator()(const std::pair<Key, T> &key_value) const noexcept {
+			template<typename K>
+			static key_type const &key(std::pair<K, T> const &key_value) noexcept {
+				return key_value.first;
+			}
+
+			template<typename K>
+			static const value_type &value(std::pair<K, T> const &key_value) noexcept {
 				return key_value.second;
 			}
 
-			value_type &operator()(std::pair<Key, T> &key_value) noexcept {
+			template<typename K>
+			static value_type &value(std::pair<K, T> &key_value) noexcept {
 				return key_value.second;
+			}
+
+			template<typename K>
+			static const both_type &both(std::pair<K, T> const &key_value) noexcept {
+				return reinterpret_cast<both_type const &>(key_value);
+			}
+
+			template<typename K>
+			static both_type &both(std::pair<K, T> &key_value) noexcept {
+				return reinterpret_cast<both_type &>(key_value);
 			}
 		};
 
-		using ht = detail_sparse_hash::sparse_hash<std::pair<Key, T>, KeySelect, ValueSelect, Hash, KeyEqual, Allocator,
+		using ht = detail_sparse_hash::sparse_hash<std::pair<Key, T>, KVSelect, Hash, KeyEqual, Allocator,
 												   GrowthPolicy, ExceptionSafety, Sparsity, dice::sparse_map::sh::probing::quadratic>;
 
 	public:

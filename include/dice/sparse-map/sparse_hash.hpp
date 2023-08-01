@@ -901,7 +901,7 @@ namespace dice::sparse_map {
 		 * `sparse_array::sparse_ibucket(ibucket)` and
 		 * `sparse_array::index_in_sparse_bucket(ibucket)`.
 		 */
-		template<class ValueType, class KeySelect, class ValueSelect, class Hash,
+		template<class ValueType, class KeyValueSelect, class Hash,
 				 class KeyEqual, class Allocator, dice::sparse_map::sh::growth_policy GrowthPolicy,
 				 dice::sparse_map::sh::exception_safety ExceptionSafety, dice::sparse_map::sh::sparsity Sparsity,
 				 dice::sparse_map::sh::probing Probing>
@@ -909,26 +909,26 @@ namespace dice::sparse_map {
 		private:
 			template<typename VSel>
 			struct GetMappedType {
-				using type = typename VSel::value_type;
-				using const_reference = const type &;
-				using reference = type &;
-			};
-
-			template<>
-			struct GetMappedType<void> {
 				using type = void;
 				using const_reference = void;
 				using reference = void;
+			};
+
+			template<typename VSel> requires requires { typename VSel::value_type; }
+			struct GetMappedType<VSel> {
+				using type = typename VSel::value_type;
+				using const_reference = const type &;
+				using reference = type &;
 			};
 
 		public:
 			template<bool IsConst>
 			class sparse_iterator;
 
-			using key_type = typename KeySelect::key_type;
-			using mapped_type = typename GetMappedType<ValueSelect>::type;
-			using mapped_const_reference = typename GetMappedType<ValueSelect>::const_reference;
-			using mapped_reference = typename GetMappedType<ValueSelect>::reference;
+			using key_type = typename KeyValueSelect::key_type;
+			using mapped_type = typename GetMappedType<KeyValueSelect>::type;
+			using mapped_const_reference = typename GetMappedType<KeyValueSelect>::const_reference;
+			using mapped_reference = typename GetMappedType<KeyValueSelect>::reference;
 			using value_type = ValueType;
 			using hasher = Hash;
 			using key_equal = KeyEqual;
@@ -989,8 +989,13 @@ namespace dice::sparse_map {
 				using iterator_category = std::forward_iterator_tag;
 				using value_type = const typename sparse_hash::value_type;
 				using difference_type = std::ptrdiff_t;
-				using reference = value_type &;
-				using pointer = typename sparse_hash::const_pointer;
+				using reference = std::conditional_t<IsConst,
+													 typename KeyValueSelect::both_type const &,
+													 typename KeyValueSelect::both_type &>;
+
+				using pointer = std::conditional_t<IsConst,
+												   typename std::allocator_traits<Allocator>::template rebind_traits<typename KeyValueSelect::both_type>::const_pointer,
+												   typename std::allocator_traits<Allocator>::template rebind_traits<typename KeyValueSelect::both_type>::pointer>;
 
 				sparse_iterator() noexcept {}
 
@@ -1004,22 +1009,10 @@ namespace dice::sparse_map {
 				sparse_iterator &operator=(const sparse_iterator &other) = default;
 				sparse_iterator &operator=(sparse_iterator &&other) = default;
 
-				const typename sparse_hash::key_type &key() const {
-					return KeySelect()(*m_sparse_array_it);
-				}
-
-				mapped_const_reference value() const requires (has_mapped_type && IsConst) {
-					return ValueSelect()(*m_sparse_array_it);
-				}
-
-				mapped_reference value() requires (has_mapped_type && !IsConst) {
-					return ValueSelect()(*m_sparse_array_it);
-				}
-
-				reference operator*() const { return *m_sparse_array_it; }
+				reference operator*() const { return KeyValueSelect::both(*m_sparse_array_it); }
 
 				//with fancy pointers addressof might be problematic.
-				pointer operator->() const { return std::addressof(*m_sparse_array_it); }
+				pointer operator->() const { return &KeyValueSelect::both(*m_sparse_array_it); }
 
 				sparse_iterator &operator++() {
 					tsl_sh_assert(m_sparse_array_it != nullptr);
@@ -1131,8 +1124,11 @@ namespace dice::sparse_map {
 												   : m_sparse_buckets_data.data();
 			}
 
-			sparse_hash(sparse_hash &&other) noexcept(
-					std::is_nothrow_move_constructible<Allocator>::value && std::is_nothrow_move_constructible<Hash>::value && std::is_nothrow_move_constructible<KeyEqual>::value && std::is_nothrow_move_constructible<GrowthPolicy>::value && std::is_nothrow_move_constructible<sparse_buckets_container>::value)
+			sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible<Allocator>::value
+													  && std::is_nothrow_move_constructible<Hash>::value
+													  && std::is_nothrow_move_constructible<KeyEqual>::value
+													  && std::is_nothrow_move_constructible<GrowthPolicy>::value
+													  && std::is_nothrow_move_constructible<sparse_buckets_container>::value)
 				: m_sparse_buckets_data(std::move(other.m_sparse_buckets_data)),
 				  m_sparse_buckets(m_sparse_buckets_data.empty()
 										   ? static_empty_sparse_bucket_ptr()
@@ -1293,13 +1289,13 @@ namespace dice::sparse_map {
 
 			template<typename P>
 			std::pair<iterator, bool> insert(P &&value) {
-				return insert_impl(KeySelect()(value), std::forward<P>(value));
+				return insert_impl(KeyValueSelect::key(value), std::forward<P>(value));
 			}
 
 			template<typename P>
 			iterator insert_hint(const_iterator hint, P &&value) {
 				if (hint != cend() &&
-					m_keq(KeySelect()(*hint), KeySelect()(value))) {
+					m_keq(KeyValueSelect::key(*hint), KeyValueSelect::key(value))) {
 					return mutable_iterator(hint);
 				}
 
@@ -1330,7 +1326,7 @@ namespace dice::sparse_map {
 			std::pair<iterator, bool> insert_or_assign(K &&key, M &&obj) {
 				auto it = try_emplace(std::forward<K>(key), std::forward<M>(obj));
 				if (!it.second) {
-					it.first.value() = std::forward<M>(obj);
+					it.first->second = std::forward<M>(obj);
 				}
 
 				return it;
@@ -1338,9 +1334,9 @@ namespace dice::sparse_map {
 
 			template<class K, class M>
 			iterator insert_or_assign(const_iterator hint, K &&key, M &&obj) {
-				if (hint != cend() && m_keq(KeySelect()(*hint), key)) {
+				if (hint != cend() && m_keq(KeyValueSelect::key(*hint), key)) {
 					auto it = mutable_iterator(hint);
-					it.value() = std::forward<M>(obj);
+					it->second = std::forward<M>(obj);
 
 					return it;
 				}
@@ -1367,7 +1363,7 @@ namespace dice::sparse_map {
 
 			template<class K, class... Args>
 			iterator try_emplace_hint(const_iterator hint, K &&key, Args &&...args) {
-				if (hint != cend() && m_keq(KeySelect()(*hint), key)) {
+				if (hint != cend() && m_keq(KeyValueSelect::key(*hint), key)) {
 					return mutable_iterator(hint);
 				}
 
@@ -1461,7 +1457,7 @@ namespace dice::sparse_map {
 
 			template<class K> requires (has_mapped_type)
 			mapped_reference at(const K &key, std::size_t hash) {
-				return const_cast<typename ValueSelect::value_type &>(
+				return const_cast<mapped_reference>(
 						static_cast<const sparse_hash *>(this)->at(key, hash));
 			}
 
@@ -1474,7 +1470,7 @@ namespace dice::sparse_map {
 			mapped_const_reference at(const K &key, std::size_t hash) const {
 				auto it = find(key, hash);
 				if (it != cend()) {
-					return it.value();
+					return it->second;
 				} else {
 					throw std::out_of_range("Couldn't find key.");
 				}
@@ -1482,7 +1478,7 @@ namespace dice::sparse_map {
 
 			template<class K> requires (has_mapped_type)
 			mapped_reference operator[](K &&key) {
-				return try_emplace(std::forward<K>(key)).first.value();
+				return try_emplace(std::forward<K>(key)).first->second;
 			}
 
 			template<class K>
@@ -1715,7 +1711,7 @@ namespace dice::sparse_map {
 						if (m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
 							auto value_it =
 									m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
-							if (m_keq(key, KeySelect()(*value_it))) {
+							if (m_keq(key, KeyValueSelect::key(*value_it))) {
 								return std::make_pair(
 										iterator(m_sparse_buckets_data.begin() + sparse_ibucket,
 												 value_it),
@@ -1781,7 +1777,7 @@ namespace dice::sparse_map {
 					if (m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
 						auto value_it =
 								m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
-						if (m_keq(key, KeySelect()(*value_it))) {
+						if (m_keq(key, KeyValueSelect::key(*value_it))) {
 							m_sparse_buckets[sparse_ibucket].erase(m_alloc, value_it,
 																   index_in_sparse_bucket);
 							m_nb_elements--;
@@ -1822,7 +1818,7 @@ namespace dice::sparse_map {
 					if (m_sparse_buckets[sparse_ibucket].has_value(index_in_sparse_bucket)) {
 						auto value_it =
 								m_sparse_buckets[sparse_ibucket].value(index_in_sparse_bucket);
-						if (m_keq(key, KeySelect()(*value_it))) {
+						if (m_keq(key, KeyValueSelect::key(*value_it))) {
 							return const_iterator(m_sparse_buckets_data.cbegin() + sparse_ibucket,
 												  value_it);
 						}
@@ -1884,7 +1880,7 @@ namespace dice::sparse_map {
 
 			template<typename K>
 			void insert_on_rehash(K &&key_value) {
-				const key_type &key = KeySelect()(key_value);
+				const key_type &key = KeyValueSelect::key(key_value);
 
 				const std::size_t hash = m_h(key);
 				std::size_t ibucket = bucket_for_hash(hash);
@@ -1903,7 +1899,7 @@ namespace dice::sparse_map {
 						return;
 					} else {
 						tsl_sh_assert(!m_keq(
-								key, KeySelect()(*m_sparse_buckets[sparse_ibucket].value(
+								key, KeyValueSelect::key(*m_sparse_buckets[sparse_ibucket].value(
 											 index_in_sparse_bucket))));
 					}
 

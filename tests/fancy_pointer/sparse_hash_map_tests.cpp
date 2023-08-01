@@ -13,30 +13,41 @@
  */
 namespace details {
     template<typename Key, typename T>
-    struct KeySelect {
+    struct KeyValueSelect {
         using key_type = Key;
-        const key_type &operator()(std::pair<Key, T> const &key_value) const noexcept {
-            return key_value.first;
-        }
-        key_type &operator()(std::pair<Key, T> &key_value) noexcept {
-            return key_value.first;
-        }
+		using value_type = T;
+		using both_type = std::pair<Key const, T>;
+
+		template<typename K>
+		static key_type const &key(std::pair<K, T> const &key_value) noexcept {
+			return key_value.first;
+		}
+
+		template<typename K>
+		static value_type const &value(std::pair<K, T> const &key_value) noexcept {
+			return key_value.second;
+		}
+
+		template<typename K>
+		static value_type &value(std::pair<K, T> &key_value) noexcept {
+			return key_value.second;
+		}
+
+		template<typename K>
+		static both_type const &both(std::pair<K, T> const &key_value) noexcept {
+			return reinterpret_cast<both_type const &>(key_value);
+		}
+
+		template<typename K>
+		static both_type &both(std::pair<K, T> &key_value) noexcept {
+			return reinterpret_cast<both_type &>(key_value);
+		}
     };
 
-    template<typename Key, typename T>
-    struct ValueSelect {
-        using value_type = T;
-        const value_type &operator()(std::pair<Key, T> const &key_value) const noexcept {
-            return key_value.second;
-        }
-        value_type &operator()(std::pair<Key, T> &key_value) noexcept {
-            return key_value.second;
-        }
-    };
 
     template<typename Key, typename T, typename Alloc>
     using sparse_map= dice::sparse_map::detail_sparse_hash::sparse_hash<
-            std::pair<Key, T>, KeySelect<Key, T>, ValueSelect<Key,T>, std::hash<T>, std::equal_to<T>, Alloc,
+            std::pair<Key, T>, KeyValueSelect<Key, T>, std::hash<T>, std::equal_to<T>, Alloc,
             dice::sparse_map::sh::power_of_two_growth_policy<2>,
             dice::sparse_map::sh::exception_safety::basic,
             dice::sparse_map::sh::sparsity::medium,
@@ -98,7 +109,7 @@ void iterator_access(typename T::value_type single_value) {
     auto map = details::default_construct_map<T>();
     map.insert(single_value);
     //iterator cannot access single value
-    BOOST_REQUIRE( (*(map.begin()) == single_value));
+    BOOST_REQUIRE((*map.begin()).first == single_value.first && (*map.begin()).second == single_value.second);
 }
 
 template <typename T>

@@ -94,17 +94,18 @@ namespace dice::sparse_map {
 
 		struct KeySelect {
 			using key_type = Key;
+			using both_type = Key const;
 
-			const key_type &operator()(const Key &key) const noexcept {
+			static key_type const &key(Key const &key) noexcept {
 				return key;
 			}
 
-			key_type &operator()(Key &key) noexcept {
+			static both_type &both(Key const &key) noexcept {
 				return key;
 			}
 		};
 
-		using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, void, Hash, KeyEqual,
+		using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, Hash, KeyEqual,
 												   Allocator, GrowthPolicy, ExceptionSafety,
 												   Sparsity, dice::sparse_map::sh::probing::quadratic>;
 

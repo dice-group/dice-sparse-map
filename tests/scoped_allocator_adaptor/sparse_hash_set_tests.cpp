@@ -11,7 +11,7 @@ template <typename Key> struct KeySelect {
 
 template <typename T, typename Alloc>
 using sparse_set = dice::sparse_map::detail_sparse_hash::sparse_hash<
-    T, details::KeySelect<T>, void, std::hash<T>, std::equal_to<T>, Alloc,
+    T, details::KeySelect<T>, std::hash<T>, std::equal_to<T>, Alloc,
     dice::sparse_map::sh::power_of_two_growth_policy<2>,
     dice::sparse_map::sh::exception_safety::basic,
     dice::sparse_map::sh::sparsity::medium,
