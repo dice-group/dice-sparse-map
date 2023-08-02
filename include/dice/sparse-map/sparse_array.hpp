@@ -6,7 +6,7 @@
 namespace dice::sparse_map::detail {
 
 	/**
-     * WARNING: the sparse_array class doesn't free the ressources allocated through
+     * WARNING: the sparse_array class doesn't free the resources allocated through
      * the allocator passed in parameter in each method. You have to manually call
      * `clear(Allocator&)` when you don't need a sparse_array object anymore.
      *
@@ -31,8 +31,6 @@ namespace dice::sparse_map::detail {
      *
      * See https://smerity.com/articles/2015/google_sparsehash.html for details on
      * the idea behinds the implementation.
-     *
-     * TODO Check to use std::realloc and std::memmove when possible
      */
 	template<typename T, typename Allocator, sparsity Sparsity>
 	struct sparse_array {
@@ -182,7 +180,7 @@ namespace dice::sparse_map::detail {
 			}
 
 			m_values = alloc_traits::allocate(alloc, m_capacity);
-			assert(m_values != nullptr);// allocate should throw if there is a failure
+			assert(m_values != nullptr); // allocate should throw if there is a failure
 
 			try {
 				for (size_type i = 0; i < other.m_nb_elements; i++) {
@@ -333,13 +331,9 @@ namespace dice::sparse_map::detail {
 			alloc_traits::deallocate(alloc, values, capacity_values);
 		}
 
-		[[nodiscard]] static constexpr size_type popcount(bitmap_type val) noexcept {
-			return std::popcount(val);
-		}
-
 		[[nodiscard]] constexpr size_type index_to_offset(size_type index) const noexcept {
 			assert(index < BITMAP_NB_BITS);
-			return popcount(m_bitmap_vals & ((bitmap_type(1) << index) - bitmap_type(1)));
+			return std::popcount(m_bitmap_vals & ((bitmap_type(1) << index) - bitmap_type(1)));
 		}
 
 		// TODO optimize
@@ -406,19 +400,28 @@ namespace dice::sparse_map::detail {
 			assert(offset <= m_nb_elements);
 			assert(m_nb_elements < m_capacity);
 
-			for (size_type i = m_nb_elements; i > offset; i--) {
-				construct_at(alloc, &m_values[i], std::move(m_values[i - 1]));
-				destroy_at(alloc, &m_values[i - 1]);
+			if constexpr (std::is_trivially_copyable_v<value_type>) {
+				std::memmove(&m_values[offset + 1], &m_values[offset], (m_nb_elements - offset) * sizeof(value_type));
+			} else {
+				for (size_type i = m_nb_elements; i > offset; i--) {
+					construct_at(alloc, &m_values[i], std::move(m_values[i - 1]));
+					destroy_at(alloc, &m_values[i - 1]);
+				}
 			}
 
 			try {
 				construct_at(alloc, &m_values[offset], std::forward<Args>(value_args)...);
 			} catch (...) {
 				// revert
-				for (size_type i = offset; i < m_nb_elements; i++) {
-					construct_at(alloc, &m_values[i], std::move(m_values[i + 1]));
-					destroy_at(alloc, &m_values[i + 1]);
+				if constexpr (std::is_trivially_copyable_v<value_type>) {
+					std::memmove(&m_values[offset], &m_values[offset + 1], (m_nb_elements - offset) * sizeof(value_type));
+				} else {
+					for (size_type i = offset; i < m_nb_elements; i++) {
+						construct_at(alloc, &m_values[i], std::move(m_values[i + 1]));
+						destroy_at(alloc, &m_values[i + 1]);
+					}
 				}
+
 				throw;
 			}
 		}
@@ -438,13 +441,18 @@ namespace dice::sparse_map::detail {
 				throw;
 			}
 
-			// Should not throw from here
-			for (size_type i = 0; i < offset; i++) {
-				construct_at(alloc, &new_values[i], std::move(m_values[i]));
-			}
+			if constexpr (std::is_trivially_copyable_v<value_type>) {
+				std::memcpy(&new_values[0], &m_values[0], offset * sizeof(value_type));
+				std::memcpy(&new_values[offset + 1], &m_values[offset], (m_nb_elements - offset) * sizeof(value_type));
+			} else {
+				// Cannot throw here as per requires clause
+				for (size_type i = 0; i < offset; i++) {
+					construct_at(alloc, &new_values[i], std::move(m_values[i]));
+				}
 
-			for (size_type i = offset; i < m_nb_elements; i++) {
-				construct_at(alloc, &new_values[i + 1], std::move(m_values[i]));
+				for (size_type i = offset; i < m_nb_elements; i++) {
+					construct_at(alloc, &new_values[i + 1], std::move(m_values[i]));
+				}
 			}
 
 			destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
@@ -506,9 +514,13 @@ namespace dice::sparse_map::detail {
 
 			destroy_at(alloc, &m_values[offset]);
 
-			for (size_type i = offset + 1; i < m_nb_elements; ++i) {
-				construct_at(alloc, &m_values[i - 1], std::move(m_values[i]));
-				destroy_at(alloc, &m_values[i]);
+			if constexpr (std::is_trivially_copyable_v<value_type>) {
+				std::memmove(&m_values[offset], &m_values[offset + 1], (m_nb_elements - offset - 1) * sizeof(value_type));
+			} else {
+				for (size_type i = offset + 1; i < m_nb_elements; ++i) {
+					construct_at(alloc, &m_values[i - 1], std::move(m_values[i]));
+					destroy_at(alloc, &m_values[i]);
+				}
 			}
 		}
 
