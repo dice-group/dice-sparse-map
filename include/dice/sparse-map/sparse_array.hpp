@@ -154,7 +154,7 @@ namespace dice::sparse_map::detail {
 
 			try {
 				for (; m_nb_elements < other.m_nb_elements; ++m_nb_elements) {
-					construct_at(alloc, &m_values[m_nb_elements], other.m_values[m_nb_elements]);
+					construct_at(alloc, m_values + m_nb_elements, other.m_values[m_nb_elements]);
 				}
 			} catch (...) {
 				clear(alloc);
@@ -169,11 +169,16 @@ namespace dice::sparse_map::detail {
 																m_capacity{std::exchange(other.m_capacity, 0)} {
 		}
 
-		sparse_array(sparse_array &&other, allocator_type &alloc) : m_values{nullptr},
-																	m_bitmap_vals{other.m_bitmap_vals},
-																	m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
-																	m_nb_elements{0},
-																	m_capacity{other.m_capacity} {
+		sparse_array(sparse_array &&other, [[maybe_unused]] allocator_type &alloc) noexcept requires (alloc_traits::is_always_equal::value)
+			: sparse_array{std::move(other)} {
+		}
+
+		sparse_array(sparse_array &&other, allocator_type &alloc) requires (!alloc_traits::is_always_equal::value)
+			: m_bitmap_vals{other.m_bitmap_vals},
+			  m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
+			  m_nb_elements{0},
+			  m_capacity{other.m_capacity} {
+
 			assert(other.m_capacity >= other.m_nb_elements);
 			if (m_capacity == 0) {
 				return;
@@ -182,14 +187,24 @@ namespace dice::sparse_map::detail {
 			m_values = alloc_traits::allocate(alloc, m_capacity);
 			assert(m_values != nullptr); // allocate should throw if there is a failure
 
-			try {
+			if constexpr (std::is_trivially_copyable_v<value_type>) {
+				std::memcpy(&m_values[0], &other.m_values[0], other.m_nb_elements * sizeof(value_type));
+				m_nb_elements = other.m_nb_elements;
+			} else if constexpr (std::is_nothrow_move_constructible_v<value_type>) {
 				for (size_type i = 0; i < other.m_nb_elements; i++) {
 					construct_at(alloc, &m_values[i], std::move(other.m_values[i]));
-					m_nb_elements++;
 				}
-			} catch (...) {
-				clear(alloc);
-				throw;
+
+				m_nb_elements = other.m_nb_elements;
+			} else {
+				try {
+					for (; m_nb_elements < other.m_nb_elements; ++m_nb_elements) {
+						construct_at(alloc, &m_values[m_nb_elements], std::move(other.m_values[m_nb_elements]));
+					}
+				} catch (...) {
+					clear(alloc);
+					throw;
+				}
 			}
 		}
 
@@ -246,12 +261,12 @@ namespace dice::sparse_map::detail {
 
 		[[nodiscard]] constexpr bool has_value(size_type index) const noexcept {
 			assert(index < BITMAP_NB_BITS);
-			return (m_bitmap_vals & (bitmap_type(1) << index)) != 0;
+			return (m_bitmap_vals & (bitmap_type{1} << index)) != 0;
 		}
 
 		[[nodiscard]] constexpr bool has_deleted_value(size_type index) const noexcept {
 			assert(index < BITMAP_NB_BITS);
-			return (m_bitmap_deleted_vals & (bitmap_type(1) << index)) != 0;
+			return (m_bitmap_deleted_vals & (bitmap_type{1} << index)) != 0;
 		}
 
 		iterator value(size_type index) noexcept {
@@ -274,10 +289,10 @@ namespace dice::sparse_map::detail {
 			const size_type offset = index_to_offset(index);
 			insert_at_offset(alloc, offset, std::forward<Args>(value_args)...);
 
-			m_bitmap_vals = (m_bitmap_vals | (bitmap_type(1) << index));
-			m_bitmap_deleted_vals = (m_bitmap_deleted_vals & ~(bitmap_type(1) << index));
+			m_bitmap_vals |= bitmap_type{1} << index;
+			m_bitmap_deleted_vals &= ~(bitmap_type{1} << index);
 
-			m_nb_elements++;
+			m_nb_elements += 1;
 
 			assert(has_value(index));
 			assert(!has_deleted_value(index));
@@ -298,10 +313,10 @@ namespace dice::sparse_map::detail {
 			auto const offset = static_cast<size_type>(std::distance(begin(), position));
 			erase_at_offset(alloc, offset);
 
-			m_bitmap_vals = (m_bitmap_vals & ~(bitmap_type(1) << index));
-			m_bitmap_deleted_vals = (m_bitmap_deleted_vals | (bitmap_type(1) << index));
+			m_bitmap_vals &= ~(bitmap_type{1} << index);
+			m_bitmap_deleted_vals |= bitmap_type{1} << index;
 
-			m_nb_elements--;
+			m_nb_elements -= 1;
 
 			assert(!has_value(index));
 			assert(has_deleted_value(index));
@@ -324,8 +339,10 @@ namespace dice::sparse_map::detail {
 												  pointer values,
 												  size_type nb_values,
 												  size_type capacity_values) noexcept {
-			for (size_type i = 0; i < nb_values; i++) {
-				destroy_at(alloc, &values[i]);
+			if constexpr (!std::is_trivially_destructible_v<value_type>) {
+				for (size_type i = 0; i < nb_values; i++) {
+					destroy_at(alloc, &values[i]);
+				}
 			}
 
 			alloc_traits::deallocate(alloc, values, capacity_values);
@@ -350,10 +367,10 @@ namespace dice::sparse_map::detail {
 						break;
 					}
 
-					nb_ones++;
+					nb_ones += 1;
 				}
 
-				index++;
+				index += 1;
 				bitmap_vals = bitmap_vals >> 1;
 			}
 
