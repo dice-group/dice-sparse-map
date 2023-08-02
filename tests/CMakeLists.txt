@@ -7,10 +7,8 @@ add_executable(tsl_sparse_map_tests "main.cpp"
         "policy_tests.cpp"
         "sparse_map_tests.cpp"
         "sparse_set_tests.cpp"
-        "fancy_pointer/sparse_array_tests.cpp"
         "fancy_pointer/sparse_hash_map_tests.cpp"
         "fancy_pointer/sparse_hash_set_tests.cpp"
-        "scoped_allocator_adaptor/sparse_array_tests.cpp"
         "scoped_allocator_adaptor/sparse_hash_set_tests.cpp"
         )
 

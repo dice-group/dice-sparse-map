@@ -82,7 +82,6 @@ namespace dice::sparse_map::detail {
 
 		size_type m_nb_elements = 0;
 		size_type m_capacity = 0;
-		bool m_last_array = false;
 
 	public:
 		/**
@@ -130,45 +129,22 @@ namespace dice::sparse_map::detail {
 	public:
 		constexpr sparse_array() noexcept = default;
 
-		//needed for "is_constructible" with no parameters
-		constexpr sparse_array(std::allocator_arg_t, [[maybe_unused]] allocator_type const &alloc) noexcept {
-		}
-
-		/*explicit sparse_array(bool last_bucket) noexcept
-				: m_values(nullptr),
-				  m_bitmap_vals(0),
-				  m_bitmap_deleted_vals(0),
-				  m_nb_elements(0),
-				  m_capacity(0),
-				  m_last_array(last_bucket) {}*/
-
-		sparse_array(size_type capacity, allocator_type const &calloc) : m_capacity{capacity} {
+		sparse_array(size_type capacity, allocator_type &alloc) : m_capacity{capacity} {
 			if (m_capacity == 0) {
 				return;
 			}
 
-			auto alloc = calloc;
 			m_values = alloc_traits::allocate(alloc, m_capacity);
 			assert(m_values != nullptr);// allocate should throw if there is a failure
 		}
 
 		sparse_array(sparse_array const &other) = delete;
 
-		constexpr sparse_array(sparse_array &&other) noexcept : m_values{std::exchange(other.m_values, nullptr)},
-																m_bitmap_vals{std::exchange(other.m_bitmap_vals, 0)},
-																m_bitmap_deleted_vals{std::exchange(other.m_bitmap_deleted_vals, 0)},
-																m_nb_elements{std::exchange(other.m_nb_elements, 0)},
-																m_capacity{std::exchange(other.m_capacity, 0)},
-																m_last_array{other.m_last_array} {
-		}
-
-		sparse_array(sparse_array const &other, allocator_type const &calloc) : m_values{nullptr},
-																				m_bitmap_vals{other.m_bitmap_vals},
-																				m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
-																				m_nb_elements{0},
-																				m_capacity(other.m_capacity),
-																				m_last_array(other.m_last_array) {
-			auto alloc = calloc;
+		sparse_array(sparse_array const &other, allocator_type &alloc) : m_values{nullptr},
+																		 m_bitmap_vals{other.m_bitmap_vals},
+																		 m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
+																		 m_nb_elements{0},
+																		 m_capacity{other.m_capacity} {
 
 			assert(other.m_capacity >= other.m_nb_elements);
 			if (m_capacity == 0) {
@@ -188,14 +164,18 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		sparse_array(sparse_array &&other, Allocator const &calloc) : m_values{nullptr},
-																	  m_bitmap_vals{other.m_bitmap_vals},
-																	  m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
-																	  m_nb_elements{0},
-																	  m_capacity{other.m_capacity},
-																	  m_last_array{other.m_last_array} {
-			auto alloc = calloc; // the only reason the allocator above is not mutable is because of scoped allocators
+		constexpr sparse_array(sparse_array &&other) noexcept : m_values{std::exchange(other.m_values, nullptr)},
+																m_bitmap_vals{std::exchange(other.m_bitmap_vals, 0)},
+																m_bitmap_deleted_vals{std::exchange(other.m_bitmap_deleted_vals, 0)},
+																m_nb_elements{std::exchange(other.m_nb_elements, 0)},
+																m_capacity{std::exchange(other.m_capacity, 0)} {
+		}
 
+		sparse_array(sparse_array &&other, allocator_type &alloc) : m_values{nullptr},
+																	m_bitmap_vals{other.m_bitmap_vals},
+																	m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
+																	m_nb_elements{0},
+																	m_capacity{other.m_capacity} {
 			assert(other.m_capacity >= other.m_nb_elements);
 			if (m_capacity == 0) {
 				return;
@@ -266,10 +246,6 @@ namespace dice::sparse_map::detail {
 			m_capacity = 0;
 		}
 
-		[[nodiscard]] constexpr bool last() const noexcept { return m_last_array; }
-
-		constexpr void set_as_last() noexcept { m_last_array = true; }
-
 		[[nodiscard]] constexpr bool has_value(size_type index) const noexcept {
 			assert(index < BITMAP_NB_BITS);
 			return (m_bitmap_vals & (bitmap_type(1) << index)) != 0;
@@ -335,7 +311,7 @@ namespace dice::sparse_map::detail {
 			return m_values + offset;
 		}
 
-		void swap(sparse_array &other) {
+		void swap(sparse_array &other) noexcept {
 			using std::swap;
 
 			swap(m_values, other.m_values);
@@ -343,7 +319,6 @@ namespace dice::sparse_map::detail {
 			swap(m_bitmap_deleted_vals, other.m_bitmap_deleted_vals);
 			swap(m_nb_elements, other.m_nb_elements);
 			swap(m_capacity, other.m_capacity);
-			swap(m_last_array, other.m_last_array);
 		}
 
 	private:
@@ -537,7 +512,7 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		template<typename... Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
+		template<typename ...Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
 		void erase_at_offset(allocator_type &alloc, size_type offset) {
 			assert(offset < m_nb_elements);
 
