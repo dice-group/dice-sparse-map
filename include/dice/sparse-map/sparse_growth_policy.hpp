@@ -33,8 +33,6 @@
 #include <ratio>
 #include <stdexcept>
 
-#include "dice/sparse-map/sparse_props.hpp"
-
 namespace dice::sparse_map {
 
 	template<typename G>
@@ -57,7 +55,7 @@ namespace dice::sparse_map {
 	 *
 	 * GrowthFactor must be a power of two >= 2.
 	 */
-	template<std::size_t GrowthFactor> requires (detail::is_power_of_2(GrowthFactor) && GrowthFactor >= 2)
+	template<std::size_t GrowthFactor> requires (std::has_single_bit(GrowthFactor) && GrowthFactor >= 2)
 	struct power_of_two_growth_policy {
 	protected:
 		std::size_t m_mask;
@@ -77,7 +75,7 @@ namespace dice::sparse_map {
 			}
 
 			if (min_bucket_count_in_out > 0) {
-				min_bucket_count_in_out = detail::round_up_to_power_of_2(min_bucket_count_in_out);
+				min_bucket_count_in_out = std::bit_ceil(min_bucket_count_in_out);
 				m_mask = min_bucket_count_in_out - 1;
 			} else {
 				m_mask = 0;

@@ -6,20 +6,6 @@
 #include <concepts>
 
 namespace dice::sparse_map {
-	namespace detail {
-		template<std::unsigned_integral U>
-		constexpr bool is_power_of_2(U x) noexcept {
-			return std::popcount(x) == 1;
-		}
-
-		template<std::unsigned_integral U>
-		constexpr U round_up_to_power_of_2(U value) noexcept {
-			assert(value > 0);
-			auto const highest_bit_pos = sizeof(U) * 8 - std::countl_zero(value - 1);
-			return U{1} << highest_bit_pos;
-		}
-	} // namespace detail
-
 	enum struct probing : bool {
 		linear,
 		quadratic

@@ -60,7 +60,7 @@ namespace dice::sparse_map::detail {
 
 		static constexpr std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
 
-		static_assert(is_power_of_2(BITMAP_NB_BITS) == 1,
+		static_assert(std::has_single_bit(BITMAP_NB_BITS) == 1,
 					  "BITMAP_NB_BITS must be a power of two.");
 		static_assert(std::numeric_limits<bitmap_type>::digits >= BITMAP_NB_BITS,
 					  "bitmap_type must be able to hold at least BITMAP_NB_BITS.");
@@ -112,7 +112,7 @@ namespace dice::sparse_map::detail {
 				return 0;
 			}
 
-			return std::max<std::size_t>(1, sparse_ibucket(round_up_to_power_of_2(bucket_count)));
+			return std::max<std::size_t>(1, sparse_ibucket(std::bit_ceil(bucket_count)));
 		}
 
 		template<typename ...Args>
@@ -280,9 +280,9 @@ namespace dice::sparse_map::detail {
 		}
 
 		/**
-			 * Return iterator to set value.
-			 */
-		template<typename... Args>
+		 * Return iterator to set value.
+		 */
+		template<typename ...Args>
 		iterator set(allocator_type &alloc, size_type index, Args &&...value_args) {
 			assert(!has_value(index));
 
@@ -350,31 +350,31 @@ namespace dice::sparse_map::detail {
 
 		[[nodiscard]] constexpr size_type index_to_offset(size_type index) const noexcept {
 			assert(index < BITMAP_NB_BITS);
-			return std::popcount(m_bitmap_vals & ((bitmap_type(1) << index) - bitmap_type(1)));
+			return std::popcount(m_bitmap_vals & ((bitmap_type{1} << index) - bitmap_type{1}));
 		}
 
-		// TODO optimize
-		[[nodiscard]] constexpr size_type offset_to_index(size_type offset) const noexcept {
-			assert(offset < m_nb_elements);
+		[[nodiscard]] constexpr size_t offset_to_index(size_t offset) const noexcept {
+			assert(offset < static_cast<size_t>(std::popcount(m_bitmap_vals)));
 
-			bitmap_type bitmap_vals = m_bitmap_vals;
 			size_type index = 0;
-			size_type nb_ones = 0;
+			bitmap_type acc = m_bitmap_vals;
 
-			while (bitmap_vals != 0) {
-				if ((bitmap_vals & 0x1) == 1) {
-					if (nb_ones == offset) {
-						break;
-					}
-
-					nb_ones += 1;
+			while (true) {
+				size_t const ones = std::countr_one(acc);
+				if (ones > offset) {
+					break;
 				}
 
-				index += 1;
-				bitmap_vals = bitmap_vals >> 1;
+				acc >>= ones;
+				index += ones;
+				offset -= ones;
+
+				size_t const skip = std::countr_zero(acc);
+				acc >>= skip;
+				index += skip;
 			}
 
-			return index;
+			return index + offset;
 		}
 
 		[[nodiscard]] constexpr size_type next_capacity() const noexcept {
