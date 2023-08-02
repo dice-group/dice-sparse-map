@@ -36,17 +36,17 @@ namespace dice::sparse_map::detail {
      */
 	template<typename T, typename Allocator, sparsity Sparsity>
 	struct sparse_array {
+	private:
+		using alloc_traits = std::allocator_traits<Allocator>;
+
+	public:
 		using value_type = T;
 		using size_type = std::uint_least8_t;
 		using allocator_type = Allocator;
-		using allocator_traits = std::allocator_traits<allocator_type>;
-		using pointer = typename allocator_traits::pointer;
-		using const_pointer = typename allocator_traits::const_pointer;
+		using pointer = typename alloc_traits::pointer;
+		using const_pointer = typename alloc_traits::const_pointer;
 		using iterator = pointer;
 		using const_iterator = const_pointer;
-
-	private:
-		using alloc_traits = std::allocator_traits<allocator_type>;
 
 		static constexpr size_type CAPACITY_GROWTH_STEP = []() {
 			switch (Sparsity) {
@@ -62,7 +62,7 @@ namespace dice::sparse_map::detail {
 
 		static constexpr std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
 
-		static_assert(std::popcount(BITMAP_NB_BITS) == 1,
+		static_assert(is_power_of_2(BITMAP_NB_BITS) == 1,
 					  "BITMAP_NB_BITS must be a power of two.");
 		static_assert(std::numeric_limits<bitmap_type>::digits >= BITMAP_NB_BITS,
 					  "bitmap_type must be able to hold at least BITMAP_NB_BITS.");
@@ -118,6 +118,15 @@ namespace dice::sparse_map::detail {
 			return std::max<std::size_t>(1, sparse_ibucket(round_up_to_power_of_2(bucket_count)));
 		}
 
+		template<typename ...Args>
+		static void construct_at(allocator_type &alloc, pointer p, Args &&...args) noexcept(std::is_nothrow_constructible_v<value_type, Args &&...>) {
+			alloc_traits::construct(alloc, std::to_address(p), std::forward<Args>(args)...);
+		}
+
+		static void destroy_at(allocator_type &alloc, pointer p) noexcept(std::is_nothrow_destructible_v<value_type>) {
+			alloc_traits::destroy(alloc, std::to_address(p));
+		}
+
 	public:
 		constexpr sparse_array() noexcept = default;
 
@@ -171,7 +180,7 @@ namespace dice::sparse_map::detail {
 
 			try {
 				for (; m_nb_elements < other.m_nb_elements; ++m_nb_elements) {
-					new (&m_values[m_nb_elements]) value_type{other.m_values[m_nb_elements]};
+					construct_at(alloc, &m_values[m_nb_elements], other.m_values[m_nb_elements]);
 				}
 			} catch (...) {
 				clear(alloc);
@@ -197,7 +206,7 @@ namespace dice::sparse_map::detail {
 
 			try {
 				for (size_type i = 0; i < other.m_nb_elements; i++) {
-					new (&m_values[i]) value_type{std::move(other.m_values[i])};
+					construct_at(alloc, &m_values[i], std::move(other.m_values[i]));
 					m_nb_elements++;
 				}
 			} catch (...) {
@@ -343,7 +352,7 @@ namespace dice::sparse_map::detail {
 												  size_type nb_values,
 												  size_type capacity_values) noexcept {
 			for (size_type i = 0; i < nb_values; i++) {
-				values[i].~value_type();
+				destroy_at(alloc, &values[i]);
 			}
 
 			alloc_traits::deallocate(alloc, values, capacity_values);
@@ -406,7 +415,7 @@ namespace dice::sparse_map::detail {
 		template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
 		void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
 			if (m_nb_elements < m_capacity) {
-				insert_at_offset_no_realloc(offset, std::forward<Args>(value_args)...);
+				insert_at_offset_no_realloc(alloc, offset, std::forward<Args>(value_args)...);
 			} else {
 				insert_at_offset_realloc(alloc, offset, next_capacity(), std::forward<Args>(value_args)...);
 			}
@@ -418,22 +427,22 @@ namespace dice::sparse_map::detail {
 		}
 
 		template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
-		void insert_at_offset_no_realloc(size_type offset, Args &&...value_args) {
+		void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset, Args &&...value_args) {
 			assert(offset <= m_nb_elements);
 			assert(m_nb_elements < m_capacity);
 
 			for (size_type i = m_nb_elements; i > offset; i--) {
-				new (&m_values[i]) value_type{std::move(m_values[i - 1])};
-				m_values[i - 1].~value_type();
+				construct_at(alloc, &m_values[i], std::move(m_values[i - 1]));
+				destroy_at(alloc, &m_values[i - 1]);
 			}
 
 			try {
-				new (&m_values[offset]) value_type{std::forward<Args>(value_args)...};
+				construct_at(alloc, &m_values[offset], std::forward<Args>(value_args)...);
 			} catch (...) {
 				// revert
 				for (size_type i = offset; i < m_nb_elements; i++) {
-					new (&m_values[i]) value_type{std::move(m_values[i + 1])};
-					m_values[i + 1].~value_type();
+					construct_at(alloc, &m_values[i], std::move(m_values[i + 1]));
+					destroy_at(alloc, &m_values[i + 1]);
 				}
 				throw;
 			}
@@ -448,7 +457,7 @@ namespace dice::sparse_map::detail {
 			assert(new_values != nullptr); // Allocate should throw if there is a failure
 
 			try {
-				new (&new_values[offset]) value_type{std::forward<Args>(value_args)...};
+				construct_at(alloc, &new_values[offset], std::forward<Args>(value_args)...);
 			} catch (...) {
 				alloc_traits::deallocate(alloc, new_values, new_capacity);
 				throw;
@@ -456,11 +465,11 @@ namespace dice::sparse_map::detail {
 
 			// Should not throw from here
 			for (size_type i = 0; i < offset; i++) {
-				new (&new_values[i]) value_type{std::move(m_values[i])};
+				construct_at(alloc, &new_values[i], std::move(m_values[i]));
 			}
 
 			for (size_type i = offset; i < m_nb_elements; i++) {
-				new (&new_values[i + 1]) value_type{std::move(m_values[i])};
+				construct_at(alloc, &new_values[i + 1], std::move(m_values[i]));
 			}
 
 			destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
@@ -479,15 +488,15 @@ namespace dice::sparse_map::detail {
 			size_type nb_new_values = 0;
 			try {
 				for (size_type i = 0; i < offset; i++) {
-					new (&new_values[i]) value_type{m_values[i]};
+					construct_at(alloc, &new_values[i], m_values[i]);
 					nb_new_values++;
 				}
 
-				new (&new_values[offset]) value_type{std::forward<Args>(value_args)...};
+				construct_at(alloc, &new_values[offset], std::forward<Args>(value_args)...);
 				nb_new_values++;
 
 				for (size_type i = offset; i < m_nb_elements; i++) {
-					new (&new_values[i + 1]) value_type{m_values[i]};
+					construct_at(alloc, &new_values[i + 1], m_values[i]);
 					nb_new_values++;
 				}
 			} catch (...) {
@@ -520,11 +529,11 @@ namespace dice::sparse_map::detail {
 		void erase_at_offset([[maybe_unused]] allocator_type &alloc, size_type offset) noexcept {
 			assert(offset < m_nb_elements);
 
-			m_values[offset].~value_type();
+			destroy_at(alloc, &m_values[offset]);
 
 			for (size_type i = offset + 1; i < m_nb_elements; ++i) {
-				new (&m_values[i - 1]) value_type{std::move(m_values[i])};
-				m_values[i].~value_type();
+				construct_at(alloc, &m_values[i - 1], std::move(m_values[i]));
+				destroy_at(alloc, &m_values[i]);
 			}
 		}
 
@@ -534,7 +543,7 @@ namespace dice::sparse_map::detail {
 
 			if (offset + 1 == m_nb_elements) {
 				// Erasing the last element, don't need to reallocate. We keep the capacity.
-				m_values[offset].~value_type();
+				destroy_at(alloc, &m_values[offset]);
 				return;
 			}
 
@@ -547,12 +556,12 @@ namespace dice::sparse_map::detail {
 			size_type nb_new_values = 0;
 			try {
 				for (size_type i = 0; i < offset; ++i) {
-					new (&new_values[i]) value_type{m_values[i]};
+					construct_at(alloc, &new_values[i], m_values[i]);
 					nb_new_values++;
 				}
 
 				for (size_type i = offset + 1; i < m_nb_elements; ++i) {
-					new (&new_values[i - 1]) value_type{m_values[i]};
+					construct_at(alloc, &new_values[i - 1], m_values[i]);
 					nb_new_values++;
 				}
 			} catch (...) {

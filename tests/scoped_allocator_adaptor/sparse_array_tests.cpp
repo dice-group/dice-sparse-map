@@ -85,16 +85,16 @@ template <typename T> void is_default_insertable() {
 
 template <typename T, dice::sparse_map::sparsity Sparsity = dice::sparse_map::sparsity::medium>
 struct NORMAL {
-  using value_type = T;
-  using Allocator = std::allocator<T>;
-  using Array = dice::sparse_map::detail::sparse_array<T, Allocator, Sparsity>;
+  using value_type = std::vector<T>;
+  using Allocator = std::allocator<std::vector<T>>;
+  using Array = dice::sparse_map::detail::sparse_array<std::vector<T>, Allocator, Sparsity>;
 };
 
 template <typename T, dice::sparse_map::sparsity Sparsity = dice::sparse_map::sparsity::medium>
 struct SCOPED {
-  using value_type = T;
-  using Allocator = std::scoped_allocator_adaptor<std::allocator<T>>;
-  using Array = dice::sparse_map::detail::sparse_array<T, Allocator, Sparsity>;
+  using value_type = std::vector<T>;
+  using Allocator = std::scoped_allocator_adaptor<std::allocator<std::vector<T>>, std::allocator<T>>;
+  using Array = dice::sparse_map::detail::sparse_array<std::vector<T>, Allocator, Sparsity>;
 };
 
 BOOST_AUTO_TEST_SUITE(scoped_allocators)
@@ -102,13 +102,13 @@ BOOST_AUTO_TEST_SUITE(sparse_array_tests)
 
 BOOST_AUTO_TEST_CASE(normal_compilation) { compilation<NORMAL<int>>(); }
 BOOST_AUTO_TEST_CASE(normal_construction) { construction<NORMAL<int>>(); }
-BOOST_AUTO_TEST_CASE(normal_set) { set<NORMAL<int>>({0, 1, 2, 3, 4}); }
+BOOST_AUTO_TEST_CASE(normal_set) { set<NORMAL<int>>({{0, 1, 2, 3, 4}}); }
 BOOST_AUTO_TEST_CASE(normal_uses_allocator) { uses_allocator<NORMAL<int>>(); }
 BOOST_AUTO_TEST_CASE(normal_trailing_allocator_convention) {
   trailing_allocator_convention<NORMAL<int>>(0);
 }
 BOOST_AUTO_TEST_CASE(normal_is_move_insertable) {
-  is_move_insertable<NORMAL<int>>({0, 1, 2, 3, 4, 5});
+  is_move_insertable<NORMAL<int>>({{0, 1, 2, 3, 4, 5}});
 }
 BOOST_AUTO_TEST_CASE(normal_is_default_insertable) {
   is_default_insertable<NORMAL<int>>();
@@ -116,13 +116,13 @@ BOOST_AUTO_TEST_CASE(normal_is_default_insertable) {
 
 BOOST_AUTO_TEST_CASE(scoped_compilation) { compilation<SCOPED<int>>(); }
 BOOST_AUTO_TEST_CASE(scoped_construction) { construction<SCOPED<int>>(); }
-BOOST_AUTO_TEST_CASE(scoped_set) { set<SCOPED<int>>({0, 1, 2, 3, 4}); }
+BOOST_AUTO_TEST_CASE(scoped_set) { set<SCOPED<int>>({{0, 1, 2, 3, 4}, {1, 2, 3}}); }
 BOOST_AUTO_TEST_CASE(scoped_uses_allocator) { uses_allocator<SCOPED<int>>(); }
 BOOST_AUTO_TEST_CASE(scoped_trailing_allocator_convention) {
   trailing_allocator_convention<SCOPED<int>>(0);
 }
 BOOST_AUTO_TEST_CASE(scoped_is_move_insertable) {
-  is_move_insertable<SCOPED<int>>({0, 1, 2, 3, 4, 5});
+  is_move_insertable<SCOPED<int>>({{0, 1, 2, 3, 4, 5}, {1, 2, 3}});
 }
 BOOST_AUTO_TEST_CASE(scoped_is_default_insertable) {
   is_default_insertable<SCOPED<int>>();
