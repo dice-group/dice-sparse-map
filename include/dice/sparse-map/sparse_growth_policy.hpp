@@ -35,7 +35,7 @@
 #include <ratio>
 #include <stdexcept>
 
-namespace dice::sparse_map::sh {
+namespace dice::sparse_map {
 
 	template<typename G>
 	concept growth_policy = requires (G const cgpol, G gpol, std::size_t &min_bucket_count_in_out, std::size_t hash) {
@@ -310,6 +310,6 @@ namespace dice::sparse_map::sh {
 		unsigned int m_iprime;
 	};
 
-}// namespace dice::sparse_map::sh
+}// namespace dice::sparse_map
 
 #endif

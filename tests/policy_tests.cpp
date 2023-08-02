@@ -33,10 +33,11 @@
 BOOST_AUTO_TEST_SUITE(test_policy)
 
 using test_types =
-    boost::mpl::list<dice::sparse_map::sh::power_of_two_growth_policy<2>,
-                     dice::sparse_map::sh::power_of_two_growth_policy<4>,
-                     dice::sparse_map::sh::prime_growth_policy, dice::sparse_map::sh::mod_growth_policy<>,
-                     dice::sparse_map::sh::mod_growth_policy<std::ratio<7, 2>>>;
+    boost::mpl::list<dice::sparse_map::power_of_two_growth_policy<2>,
+                     dice::sparse_map::power_of_two_growth_policy<4>,
+                     dice::sparse_map::prime_growth_policy,
+					 dice::sparse_map::mod_growth_policy<>,
+                     dice::sparse_map::mod_growth_policy<std::ratio<7, 2>>>;
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(test_policy, Policy, test_types) {
   // Call next_bucket_count() on the policy until we reach its

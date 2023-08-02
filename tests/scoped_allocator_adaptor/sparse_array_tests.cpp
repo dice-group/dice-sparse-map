@@ -83,18 +83,18 @@ template <typename T> void is_default_insertable() {
   std::allocator_traits<A>::deallocate(m, p, 1);
 }
 
-template <typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+template <typename T, dice::sparse_map::sparsity Sparsity = dice::sparse_map::sparsity::medium>
 struct NORMAL {
   using value_type = T;
   using Allocator = std::allocator<T>;
-  using Array = dice::sparse_map::detail_sparse_hash::sparse_array<T, Allocator, Sparsity>;
+  using Array = dice::sparse_map::detail::sparse_array<T, Allocator, Sparsity>;
 };
 
-template <typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+template <typename T, dice::sparse_map::sparsity Sparsity = dice::sparse_map::sparsity::medium>
 struct SCOPED {
   using value_type = T;
   using Allocator = std::scoped_allocator_adaptor<std::allocator<T>>;
-  using Array = dice::sparse_map::detail_sparse_hash::sparse_array<T, Allocator, Sparsity>;
+  using Array = dice::sparse_map::detail::sparse_array<T, Allocator, Sparsity>;
 };
 
 BOOST_AUTO_TEST_SUITE(scoped_allocators)

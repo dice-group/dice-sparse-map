@@ -79,13 +79,13 @@ namespace dice::sparse_map {
 	 * the iterators.
 	 *  - erase: always invalidate the iterators.
 	 */
-	template<class Key, class Hash = std::hash<Key>,
-			 class KeyEqual = std::equal_to<Key>,
-			 class Allocator = std::allocator<Key>,
-			 class GrowthPolicy = dice::sparse_map::sh::power_of_two_growth_policy<2>,
-			 dice::sparse_map::sh::exception_safety ExceptionSafety =
-					 dice::sparse_map::sh::exception_safety::basic,
-			 dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+	template<typename Key,
+			 typename Hash = std::hash<Key>,
+			 typename KeyEqual = std::equal_to<Key>,
+			 typename Allocator = std::allocator<Key>,
+			 growth_policy GrowthPolicy = power_of_two_growth_policy<2>,
+			 exception_safety ExceptionSafety = exception_safety::basic,
+			 sparsity Sparsity = sparsity::medium>
 	class sparse_set {
 		static constexpr bool key_equal_is_transparent = requires {
 			typename KeyEqual::is_transparent;
@@ -104,9 +104,9 @@ namespace dice::sparse_map {
 			}
 		};
 
-		using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, Hash, KeyEqual,
-												   Allocator, GrowthPolicy, ExceptionSafety,
-												   Sparsity, dice::sparse_map::sh::probing::quadratic>;
+		using ht = detail::sparse_hash<Key, KeySelect, Hash, KeyEqual,
+									   Allocator, GrowthPolicy, ExceptionSafety,
+									   Sparsity, probing::quadratic>;
 
 	public:
 		using key_type = typename ht::key_type;
@@ -534,11 +534,11 @@ namespace dice::sparse_map {
 	 * Same as `dice::sparse_set<Key, Hash, KeyEqual, Allocator,
 	 * dice::sh::prime_growth_policy>`.
 	 */
-	template<class Key, class Hash = std::hash<Key>,
-			 class KeyEqual = std::equal_to<Key>,
-			 class Allocator = std::allocator<Key>>
-	using sparse_pg_set =
-			sparse_set<Key, Hash, KeyEqual, Allocator, dice::sparse_map::sh::prime_growth_policy>;
+	template<typename Key,
+			 typename Hash = std::hash<Key>,
+			 typename KeyEqual = std::equal_to<Key>,
+			 typename Allocator = std::allocator<Key>>
+	using sparse_pg_set = sparse_set<Key, Hash, KeyEqual, Allocator, dice::sparse_map::prime_growth_policy>;
 
 }// namespace dice::sparse_map
 

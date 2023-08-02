@@ -46,16 +46,16 @@ using test_types =
                      dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>,
                                      std::equal_to<move_only_test>,
                                      std::allocator<move_only_test>,
-                                     dice::sparse_map::sh::prime_growth_policy>,
+                                     dice::sparse_map::prime_growth_policy>,
                      dice::sparse_map::sparse_set<self_reference_member_test,
                                      std::hash<self_reference_member_test>,
                                      std::equal_to<self_reference_member_test>,
                                      std::allocator<self_reference_member_test>,
-                                     dice::sparse_map::sh::mod_growth_policy<>>,
+                                     dice::sparse_map::mod_growth_policy<>>,
                      dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>,
                                      std::equal_to<move_only_test>,
                                      std::allocator<move_only_test>,
-                                     dice::sparse_map::sh::mod_growth_policy<>>>;
+                                     dice::sparse_map::mod_growth_policy<>>>;
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(test_insert, HSet, test_types) {
   // insert x values, insert them again, check values
@@ -63,11 +63,9 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(test_insert, HSet, test_types) {
 
   const std::size_t nb_values = 1000;
   HSet set;
-  typename HSet::iterator it;
-  bool inserted;
 
   for (std::size_t i = 0; i < nb_values; i++) {
-    std::tie(it, inserted) = set.insert(utils::get_key<key_t>(i));
+    auto [it, inserted] = set.insert(utils::get_key<key_t>(i));
 
     BOOST_CHECK_EQUAL(*it, utils::get_key<key_t>(i));
     BOOST_CHECK(inserted);
@@ -75,14 +73,14 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(test_insert, HSet, test_types) {
   BOOST_CHECK_EQUAL(set.size(), nb_values);
 
   for (std::size_t i = 0; i < nb_values; i++) {
-    std::tie(it, inserted) = set.insert(utils::get_key<key_t>(i));
+    auto [it, inserted] = set.insert(utils::get_key<key_t>(i));
 
     BOOST_CHECK_EQUAL(*it, utils::get_key<key_t>(i));
     BOOST_CHECK(!inserted);
   }
 
   for (std::size_t i = 0; i < nb_values; i++) {
-    it = set.find(utils::get_key<key_t>(i));
+    auto it = set.find(utils::get_key<key_t>(i));
 
     BOOST_CHECK_EQUAL(*it, utils::get_key<key_t>(i));
   }

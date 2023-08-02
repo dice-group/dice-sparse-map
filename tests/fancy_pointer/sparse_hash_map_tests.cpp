@@ -46,12 +46,12 @@ namespace details {
 
 
     template<typename Key, typename T, typename Alloc>
-    using sparse_map= dice::sparse_map::detail_sparse_hash::sparse_hash<
+    using sparse_map = dice::sparse_map::detail::sparse_hash<
             std::pair<Key, T>, KeyValueSelect<Key, T>, std::hash<T>, std::equal_to<T>, Alloc,
-            dice::sparse_map::sh::power_of_two_growth_policy<2>,
-            dice::sparse_map::sh::exception_safety::basic,
-            dice::sparse_map::sh::sparsity::medium,
-            dice::sparse_map::sh::probing::quadratic>;
+            dice::sparse_map::power_of_two_growth_policy<2>,
+            dice::sparse_map::exception_safety::basic,
+            dice::sparse_map::sparsity::medium,
+            dice::sparse_map::probing::quadratic>;
 
     template<typename T>
     typename T::Map default_construct_map() {
