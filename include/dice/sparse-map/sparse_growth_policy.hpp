@@ -73,8 +73,7 @@ namespace dice::sparse_map::sh {
 			}
 
 			if (min_bucket_count_in_out > 0) {
-				min_bucket_count_in_out =
-						round_up_to_power_of_two(min_bucket_count_in_out);
+				min_bucket_count_in_out = round_up_to_power_of_two(min_bucket_count_in_out);
 				m_mask = min_bucket_count_in_out - 1;
 			} else {
 				m_mask = 0;

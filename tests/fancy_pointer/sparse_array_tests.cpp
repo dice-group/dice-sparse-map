@@ -17,6 +17,7 @@ constexpr auto MAX_INDEX = 32; //BITMAP_NB_BITS
 template <typename T>
 void compilation() {
     typename T::Array test;
+	(void) test;
 }
 
 template <typename T>
@@ -31,7 +32,7 @@ namespace details {
     typename T::Array generate_test_array(typename T::Allocator &a) {
         typename T::Array arr(MAX_INDEX, a);
         for (std::size_t i = 0; i < MAX_INDEX; ++i) {
-            arr.set(a, i, i);
+            arr.set(a, i, static_cast<typename T::Value_Type>(i));
         }
         return arr;
     }
@@ -100,6 +101,7 @@ struct STD {
     using Allocator = std::allocator<T>;
     using Array = dice::sparse_map::detail_sparse_hash::sparse_array<T, std::allocator<T>, Sparsity>;
     using Const_Iterator = T const*;
+	using Value_Type = T;
 };
 
 template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
@@ -107,6 +109,7 @@ struct CUSTOM {
     using Allocator = OffsetAllocator<T>;
     using Array = dice::sparse_map::detail_sparse_hash::sparse_array<T, OffsetAllocator<T>, Sparsity>;
     using Const_Iterator = boost::interprocess::offset_ptr<const T>;
+	using Value_Type = T;
 };
 
 

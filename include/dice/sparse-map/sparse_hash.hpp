@@ -172,8 +172,7 @@ namespace dice::sparse_map {
 		 * TODO Check to use std::realloc and std::memmove when possible
 		 */
 		template<typename T, typename Allocator, dice::sparse_map::sh::sparsity Sparsity>
-		class sparse_array {
-		public:
+		struct sparse_array {
 			using value_type = T;
 			using size_type = std::uint_least8_t;
 			using allocator_type = Allocator;
@@ -184,29 +183,21 @@ namespace dice::sparse_map {
 			using const_iterator = const_pointer;
 
 		private:
-			static const size_type CAPACITY_GROWTH_STEP =
-					(Sparsity == dice::sparse_map::sh::sparsity::high) ? 2
-					: (Sparsity == dice::sparse_map::sh::sparsity::medium)
-							? 4
-							: 8;// (Sparsity == dice::sh::sparsity::low)
+			using alloc_traits = std::allocator_traits<allocator_type>;
 
-			/**
-		     * Bitmap size configuration.
-		     * Use 32 bits for the bitmap on 32-bits or less environnement as popcount on
-		     * 64 bits numbers is slow on these environnement. Use 64 bits bitmap
-		     * otherwise.
-		     */
-#if SIZE_MAX <= UINT32_MAX
-			using bitmap_type = std::uint_least32_t;
-			static const std::size_t BITMAP_NB_BITS = 32;
-			static const std::size_t BUCKET_SHIFT = 5;
-#else
+			static constexpr size_type CAPACITY_GROWTH_STEP = []() {
+				switch (Sparsity) {
+					case dice::sparse_map::sh::sparsity::high:   return 2;
+					case dice::sparse_map::sh::sparsity::medium: return 4;
+					case dice::sparse_map::sh::sparsity::low:    return 8;
+				}
+			}();
+
 			using bitmap_type = std::uint_least64_t;
-			static const std::size_t BITMAP_NB_BITS = 64;
-			static const std::size_t BUCKET_SHIFT = 6;
-#endif
+			static constexpr std::size_t BITMAP_NB_BITS = 64;
+			static constexpr std::size_t BUCKET_SHIFT = 6;
 
-			static const std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
+			static constexpr std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
 
 			static_assert(is_power_of_two(BITMAP_NB_BITS),
 						  "BITMAP_NB_BITS must be a power of two.");
@@ -219,8 +210,17 @@ namespace dice::sparse_map {
 			static_assert(std::is_unsigned<bitmap_type>::value,
 						  "bitmap_type must be unsigned.");
 			static_assert((std::numeric_limits<bitmap_type>::max() & BUCKET_MASK) ==
-								  BITMAP_NB_BITS - 1,
-						  "");
+								  BITMAP_NB_BITS - 1);
+
+		private:
+			pointer m_values = nullptr;
+
+			bitmap_type m_bitmap_vals = 0;
+			bitmap_type m_bitmap_deleted_vals = 0;
+
+			size_type m_nb_elements = 0;
+			size_type m_capacity = 0;
+			bool m_last_array = false;
 
 		public:
 			/**
@@ -232,7 +232,7 @@ namespace dice::sparse_map {
 		     * m_sparse_buckets[sparse_ibucket(ibucket)][index_in_sparse_bucket(ibucket)]
 		     * instead of something like m_buckets[ibucket] in a classical hash table.
 		     */
-			static std::size_t sparse_ibucket(std::size_t ibucket) {
+			static constexpr std::size_t sparse_ibucket(std::size_t ibucket) noexcept {
 				return ibucket >> BUCKET_SHIFT;
 			}
 
@@ -244,78 +244,98 @@ namespace dice::sparse_map {
 		     * m_sparse_buckets[sparse_ibucket(ibucket)][index_in_sparse_bucket(ibucket)]
 		     * instead of something like m_buckets[ibucket] in a classical hash table.
 		     */
-			static typename sparse_array::size_type index_in_sparse_bucket(
-					std::size_t ibucket) {
-				return static_cast<typename sparse_array::size_type>(
-						ibucket & sparse_array::BUCKET_MASK);
+			static constexpr size_type index_in_sparse_bucket(std::size_t ibucket) noexcept {
+				return static_cast<size_type>(ibucket & BUCKET_MASK);
 			}
 
-			static std::size_t nb_sparse_buckets(std::size_t bucket_count) noexcept {
+			static constexpr std::size_t nb_sparse_buckets(std::size_t bucket_count) noexcept {
 				if (bucket_count == 0) {
 					return 0;
 				}
 
-				return std::max<std::size_t>(
-						1, sparse_ibucket(dice::sparse_map::detail_sparse_hash::round_up_to_power_of_two(
-								   bucket_count)));
+				return std::max<std::size_t>(1, sparse_ibucket(round_up_to_power_of_two(bucket_count)));
 			}
 
 		public:
-			sparse_array() noexcept
-				: m_values(nullptr),
-				  m_bitmap_vals(0),
-				  m_bitmap_deleted_vals(0),
-				  m_nb_elements(0),
-				  m_capacity(0),
-				  m_last_array(false) {}
+			constexpr sparse_array() noexcept = default;
 
 			//needed for "is_constructible" with no parameters
-			sparse_array(std::allocator_arg_t, Allocator const &) noexcept : sparse_array() {}
+			constexpr sparse_array(std::allocator_arg_t, [[maybe_unused]] allocator_type const &alloc) noexcept {
+			}
 
-			explicit sparse_array(bool last_bucket) noexcept
+			/*explicit sparse_array(bool last_bucket) noexcept
 				: m_values(nullptr),
 				  m_bitmap_vals(0),
 				  m_bitmap_deleted_vals(0),
 				  m_nb_elements(0),
 				  m_capacity(0),
-				  m_last_array(last_bucket) {}
+				  m_last_array(last_bucket) {}*/
 
-			//const Allocator needed for MoveInsertable requirement
-			sparse_array(size_type capacity, Allocator const &const_alloc)
-				: m_values(nullptr),
-				  m_bitmap_vals(0),
-				  m_bitmap_deleted_vals(0),
-				  m_nb_elements(0),
-				  m_capacity(capacity),
-				  m_last_array(false) {
-				if (m_capacity > 0) {
-					auto alloc = const_cast<Allocator &>(const_alloc);
-					m_values = alloc.allocate(m_capacity);
-					tsl_sh_assert(m_values !=
-								  nullptr);// allocate should throw if there is a failure
+			sparse_array(size_type capacity, allocator_type const &calloc) : m_capacity{capacity} {
+				if (m_capacity == 0) {
+					return;
 				}
+
+				auto alloc = calloc;
+				m_values = alloc_traits::allocate(alloc, m_capacity);
+				tsl_sh_assert(m_values != nullptr);// allocate should throw if there is a failure
 			}
 
-			//const Allocator needed for MoveInsertable requirement
-			sparse_array(const sparse_array &other, Allocator const &const_alloc)
-				: m_values(nullptr),
-				  m_bitmap_vals(other.m_bitmap_vals),
-				  m_bitmap_deleted_vals(other.m_bitmap_deleted_vals),
-				  m_nb_elements(0),
-				  m_capacity(other.m_capacity),
-				  m_last_array(other.m_last_array) {
+			sparse_array(sparse_array const &other) = delete;
+
+			constexpr sparse_array(sparse_array &&other) noexcept : m_values{std::exchange(other.m_values, nullptr)},
+																	m_bitmap_vals{std::exchange(other.m_bitmap_vals, 0)},
+																	m_bitmap_deleted_vals{std::exchange(other.m_bitmap_deleted_vals, 0)},
+																	m_nb_elements{std::exchange(other.m_nb_elements, 0)},
+																	m_capacity{std::exchange(other.m_capacity, 0)},
+																	m_last_array{other.m_last_array} {
+			}
+
+			sparse_array(sparse_array const &other, allocator_type const &calloc) : m_values{nullptr},
+																					m_bitmap_vals{other.m_bitmap_vals},
+																					m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
+																					m_nb_elements{0},
+																					m_capacity(other.m_capacity),
+																					m_last_array(other.m_last_array) {
+				auto alloc = calloc;
+
 				tsl_sh_assert(other.m_capacity >= other.m_nb_elements);
 				if (m_capacity == 0) {
 					return;
 				}
 
-				auto alloc = const_cast<Allocator &>(const_alloc);
-				m_values = alloc.allocate(m_capacity);
-				tsl_sh_assert(m_values !=
-							  nullptr);// allocate should throw if there is a failure
+				m_values = alloc_traits::allocate(alloc, m_capacity);
+				tsl_sh_assert(m_values != nullptr);// allocate should throw if there is a failure
+
+				try {
+					for (; m_nb_elements < other.m_nb_elements; ++m_nb_elements) {
+						new (&m_values[m_nb_elements]) value_type{other.m_values[m_nb_elements]};
+					}
+				} catch (...) {
+					clear(alloc);
+					throw;
+				}
+			}
+
+			sparse_array(sparse_array &&other, Allocator const &calloc) : m_values{nullptr},
+																		  m_bitmap_vals{other.m_bitmap_vals},
+																		  m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
+																		  m_nb_elements{0},
+																		  m_capacity{other.m_capacity},
+																		  m_last_array{other.m_last_array} {
+				auto alloc = calloc; // the only reason the allocator above is not mutable is because of scoped allocators
+
+				tsl_sh_assert(other.m_capacity >= other.m_nb_elements);
+				if (m_capacity == 0) {
+					return;
+				}
+
+				m_values = alloc_traits::allocate(alloc, m_capacity);
+				tsl_sh_assert(m_values != nullptr);// allocate should throw if there is a failure
+
 				try {
 					for (size_type i = 0; i < other.m_nb_elements; i++) {
-						construct_value(alloc, m_values + i, other.m_values[i]);
+						new (&m_values[i]) value_type{std::move(other.m_values[i])};
 						m_nb_elements++;
 					}
 				} catch (...) {
@@ -324,69 +344,24 @@ namespace dice::sparse_map {
 				}
 			}
 
-			sparse_array(sparse_array &&other) noexcept
-				: m_values(other.m_values),
-				  m_bitmap_vals(other.m_bitmap_vals),
-				  m_bitmap_deleted_vals(other.m_bitmap_deleted_vals),
-				  m_nb_elements(other.m_nb_elements),
-				  m_capacity(other.m_capacity),
-				  m_last_array(other.m_last_array) {
-				other.m_values = nullptr;
-				other.m_bitmap_vals = 0;
-				other.m_bitmap_deleted_vals = 0;
-				other.m_nb_elements = 0;
-				other.m_capacity = 0;
-			}
+			sparse_array &operator=(sparse_array const &) = delete;
 
-			//const Allocator needed for MoveInsertable requirement
-			sparse_array(sparse_array &&other, Allocator const &const_alloc)
-				: m_values(nullptr),
-				  m_bitmap_vals(other.m_bitmap_vals),
-				  m_bitmap_deleted_vals(other.m_bitmap_deleted_vals),
-				  m_nb_elements(0),
-				  m_capacity(other.m_capacity),
-				  m_last_array(other.m_last_array) {
-				tsl_sh_assert(other.m_capacity >= other.m_nb_elements);
-				if (m_capacity == 0) {
-					return;
-				}
+			constexpr sparse_array &operator=(sparse_array &&other) noexcept {
+				tsl_sh_assert(this != &other);
 
-				auto alloc = const_cast<Allocator &>(const_alloc);
-				m_values = alloc.allocate(m_capacity);
-				tsl_sh_assert(m_values !=
-							  nullptr);// allocate should throw if there is a failure
-				try {
-					for (size_type i = 0; i < other.m_nb_elements; i++) {
-						construct_value(alloc, m_values + i, std::move(other.m_values[i]));
-						m_nb_elements++;
-					}
-				} catch (...) {
-					clear(alloc);
-					throw;
-				}
-			}
+				this->m_values = std::exchange(other.m_values, nullptr);
+				this->m_bitmap_vals = std::exchange(other.m_bitmap_vals, 0);
+				this->m_bitmap_deleted_vals = std::exchange(other.m_bitmap_deleted_vals, 0);
+				this->m_nb_elements = std::exchange(other.m_nb_elements, 0);
+				this->m_capacity = std::exchange(other.m_capacity, 0);
 
-			sparse_array &operator=(const sparse_array &) = delete;
-			sparse_array &operator=(sparse_array &&other) noexcept {
-				this->m_values = other.m_values;
-				this->m_bitmap_vals = other.m_bitmap_vals;
-				this->m_bitmap_deleted_vals = other.m_bitmap_deleted_vals;
-				this->m_nb_elements = other.m_nb_elements;
-				this->m_capacity = other.m_capacity;
-				other.m_values = nullptr;
-				other.m_bitmap_vals = 0;
-				other.m_bitmap_deleted_vals = 0;
-				other.m_nb_elements = 0;
-				other.m_capacity = 0;
 				return *this;
 			}
 
 
-			~sparse_array() noexcept {
-				// The code that manages the sparse_array must have called clear before
-				// destruction. See documentation of sparse_array for more details.
-				tsl_sh_assert(m_capacity == 0 && m_nb_elements == 0 && m_values == nullptr);
-			}
+			// The code that manages the sparse_array must have called clear before
+			// destruction. See documentation of sparse_array for more details.
+			~sparse_array() noexcept = default;
 
 			/**
 			 * @safety This function is only safe to call if the underlying object is non-const
@@ -399,16 +374,16 @@ namespace dice::sparse_map {
 				}
 			}
 
-			iterator begin() noexcept { return m_values; }
-			iterator end() noexcept { return m_values + m_nb_elements; }
-			const_iterator begin() const noexcept { return cbegin(); }
-			const_iterator end() const noexcept { return cend(); }
-			const_iterator cbegin() const noexcept { return m_values; }
-			const_iterator cend() const noexcept { return m_values + m_nb_elements; }
+			[[nodiscard]] constexpr iterator begin() noexcept { return m_values; }
+			[[nodiscard]] constexpr iterator end() noexcept { return m_values + m_nb_elements; }
+			[[nodiscard]] constexpr const_iterator begin() const noexcept { return cbegin(); }
+			[[nodiscard]] constexpr const_iterator end() const noexcept { return cend(); }
+			[[nodiscard]] constexpr const_iterator cbegin() const noexcept { return m_values; }
+			[[nodiscard]] constexpr const_iterator cend() const noexcept { return m_values + m_nb_elements; }
 
-			bool empty() const noexcept { return m_nb_elements == 0; }
+			[[nodiscard]] constexpr bool empty() const noexcept { return m_nb_elements == 0; }
 
-			size_type size() const noexcept { return m_nb_elements; }
+			[[nodiscard]] constexpr size_type size() const noexcept { return m_nb_elements; }
 
 			void clear(allocator_type &alloc) noexcept {
 				destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
@@ -420,16 +395,16 @@ namespace dice::sparse_map {
 				m_capacity = 0;
 			}
 
-			bool last() const noexcept { return m_last_array; }
+			[[nodiscard]] constexpr bool last() const noexcept { return m_last_array; }
 
-			void set_as_last() noexcept { m_last_array = true; }
+			constexpr void set_as_last() noexcept { m_last_array = true; }
 
-			bool has_value(size_type index) const noexcept {
+			[[nodiscard]] constexpr bool has_value(size_type index) const noexcept {
 				tsl_sh_assert(index < BITMAP_NB_BITS);
 				return (m_bitmap_vals & (bitmap_type(1) << index)) != 0;
 			}
 
-			bool has_deleted_value(size_type index) const noexcept {
+			[[nodiscard]] constexpr bool has_deleted_value(size_type index) const noexcept {
 				tsl_sh_assert(index < BITMAP_NB_BITS);
 				return (m_bitmap_deleted_vals & (bitmap_type(1) << index)) != 0;
 			}
@@ -455,8 +430,7 @@ namespace dice::sparse_map {
 				insert_at_offset(alloc, offset, std::forward<Args>(value_args)...);
 
 				m_bitmap_vals = (m_bitmap_vals | (bitmap_type(1) << index));
-				m_bitmap_deleted_vals =
-						(m_bitmap_deleted_vals & ~(bitmap_type(1) << index));
+				m_bitmap_deleted_vals = (m_bitmap_deleted_vals & ~(bitmap_type(1) << index));
 
 				m_nb_elements++;
 
@@ -467,8 +441,7 @@ namespace dice::sparse_map {
 			}
 
 			iterator erase(allocator_type &alloc, iterator position) {
-				const size_type offset =
-						static_cast<size_type>(std::distance(begin(), position));
+				auto const offset = static_cast<size_type>(std::distance(begin(), position));
 				return erase(alloc, position, offset_to_index(offset));
 			}
 
@@ -477,8 +450,7 @@ namespace dice::sparse_map {
 				tsl_sh_assert(has_value(index));
 				tsl_sh_assert(!has_deleted_value(index));
 
-				const size_type offset =
-						static_cast<size_type>(std::distance(begin(), position));
+				auto const offset = static_cast<size_type>(std::distance(begin(), position));
 				erase_at_offset(alloc, offset);
 
 				m_bitmap_vals = (m_bitmap_vals & ~(bitmap_type(1) << index));
@@ -503,123 +475,29 @@ namespace dice::sparse_map {
 				swap(m_last_array, other.m_last_array);
 			}
 
-			template<class Serializer>
-			void serialize(Serializer &serializer) const {
-				const slz_size_type sparse_bucket_size = m_nb_elements;
-				serializer(sparse_bucket_size);
-
-				const slz_size_type bitmap_vals = m_bitmap_vals;
-				serializer(bitmap_vals);
-
-				const slz_size_type bitmap_deleted_vals = m_bitmap_deleted_vals;
-				serializer(bitmap_deleted_vals);
-
-				for (const value_type &value : *this) {
-					serializer(value);
-				}
-			}
-
-			template<class Deserializer>
-			static sparse_array deserialize_hash_compatible(Deserializer &deserializer,
-															Allocator &alloc) {
-				const slz_size_type sparse_bucket_size =
-						deserialize_value<slz_size_type>(deserializer);
-				const slz_size_type bitmap_vals =
-						deserialize_value<slz_size_type>(deserializer);
-				const slz_size_type bitmap_deleted_vals =
-						deserialize_value<slz_size_type>(deserializer);
-
-				if (sparse_bucket_size > BITMAP_NB_BITS) {
-					throw std::runtime_error(
-							"Deserialized sparse_bucket_size is too big for the platform. "
-							"Maximum should be BITMAP_NB_BITS.");
-				}
-
-				sparse_array sarray;
-				if (sparse_bucket_size == 0) {
-					return sarray;
-				}
-
-				sarray.m_bitmap_vals = numeric_cast<bitmap_type>(
-						bitmap_vals, "Deserialized bitmap_vals is too big.");
-				sarray.m_bitmap_deleted_vals = numeric_cast<bitmap_type>(
-						bitmap_deleted_vals, "Deserialized bitmap_deleted_vals is too big.");
-
-				sarray.m_capacity = numeric_cast<size_type>(
-						sparse_bucket_size, "Deserialized sparse_bucket_size is too big.");
-				sarray.m_values = alloc.allocate(sarray.m_capacity);
-
-				try {
-					for (size_type ivalue = 0; ivalue < sarray.m_capacity; ivalue++) {
-						construct_value(alloc, sarray.m_values + ivalue,
-										deserialize_value<value_type>(deserializer));
-						sarray.m_nb_elements++;
-					}
-				} catch (...) {
-					sarray.clear(alloc);
-					throw;
-				}
-
-				return sarray;
-			}
-
-			/**
-		     * Deserialize the values of the bucket and insert them all in sparse_hash
-		     * through sparse_hash.insert(...).
-		     */
-			template<class Deserializer, class SparseHash>
-			static void deserialize_values_into_sparse_hash(Deserializer &deserializer,
-															SparseHash &sparse_hash) {
-				const slz_size_type sparse_bucket_size =
-						deserialize_value<slz_size_type>(deserializer);
-
-				const slz_size_type bitmap_vals =
-						deserialize_value<slz_size_type>(deserializer);
-				static_cast<void>(bitmap_vals);// Ignore, not needed
-
-				const slz_size_type bitmap_deleted_vals =
-						deserialize_value<slz_size_type>(deserializer);
-				static_cast<void>(bitmap_deleted_vals);// Ignore, not needed
-
-				for (slz_size_type ivalue = 0; ivalue < sparse_bucket_size; ivalue++) {
-					sparse_hash.insert(deserialize_value<value_type>(deserializer));
-				}
-			}
-
 		private:
-			template<typename... Args>
-			static void construct_value(allocator_type &alloc, pointer value,
-										Args &&...value_args) {
-				std::allocator_traits<allocator_type>::construct(
-						alloc, std::to_address(value), std::forward<Args>(value_args)...);
-			}
-
-			static void destroy_value(allocator_type &alloc, pointer value) noexcept {
-				std::allocator_traits<allocator_type>::destroy(alloc, std::to_address(value));
-			}
-
-			static void destroy_and_deallocate_values(
-					allocator_type &alloc, pointer values, size_type nb_values,
-					size_type capacity_values) noexcept {
+			static void destroy_and_deallocate_values(allocator_type &alloc,
+													  pointer values,
+													  size_type nb_values,
+													  size_type capacity_values) noexcept {
 				for (size_type i = 0; i < nb_values; i++) {
-					destroy_value(alloc, values + i);
+					values[i].~value_type();
 				}
 
-				alloc.deallocate(values, capacity_values);
+				alloc_traits::deallocate(alloc, values, capacity_values);
 			}
 
-			static size_type popcount(bitmap_type val) noexcept {
+			[[nodiscard]] static constexpr size_type popcount(bitmap_type val) noexcept {
 				return std::popcount(val);
 			}
 
-			size_type index_to_offset(size_type index) const noexcept {
+			[[nodiscard]] constexpr size_type index_to_offset(size_type index) const noexcept {
 				tsl_sh_assert(index < BITMAP_NB_BITS);
-				return popcount(m_bitmap_vals &
-								((bitmap_type(1) << index) - bitmap_type(1)));
+				return popcount(m_bitmap_vals & ((bitmap_type(1) << index) - bitmap_type(1)));
 			}
 
 			// TODO optimize
-			size_type offset_to_index(size_type offset) const noexcept {
+			[[nodiscard]] constexpr size_type offset_to_index(size_type offset) const noexcept {
 				tsl_sh_assert(offset < m_nb_elements);
 
 				bitmap_type bitmap_vals = m_bitmap_vals;
@@ -642,7 +520,7 @@ namespace dice::sparse_map {
 				return index;
 			}
 
-			size_type next_capacity() const noexcept {
+			[[nodiscard]] constexpr size_type next_capacity() const noexcept {
 				return static_cast<size_type>(m_capacity + CAPACITY_GROWTH_STEP);
 			}
 
@@ -663,80 +541,64 @@ namespace dice::sparse_map {
 		     * success, we set m_values to this new area. Even if slower, it's the only
 		     * way to preserve to strong exception guarantee.
 		     */
-			template<typename... Args, typename U = value_type,
-					 typename std::enable_if<
-							 std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
-			void insert_at_offset(allocator_type &alloc, size_type offset,
-								  Args &&...value_args) {
+			template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
+			void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
 				if (m_nb_elements < m_capacity) {
-					insert_at_offset_no_realloc(alloc, offset,
-												std::forward<Args>(value_args)...);
+					insert_at_offset_no_realloc(offset, std::forward<Args>(value_args)...);
 				} else {
-					insert_at_offset_realloc(alloc, offset, next_capacity(),
-											 std::forward<Args>(value_args)...);
+					insert_at_offset_realloc(alloc, offset, next_capacity(), std::forward<Args>(value_args)...);
 				}
 			}
 
-			template<typename... Args, typename U = value_type,
-					 typename std::enable_if<!std::is_nothrow_move_constructible<
-							 U>::value>::type * = nullptr>
-			void insert_at_offset(allocator_type &alloc, size_type offset,
-								  Args &&...value_args) {
-				insert_at_offset_realloc(alloc, offset, m_nb_elements + 1,
-										 std::forward<Args>(value_args)...);
+			template<typename ...Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
+			void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
+				insert_at_offset_realloc(alloc, offset, m_nb_elements + 1, std::forward<Args>(value_args)...);
 			}
 
-			template<typename... Args, typename U = value_type,
-					 typename std::enable_if<
-							 std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
-			void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset,
-											 Args &&...value_args) {
+			template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
+			void insert_at_offset_no_realloc(size_type offset, Args &&...value_args) {
 				tsl_sh_assert(offset <= m_nb_elements);
 				tsl_sh_assert(m_nb_elements < m_capacity);
 
 				for (size_type i = m_nb_elements; i > offset; i--) {
-					construct_value(alloc, m_values + i, std::move(m_values[i - 1]));
-					destroy_value(alloc, m_values + i - 1);
+					new (&m_values[i]) value_type{std::move(m_values[i - 1])};
+					m_values[i - 1].~value_type();
 				}
 
 				try {
-					construct_value(alloc, m_values + offset,
-									std::forward<Args>(value_args)...);
+					new (&m_values[offset]) value_type{std::forward<Args>(value_args)...};
 				} catch (...) {
+					// revert
 					for (size_type i = offset; i < m_nb_elements; i++) {
-						construct_value(alloc, m_values + i, std::move(m_values[i + 1]));
-						destroy_value(alloc, m_values + i + 1);
+						new (&m_values[i]) value_type{std::move(m_values[i + 1])};
+						m_values[i + 1].~value_type();
 					}
 					throw;
 				}
 			}
 
-			template<typename... Args, typename U = value_type,
-					 typename std::enable_if<
-							 std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
+			template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
 			void insert_at_offset_realloc(allocator_type &alloc, size_type offset,
 										  size_type new_capacity, Args &&...value_args) {
 				tsl_sh_assert(new_capacity > m_nb_elements);
 
-				pointer new_values = alloc.allocate(new_capacity);
-				// Allocate should throw if there is a failure
-				tsl_sh_assert(new_values != nullptr);
+				pointer new_values = alloc_traits::allocate(alloc, new_capacity);
+				tsl_sh_assert(new_values != nullptr); // Allocate should throw if there is a failure
 
 				try {
-					construct_value(alloc, new_values + offset,
-									std::forward<Args>(value_args)...);
+					new (&new_values[offset]) value_type{std::forward<Args>(value_args)...};
 				} catch (...) {
-					alloc.deallocate(new_values, new_capacity);
+					alloc_traits::deallocate(alloc, new_values, new_capacity);
 					throw;
 				}
 
 				// Should not throw from here
 				for (size_type i = 0; i < offset; i++) {
-					construct_value(alloc, new_values + i, std::move(m_values[i]));
+					new (&new_values[i]) value_type{std::move(m_values[i])};
 				}
 
 				for (size_type i = offset; i < m_nb_elements; i++) {
-					construct_value(alloc, new_values + i + 1, std::move(m_values[i]));
+					new (&new_values[i + 1]) value_type{std::move(m_values[i])};
 				}
 
 				destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
@@ -745,35 +607,29 @@ namespace dice::sparse_map {
 				m_capacity = new_capacity;
 			}
 
-			template<typename... Args, typename U = value_type,
-					 typename std::enable_if<!std::is_nothrow_move_constructible<
-							 U>::value>::type * = nullptr>
-			void insert_at_offset_realloc(allocator_type &alloc, size_type offset,
-										  size_type new_capacity, Args &&...value_args) {
+			template<typename ...Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
+			void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
 				tsl_sh_assert(new_capacity > m_nb_elements);
 
-				value_type *new_values = alloc.allocate(new_capacity);
-				// Allocate should throw if there is a failure
-				tsl_sh_assert(new_values != nullptr);
+				pointer new_values = alloc_traits::allocate(alloc, new_capacity);
+				tsl_sh_assert(new_values != nullptr); // Allocate should throw if there is a failure
 
 				size_type nb_new_values = 0;
 				try {
 					for (size_type i = 0; i < offset; i++) {
-						construct_value(alloc, new_values + i, m_values[i]);
+						new (&new_values[i]) value_type{m_values[i]};
 						nb_new_values++;
 					}
 
-					construct_value(alloc, new_values + offset,
-									std::forward<Args>(value_args)...);
+					new (&new_values[offset]) value_type{std::forward<Args>(value_args)...};
 					nb_new_values++;
 
 					for (size_type i = offset; i < m_nb_elements; i++) {
-						construct_value(alloc, new_values + i + 1, m_values[i]);
+						new (&new_values[i + 1]) value_type{m_values[i]};
 						nb_new_values++;
 					}
 				} catch (...) {
-					destroy_and_deallocate_values(alloc, new_values, nb_new_values,
-												  new_capacity);
+					destroy_and_deallocate_values(alloc, new_values, nb_new_values, new_capacity);
 					throw;
 				}
 
@@ -790,58 +646,55 @@ namespace dice::sparse_map {
 		     *
 		     * Two situations:
 		     * - Either we are in a situation where
-		     * std::is_nothrow_move_constructible<value_type>::value is true. Simply
-		     * destroy the value and left-shift move the value on the right of offset.
+		     * 		std::is_nothrow_move_constructible<value_type>::value is true. Simply
+		     * 		destroy the value and left-shift move the value on the right of offset.
 		     * - Otherwise we are in a situation where
-		     * std::is_nothrow_move_constructible<value_type>::value is false. Copy all
-		     * the values except the one at offset into a new heap area. On success, we
-		     * set m_values to this new area. Even if slower, it's the only way to
-		     * preserve to strong exception guarantee.
+		     * 		std::is_nothrow_move_constructible<value_type>::value is false. Copy all
+		     * 		the values except the one at offset into a new heap area. On success, we
+		     * 		set m_values to this new area. Even if slower, it's the only way to
+		     * 		preserve to strong exception guarantee.
 		     */
-			template<typename... Args, typename U = value_type,
-					 typename std::enable_if<
-							 std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
-			void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
+			template<typename... Args> requires (std::is_nothrow_move_constructible_v<value_type>)
+			void erase_at_offset([[maybe_unused]] allocator_type &alloc, size_type offset) noexcept {
 				tsl_sh_assert(offset < m_nb_elements);
 
-				destroy_value(alloc, m_values + offset);
+				m_values[offset].~value_type();
 
-				for (size_type i = offset + 1; i < m_nb_elements; i++) {
-					construct_value(alloc, m_values + i - 1, std::move(m_values[i]));
-					destroy_value(alloc, m_values + i);
+				for (size_type i = offset + 1; i < m_nb_elements; ++i) {
+					new (&m_values[i - 1]) value_type{std::move(m_values[i])};
+					m_values[i].~value_type();
 				}
 			}
 
-			template<typename... Args, typename U = value_type,
-					 typename std::enable_if<!std::is_nothrow_move_constructible<
-							 U>::value>::type * = nullptr>
+			template<typename... Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
 			void erase_at_offset(allocator_type &alloc, size_type offset) {
 				tsl_sh_assert(offset < m_nb_elements);
 
-				// Erasing the last element, don't need to reallocate. We keep the capacity.
 				if (offset + 1 == m_nb_elements) {
-					destroy_value(alloc, m_values + offset);
+					// Erasing the last element, don't need to reallocate. We keep the capacity.
+					m_values[offset].~value_type();
 					return;
 				}
 
 				tsl_sh_assert(m_nb_elements > 1);
-				const size_type new_capacity = m_nb_elements - 1;
+				auto const new_capacity = m_nb_elements - 1;
 
-				value_type *new_values = alloc.allocate(new_capacity);
-				// Allocate should throw if there is a failure
-				tsl_sh_assert(new_values != nullptr);
+				pointer new_values = alloc_traits::allocate(alloc, new_capacity);
+				tsl_sh_assert(new_values != nullptr); // Allocate should throw if there is a failure
 
 				size_type nb_new_values = 0;
 				try {
-					for (size_type i = 0; i < m_nb_elements; i++) {
-						if (i != offset) {
-							construct_value(alloc, new_values + nb_new_values, m_values[i]);
-							nb_new_values++;
-						}
+					for (size_type i = 0; i < offset; ++i) {
+						new (&new_values[i]) value_type{m_values[i]};
+						nb_new_values++;
+					}
+
+					for (size_type i = offset + 1; i < m_nb_elements; ++i) {
+						new (&new_values[i - 1]) value_type{m_values[i]};
+						nb_new_values++;
 					}
 				} catch (...) {
-					destroy_and_deallocate_values(alloc, new_values, nb_new_values,
-												  new_capacity);
+					destroy_and_deallocate_values(alloc, new_values, nb_new_values, new_capacity);
 					throw;
 				}
 
@@ -852,16 +705,6 @@ namespace dice::sparse_map {
 				m_values = new_values;
 				m_capacity = new_capacity;
 			}
-
-		private:
-			pointer m_values;
-
-			bitmap_type m_bitmap_vals;
-			bitmap_type m_bitmap_deleted_vals;
-
-			size_type m_nb_elements;
-			size_type m_capacity;
-			bool m_last_array;
 		};
 
 		/**
@@ -1585,26 +1428,14 @@ namespace dice::sparse_map {
 				rehash(size_type(std::ceil(float(count) / max_load_factor())));
 			}
 
-			hasher hash_function() const { return m_h; }
-
-			key_equal key_eq() const { return m_keq; }
-
-			template<class Serializer>
-			void serialize(Serializer &serializer) const {
-				serialize_impl(serializer);
-			}
-
-			template<class Deserializer>
-			void deserialize(Deserializer &deserializer, bool hash_compatible) {
-				deserialize_impl(deserializer, hash_compatible);
-			}
+			[[nodiscard]] hasher hash_function() const { return m_h; }
+			[[nodiscard]] key_equal key_eq() const { return m_keq; }
 
 		private:
 			size_type bucket_for_hash(std::size_t hash) const {
-				const std::size_t bucket = m_gpol.bucket_for_hash(hash);
-				tsl_sh_assert(sparse_array::sparse_ibucket(bucket) <
-									  m_sparse_buckets_data.size() ||
-							  (bucket == 0 && m_sparse_buckets_data.empty()));
+				auto const bucket = m_gpol.bucket_for_hash(hash);
+				tsl_sh_assert(sparse_array::sparse_ibucket(bucket) < m_sparse_buckets_data.size()
+							  || (bucket == 0 && m_sparse_buckets_data.empty()));
 
 				return bucket;
 			}
@@ -1899,120 +1730,12 @@ namespace dice::sparse_map {
 				}
 			}
 
-			template<class Serializer>
-			void serialize_impl(Serializer &serializer) const {
-				const slz_size_type version = SERIALIZATION_PROTOCOL_VERSION;
-				serializer(version);
-
-				const slz_size_type bucket_count = m_bucket_count;
-				serializer(bucket_count);
-
-				const slz_size_type nb_sparse_buckets = m_sparse_buckets_data.size();
-				serializer(nb_sparse_buckets);
-
-				const slz_size_type nb_elements = m_nb_elements;
-				serializer(nb_elements);
-
-				const slz_size_type nb_deleted_buckets = m_nb_deleted_buckets;
-				serializer(nb_deleted_buckets);
-
-				const float max_load_factor = m_max_load_factor;
-				serializer(max_load_factor);
-
-				for (const auto &bucket : m_sparse_buckets_data) {
-					bucket.serialize(serializer);
-				}
-			}
-
-			template<class Deserializer>
-			void deserialize_impl(Deserializer &deserializer, bool hash_compatible) {
-				tsl_sh_assert(
-						m_bucket_count == 0 &&
-						m_sparse_buckets_data.empty());// Current hash table must be empty
-
-				const slz_size_type version =
-						deserialize_value<slz_size_type>(deserializer);
-				// For now we only have one version of the serialization protocol.
-				// If it doesn't match there is a problem with the file.
-				if (version != SERIALIZATION_PROTOCOL_VERSION) {
-					throw std::runtime_error(
-							"Can't deserialize the sparse_map/set. The "
-							"protocol version header is invalid.");
-				}
-
-				const slz_size_type bucket_count_ds =
-						deserialize_value<slz_size_type>(deserializer);
-				const slz_size_type nb_sparse_buckets =
-						deserialize_value<slz_size_type>(deserializer);
-				const slz_size_type nb_elements =
-						deserialize_value<slz_size_type>(deserializer);
-				const slz_size_type nb_deleted_buckets =
-						deserialize_value<slz_size_type>(deserializer);
-				const float max_load_factor = deserialize_value<float>(deserializer);
-
-				if (!hash_compatible) {
-					this->max_load_factor(max_load_factor);
-					reserve(numeric_cast<size_type>(nb_elements,
-													"Deserialized nb_elements is too big."));
-					for (slz_size_type ibucket = 0; ibucket < nb_sparse_buckets; ibucket++) {
-						sparse_array::deserialize_values_into_sparse_hash(deserializer, *this);
-					}
-				} else {
-					m_bucket_count = numeric_cast<size_type>(
-							bucket_count_ds, "Deserialized bucket_count is too big.");
-
-					m_gpol = GrowthPolicy(m_bucket_count);
-					// GrowthPolicy should not modify the bucket count we got from
-					// deserialization
-					if (m_bucket_count != bucket_count_ds) {
-						throw std::runtime_error(
-								"The GrowthPolicy is not the same even though "
-								"hash_compatible is true.");
-					}
-
-					if (nb_sparse_buckets !=
-						sparse_array::nb_sparse_buckets(m_bucket_count)) {
-						throw std::runtime_error("Deserialized nb_sparse_buckets is invalid.");
-					}
-
-					m_nb_elements = numeric_cast<size_type>(
-							nb_elements, "Deserialized nb_elements is too big.");
-					m_nb_deleted_buckets = numeric_cast<size_type>(
-							nb_deleted_buckets, "Deserialized nb_deleted_buckets is too big.");
-
-					m_sparse_buckets_data.reserve(numeric_cast<size_type>(
-							nb_sparse_buckets, "Deserialized nb_sparse_buckets is too big."));
-					for (slz_size_type ibucket = 0; ibucket < nb_sparse_buckets; ibucket++) {
-						m_sparse_buckets_data.emplace_back(
-								sparse_array::deserialize_hash_compatible(
-										deserializer, m_alloc));
-					}
-
-					if (!m_sparse_buckets_data.empty()) {
-						m_sparse_buckets_data.back().set_as_last();
-						m_sparse_buckets = m_sparse_buckets_data.data();
-					}
-
-					this->max_load_factor(max_load_factor);
-					if (load_factor() > this->max_load_factor()) {
-						throw std::runtime_error(
-								"Invalid max_load_factor. Check that the serializer and "
-								"deserializer support "
-								"floats correctly as they can be converted implicitely to ints.");
-					}
-				}
-			}
-
 		public:
-			static const size_type DEFAULT_INIT_BUCKET_COUNT = 0;
+			static constexpr size_type DEFAULT_INIT_BUCKET_COUNT = 0;
 			static constexpr float DEFAULT_MAX_LOAD_FACTOR = 0.5f;
 
-			/**
-   			 * Protocol version currenlty used for serialization.
-   			 */
-			static const slz_size_type SERIALIZATION_PROTOCOL_VERSION = 1;
-
 			using sparse_array_ptr = typename std::allocator_traits<allocator_type>::template rebind_traits<sparse_array>::pointer;
+
 			/**
 		     * Return an nullptr to indicate an empty bucket
 		     */

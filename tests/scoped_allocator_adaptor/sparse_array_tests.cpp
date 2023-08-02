@@ -9,7 +9,10 @@
 // Globals
 constexpr auto MAX_INDEX = 32; // BITMAP_NB_BITS
 
-template <typename T> void compilation() { typename T::Array test; }
+template <typename T> void compilation() {
+	typename T::Array test;
+	(void) test;
+}
 
 template <typename T> void construction() {
   typename T::Allocator a;
