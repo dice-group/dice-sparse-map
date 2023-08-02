@@ -5,13 +5,6 @@
 
 namespace dice::sparse_map::detail {
 
-	template<std::unsigned_integral U>
-	constexpr U round_up_to_power_of_2(U value) {
-		assert(value > 0);
-		auto const highest_bit_pos = sizeof(U) * 8 - std::countl_zero(value - 1);
-		return U{1} << highest_bit_pos;
-	}
-
 	/**
      * WARNING: the sparse_array class doesn't free the ressources allocated through
      * the allocator passed in parameter in each method. You have to manually call
