@@ -21,75 +21,71 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
+
 #include <dice/sparse-map/sparse_growth_policy.hpp>
 
-#include <boost/mpl/list.hpp>
-#include <boost/test/unit_test.hpp>
-#include <cstddef>
 #include <limits>
 #include <ratio>
 #include <stdexcept>
 
-BOOST_AUTO_TEST_SUITE(test_policy)
+#define TEST_POLICIES dice::sparse_map::power_of_two_growth_policy<2>, \
+					  dice::sparse_map::power_of_two_growth_policy<4>, \
+					  dice::sparse_map::prime_growth_policy, \
+					  dice::sparse_map::mod_growth_policy<>, \
+					  dice::sparse_map::mod_growth_policy<std::ratio<7, 2>>
 
-using test_types =
-    boost::mpl::list<dice::sparse_map::power_of_two_growth_policy<2>,
-                     dice::sparse_map::power_of_two_growth_policy<4>,
-                     dice::sparse_map::prime_growth_policy,
-					 dice::sparse_map::mod_growth_policy<>,
-                     dice::sparse_map::mod_growth_policy<std::ratio<7, 2>>>;
+TEST_SUITE("policies") {
+	TEST_CASE_TEMPLATE("test policy", Policy, TEST_POLICIES) {
 
-BOOST_AUTO_TEST_CASE_TEMPLATE(test_policy, Policy, test_types) {
-  // Call next_bucket_count() on the policy until we reach its
-  // max_bucket_count()
-  bool exception_thrown = false;
+		// Call next_bucket_count() on the policy until we reach its
+		// max_bucket_count()
+		bool exception_thrown = false;
 
-  std::size_t bucket_count = 0;
-  Policy policy(bucket_count);
+		std::size_t bucket_count = 0;
+		Policy policy(bucket_count);
 
-  BOOST_CHECK_EQUAL(policy.bucket_for_hash(0), 0);
-  BOOST_CHECK_EQUAL(bucket_count, 0);
+		CHECK_EQ(policy.bucket_for_hash(0), 0);
+		CHECK_EQ(bucket_count, 0);
 
-  try {
-    while (true) {
-      const std::size_t previous_bucket_count = bucket_count;
+		try {
+			while (true) {
+				const std::size_t previous_bucket_count = bucket_count;
 
-      bucket_count = policy.next_bucket_count();
-      policy = Policy(bucket_count);
+				bucket_count = policy.next_bucket_count();
+				policy = Policy(bucket_count);
 
-      BOOST_CHECK_EQUAL(policy.bucket_for_hash(0), 0);
-      BOOST_CHECK(bucket_count > previous_bucket_count);
-    }
-  } catch (const std::length_error&) {
-    exception_thrown = true;
-  }
+				CHECK_EQ(policy.bucket_for_hash(0), 0);
+				CHECK(bucket_count > previous_bucket_count);
+			}
+		} catch (const std::length_error&) {
+			exception_thrown = true;
+		}
 
-  BOOST_CHECK(exception_thrown);
+		CHECK(exception_thrown);
+	}
+
+	TEST_CASE_TEMPLATE("min bucket count", Policy, TEST_POLICIES) {
+		// Check policy when a bucket_count of 0 is asked.
+		std::size_t bucket_count = 0;
+		Policy policy(bucket_count);
+
+		CHECK_EQ(policy.bucket_for_hash(0), 0);
+	}
+
+	TEST_CASE_TEMPLATE("max bucket count", Policy, TEST_POLICIES) {
+		// Test a bucket_count equals to the max_bucket_count limit and above
+		std::size_t bucket_count = 0;
+		Policy policy(bucket_count);
+
+		bucket_count = policy.max_bucket_count();
+		Policy policy2(bucket_count);
+
+		bucket_count = std::numeric_limits<std::size_t>::max();
+		CHECK_THROWS_AS((Policy(bucket_count)), std::length_error);
+
+		bucket_count = policy.max_bucket_count() + 1;
+		CHECK_THROWS_AS((Policy(bucket_count)), std::length_error);
+	}
 }
-
-BOOST_AUTO_TEST_CASE_TEMPLATE(test_policy_min_bucket_count, Policy,
-                              test_types) {
-  // Check policy when a bucket_count of 0 is asked.
-  std::size_t bucket_count = 0;
-  Policy policy(bucket_count);
-
-  BOOST_CHECK_EQUAL(policy.bucket_for_hash(0), 0);
-}
-
-BOOST_AUTO_TEST_CASE_TEMPLATE(test_policy_max_bucket_count, Policy,
-                              test_types) {
-  // Test a bucket_count equals to the max_bucket_count limit and above
-  std::size_t bucket_count = 0;
-  Policy policy(bucket_count);
-
-  bucket_count = policy.max_bucket_count();
-  Policy policy2(bucket_count);
-
-  bucket_count = std::numeric_limits<std::size_t>::max();
-  BOOST_CHECK_THROW((Policy(bucket_count)), std::length_error);
-
-  bucket_count = policy.max_bucket_count() + 1;
-  BOOST_CHECK_THROW((Policy(bucket_count)), std::length_error);
-}
-
-BOOST_AUTO_TEST_SUITE_END()

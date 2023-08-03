@@ -30,4 +30,9 @@ if (IS_TOP_LEVEL)
     install_interface_library("${PROJECT_NAME}" "${PROJECT_NAME}" "${PROJECT_NAME}" "include")
 endif ()
 
-
+if (BUILD_TESTING AND IS_TOP_LEVEL)
+    message("Building testing")
+    include(CTest)
+    enable_testing()
+    add_subdirectory(tests)
+endif ()

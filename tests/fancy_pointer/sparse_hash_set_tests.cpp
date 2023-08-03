@@ -2,7 +2,9 @@
  * @brief Checks for fancy pointer support in the sparse_hash implementation for single values (sets).
  */
 
-#include <boost/test/unit_test.hpp>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
+
 #include <dice/sparse-map/sparse_set.hpp>
 #include <dice/sparse-map/sparse_hash.hpp>
 #include "CustomAllocator.hpp"
@@ -28,11 +30,9 @@ namespace details {
             dice::sparse_map::sparsity::medium,
             dice::sparse_map::probing::quadratic>;
 
-    template<typename T>
-    typename T::Set default_construct_set() {
-        using Type = typename T::value_type;
-        return typename T::Set(T::Set::DEFAULT_INIT_BUCKET_COUNT, std::hash<Type>(), std::equal_to<Type>(),
-                               typename T::Allocator(), T::Set::DEFAULT_MAX_LOAD_FACTOR);
+    template<typename Set>
+	Set default_construct_set() {
+        return Set{Set::DEFAULT_INIT_BUCKET_COUNT, {}, {}, {}, Set::DEFAULT_MAX_LOAD_FACTOR};
     }
 
     /** checks if all values of the set are in the initializer_list and than if the lengths are equal.
@@ -47,148 +47,130 @@ namespace details {
 }
 
 template<typename T>
-void construction() {
-    auto set = details::default_construct_set<T>();
-}
-
-template <typename T>
-void insert(std::initializer_list<typename T::value_type> l) {
-    auto set = details::default_construct_set<T>();
-    for (auto const& i: l)  set.insert(i);
-    //'insert' did not create exactly the values needed
-    BOOST_REQUIRE(details::is_equal(set, l));
-}
-
-template <typename T>
-void iterator_insert(std::initializer_list<typename T::value_type> l) {
-   auto set = details::default_construct_set<T>();
-   set.insert(l.begin(), l.end());
-   //'insert' with iterators did not create exactly the values needed
-   BOOST_REQUIRE(details::is_equal(set, l));
-}
-
-template <typename T>
-void iterator_access(typename T::value_type single_value) {
-    auto set = details::default_construct_set<T>();
-    set.insert(single_value);
-    //iterator cannot access single value
-    BOOST_REQUIRE(*(set.begin()) == single_value);
-}
-
-template <typename T>
-void iterator_access_multi(std::initializer_list<typename T::value_type> l) {
-    auto set = details::default_construct_set<T>();
-    set.insert(l.begin(), l.end());
-    std::vector<typename T::value_type> l_sorted = l;
-    std::vector<typename T::value_type> set_sorted(set.begin(), set.end());
-    std::sort(l_sorted.begin(), l_sorted.end());
-    std::sort(set_sorted.begin(), set_sorted.end());
-    //iterating over the set didn't work
-    BOOST_REQUIRE(std::equal(l_sorted.begin(), l_sorted.end(),
-                                  set_sorted.begin()));
-}
-
-
-template <typename T>
-void const_iterator_access_multi(std::initializer_list<typename T::value_type> l) {
-    auto set = details::default_construct_set<T>();
-    set.insert(l.begin(), l.end());
-    std::vector<typename T::value_type> l_sorted = l;
-    std::vector<typename T::value_type> set_sorted(set.cbegin(), set.cend());
-    std::sort(l_sorted.begin(), l_sorted.end());
-    std::sort(set_sorted.begin(), set_sorted.end());
-    //const iterating over the set didn't work
-    BOOST_REQUIRE(std::equal(l_sorted.begin(), l_sorted.end(),
-                                  set_sorted.begin()));
-}
-
-template <typename T>
-void find(std::initializer_list<typename T::value_type> l, typename T::value_type search_value, bool is_in_list) {
-  auto set = details::default_construct_set<T>();
-  set.insert(l.begin(), l.end());
-  auto iter = set.find(search_value);
-  bool found = iter != set.end();
-  //find did not work as expected
-  BOOST_REQUIRE((found == is_in_list));
-}
-
-template <typename T>
-void erase(std::initializer_list<typename T::value_type> l, typename T::value_type extra_value) {
-    auto set = details::default_construct_set<T>();
-    set.insert(extra_value);
-    set.insert(l.begin(), l.end());
-    // force non-const iterator
-    auto iter = set.begin();
-    for(; *iter != extra_value; ++iter);
-    set.erase(iter);
-    //erase did not work as expected
-    BOOST_REQUIRE(details::is_equal(set, l));
-}
-
-template <typename T>
-void erase_with_const_iter(std::initializer_list<typename T::value_type> l, typename T::value_type extra_value) {
-    auto set = details::default_construct_set<T>();
-    set.insert(extra_value);
-    set.insert(l.begin(), l.end());
-    //force const iterator
-    auto iter = set.cbegin();
-    for(; *iter != extra_value; ++iter);
-    set.erase(iter);
-    //erase did not work as expected
-    BOOST_REQUIRE(details::is_equal(set, l));
-}
-
-
-template<typename T>
 struct STD {
     using value_type = T;
     using Allocator = std::allocator<value_type>;
     using Set = details::sparse_set<value_type, Allocator>;
 };
 
-template<typename T>
-struct CUSTOM {
-    using value_type = T;
-    using Allocator = OffsetAllocator<value_type>;
-    using Set = details::sparse_set<value_type, Allocator>;
-};
 
+#define TEST_TYPES details::sparse_set<int, std::allocator<int>>, \
+				   details::sparse_set<int, OffsetAllocator<int>>
 
-BOOST_AUTO_TEST_SUITE(fancy_pointers)
-BOOST_AUTO_TEST_SUITE(sparse_hash_set_tests)
+TEST_SUITE("sparse set with fancy pointers") {
+	TEST_CASE_TEMPLATE("construction", T, TEST_TYPES) {
+		auto set = details::default_construct_set<T>();
+	}
 
-BOOST_AUTO_TEST_CASE(std_alloc_compiles) {construction<STD<int>>();}
-BOOST_AUTO_TEST_CASE(std_alloc_insert) {insert<STD<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(std_alloc_iterator_insert) {iterator_insert<STD<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(std_alloc_iterator_access) {iterator_access<STD<int>>(42);}
-BOOST_AUTO_TEST_CASE(std_alloc_iterator_access_multi) {iterator_access_multi<STD<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(std_alloc_const_iterator_access_multi) {const_iterator_access_multi<STD<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(std_find_true) {find<STD<int>>({1,2,3,4}, 4, true);}
-BOOST_AUTO_TEST_CASE(std_find_false) {find<STD<int>>({1,2,3,4}, 5, false);}
-BOOST_AUTO_TEST_CASE(std_erase) {erase<STD<int>>({1,2,3,4}, 5);}
-BOOST_AUTO_TEST_CASE(std_erase_with_const_iter) {erase_with_const_iter<STD<int>>({1,2,3,4}, 5);}
+	TEST_CASE_TEMPLATE("insert", T, TEST_TYPES) {
+		std::initializer_list<typename T::value_type> l{1,2,3,4};
 
-BOOST_AUTO_TEST_CASE(custom_alloc_compiles) {construction<CUSTOM<int>>();}
-BOOST_AUTO_TEST_CASE(custom_alloc_insert) {insert<CUSTOM<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(custom_alloc_iterator_insert) {iterator_insert<CUSTOM<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(custom_alloc_iterator_access) {iterator_access<CUSTOM<int>>(42);}
-BOOST_AUTO_TEST_CASE(custom_alloc_iterator_access_multi) {iterator_access_multi<CUSTOM<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(custom_alloc_const_iterator_access_multi) {const_iterator_access_multi<CUSTOM<int>>({1,2,3,4});}
-BOOST_AUTO_TEST_CASE(custom_find_true) {find<CUSTOM<int>>({1,2,3,4}, 4, true);}
-BOOST_AUTO_TEST_CASE(custom_find_false) {find<CUSTOM<int>>({1,2,3,4}, 5, false);}
-BOOST_AUTO_TEST_CASE(custom_erase) {erase<CUSTOM<int>>({1,2,3,4}, 5);}
-BOOST_AUTO_TEST_CASE(custom_erase_with_const_iter) {erase_with_const_iter<CUSTOM<int>>({1,2,3,4}, 5);}
+		auto set = details::default_construct_set<T>();
+		for (auto const& i: l)  set.insert(i);
+		//'insert' did not create exactly the values needed
+		REQUIRE(details::is_equal(set, l));
+	}
 
-BOOST_AUTO_TEST_CASE(full_set) {
-    dice::sparse_map::sparse_set<int, std::hash<int>, std::equal_to<int>, OffsetAllocator<int>> set;
-    std::vector<int> data = {1,2,3,4,5,6,7,8,9};
-    set.insert(data.begin(), data.end());
-    auto check = [&set](int d) {return set.contains(d);};
-    //size did not match
-    BOOST_REQUIRE(data.size() == set.size());
-    //Set did not contain all values
-    BOOST_REQUIRE(std::all_of(data.begin(), data.end(), check));
+	TEST_CASE_TEMPLATE("iter insert", T, TEST_TYPES) {
+		std::initializer_list<typename T::value_type> l{1,2,3,4};
+
+		auto set = details::default_construct_set<T>();
+		set.insert(l.begin(), l.end());
+		//'insert' with iterators did not create exactly the values needed
+		REQUIRE(details::is_equal(set, l));
+	}
+
+	TEST_CASE_TEMPLATE("iter access", T, TEST_TYPES) {
+		typename T::value_type single_value = 42;
+
+		auto set = details::default_construct_set<T>();
+		set.insert(single_value);
+		//iterator cannot access single value
+		REQUIRE(*(set.begin()) == single_value);
+	}
+
+	TEST_CASE_TEMPLATE("iter access multi", T, TEST_TYPES) {
+		std::initializer_list<typename T::value_type> l{1,2,3,4};
+
+		auto set = details::default_construct_set<T>();
+		set.insert(l.begin(), l.end());
+		std::vector<typename T::value_type> l_sorted = l;
+		std::vector<typename T::value_type> set_sorted(set.begin(), set.end());
+		std::sort(l_sorted.begin(), l_sorted.end());
+		std::sort(set_sorted.begin(), set_sorted.end());
+		//iterating over the set didn't work
+		REQUIRE(std::equal(l_sorted.begin(), l_sorted.end(),
+								 set_sorted.begin()));
+	}
+
+	TEST_CASE_TEMPLATE("const iter access multi", T, TEST_TYPES) {
+		std::initializer_list<typename T::value_type> l{1,2,3,4};
+
+		auto set = details::default_construct_set<T>();
+		set.insert(l.begin(), l.end());
+		std::vector<typename T::value_type> l_sorted = l;
+		std::vector<typename T::value_type> set_sorted(set.cbegin(), set.cend());
+		std::sort(l_sorted.begin(), l_sorted.end());
+		std::sort(set_sorted.begin(), set_sorted.end());
+		//const iterating over the set didn't work
+		REQUIRE(std::equal(l_sorted.begin(), l_sorted.end(),
+								 set_sorted.begin()));
+	}
+
+	TEST_CASE_TEMPLATE("find", T, TEST_TYPES) {
+		std::initializer_list<typename T::value_type> l{1,2,3,4};
+
+		auto set = details::default_construct_set<T>();
+		set.insert(l.begin(), l.end());
+
+		SUBCASE("exists") {
+			auto iter = set.find(4);
+			REQUIRE(iter != set.end());
+		}
+
+		SUBCASE("not exists") {
+			auto iter = set.find(5);
+			REQUIRE(iter == set.end());
+		}
+	}
+
+	TEST_CASE_TEMPLATE("erase", T, TEST_TYPES) {
+		std::initializer_list<typename T::value_type> l{1,2,3,4};
+		typename T::value_type extra_value = 5;
+
+		SUBCASE("iter") {
+			auto set = details::default_construct_set<T>();
+			set.insert(extra_value);
+			set.insert(l.begin(), l.end());
+			// force non-const iterator
+			auto iter = set.begin();
+			for(; *iter != extra_value; ++iter);
+			set.erase(iter);
+			//erase did not work as expected
+			REQUIRE(details::is_equal(set, l));
+		}
+
+		SUBCASE("const iter") {
+			auto set = details::default_construct_set<T>();
+			set.insert(extra_value);
+			set.insert(l.begin(), l.end());
+			//force const iterator
+			auto iter = set.cbegin();
+			for(; *iter != extra_value; ++iter);
+			set.erase(iter);
+			//erase did not work as expected
+			REQUIRE(details::is_equal(set, l));
+		}
+	}
+
+	TEST_CASE("full set") {
+		dice::sparse_map::sparse_set<int, std::hash<int>, std::equal_to<int>, OffsetAllocator<int>> set;
+		std::vector<int> data = {1,2,3,4,5,6,7,8,9};
+		set.insert(data.begin(), data.end());
+		auto check = [&set](int d) {return set.contains(d);};
+		//size did not match
+		REQUIRE(data.size() == set.size());
+		//Set did not contain all values
+		REQUIRE(std::all_of(data.begin(), data.end(), check));
+	}
 }
-
-BOOST_AUTO_TEST_SUITE_END()
-BOOST_AUTO_TEST_SUITE_END()

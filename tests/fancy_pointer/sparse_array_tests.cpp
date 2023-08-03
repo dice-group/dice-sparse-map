@@ -1,31 +1,15 @@
 /** @file
- * @brief Checks for fancy pointer support in the sparse_array implementation.
+ * @brief Checks for fancy pointer support in the sparse_array_type implementation.
  */
 
-#include <boost/test/unit_test.hpp>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
+
 #include <dice/sparse-map/sparse_hash.hpp>
 #include "CustomAllocator.hpp"
 
 // Globals
 constexpr auto MAX_INDEX = 32; //BITMAP_NB_BITS
-
-/* Tests are formulated via templates to reduce code duplication.
- * The template parameter contains the Allocator type and the shorthand "Array" for the sparse_array
- * (with all template parameter already inserted).
- */
-
-template <typename T>
-void compilation() {
-    typename T::Array test;
-	(void) test;
-}
-
-template <typename T>
-void construction() {
-    typename T::Allocator a;
-    typename T::Array test(MAX_INDEX, a);
-    test.clear(a); //needed because destructor asserts
-}
 
 namespace details {
     template<typename T>
@@ -47,55 +31,6 @@ namespace details {
     }
 }
 
-template <typename T>
-void set() {
-    typename T::Allocator a;
-    auto test = details::generate_test_array<T>(a);
-    auto check = details::generate_check_for_test_array<T>();
-    //'set' did not create the correct order of items
-    BOOST_REQUIRE(std::equal(test.begin(), test.end(), check.begin()));
-    test.clear(a); //needed because destructor asserts
-}
-
-template <typename T>
-void copy_construction() {
-    typename T::Allocator a;
-    //needs to be its own line, otherwise the move-construction would take place
-    auto test = details::generate_test_array<T>(a);
-    typename T::Array copy(test, a);
-    auto check = details::generate_check_for_test_array<T>();
-    //'copy' changed the order of the items
-    BOOST_REQUIRE(std::equal(copy.begin(), copy.end(), check.begin()));
-    test.clear(a);
-    copy.clear(a);
-}
-
-template <typename T>
-void move_construction() {
-    typename T::Allocator a;
-    //two lines needed. Otherwise move/copy elision
-    auto moved_from = details::generate_test_array<T>(a);
-    typename T::Array moved_to(std::move(moved_from));
-    auto check = details::generate_check_for_test_array<T>();
-    //'move' changed the order of the items
-    BOOST_REQUIRE(std::equal(moved_to.begin(), moved_to.end(), check.begin()));
-    moved_to.clear(a);
-}
-
-template <typename T>
-void const_iterator() {
-    typename T::Allocator a;
-    auto test = details::generate_test_array<T>(a);
-    auto const_iter = test.cbegin();
-    //const iterator has the wrong type
-    BOOST_REQUIRE((std::is_same<decltype(const_iter), typename T::Const_Iterator>::value));
-    test.clear(a);
-}
-
-
-/*
- * This are the types you can give the tests as template parameters.
- */
 template <typename T, dice::sparse_map::sparsity Sparsity = dice::sparse_map::sparsity::medium>
 struct STD {
     using Allocator = std::allocator<T>;
@@ -113,26 +48,58 @@ struct CUSTOM {
 };
 
 
+#define TEST_ARRAYS STD<int>, CUSTOM<int>
 
-/* The instantiation of the tests.
- * I don't use the boost template test cases because with this I can set the title of every test case myself.
- */
-BOOST_AUTO_TEST_SUITE(fancy_pointers)
-BOOST_AUTO_TEST_SUITE(sparse_array_tests)
+TEST_SUITE("sparse array with fancy pointers") {
+	TEST_CASE_TEMPLATE("compile", T, TEST_ARRAYS) {
+		typename T::Array test;
+		(void) test;
+	}
 
-BOOST_AUTO_TEST_CASE(std_alloc_compile) {compilation<STD<int>>();}
-BOOST_AUTO_TEST_CASE(std_alloc_construction) {construction<STD<int>>();}
-BOOST_AUTO_TEST_CASE(std_alloc_set) {set<STD<int>>();}
-BOOST_AUTO_TEST_CASE(std_alloc_copy_construction) {copy_construction<STD<int>>();}
-BOOST_AUTO_TEST_CASE(std_alloc_move_construction) {move_construction<STD<int>>();}
-BOOST_AUTO_TEST_CASE(std_const_iterator) {const_iterator<STD<int>>();}
+	TEST_CASE_TEMPLATE("construction", T, TEST_ARRAYS) {
+		typename T::Allocator a;
+		typename T::Array test(MAX_INDEX, a);
+		test.clear(a); //needed because destructor asserts
+	}
 
-BOOST_AUTO_TEST_CASE(custom_alloc_compile) {compilation<CUSTOM<int>>();}
-BOOST_AUTO_TEST_CASE(custom_alloc_construction) {construction<CUSTOM<int>>();}
-BOOST_AUTO_TEST_CASE(custom_alloc_set) {set<CUSTOM<int>>();}
-BOOST_AUTO_TEST_CASE(custom_alloc_copy_construction) {copy_construction<CUSTOM<int>>();}
-BOOST_AUTO_TEST_CASE(custom_alloc_move_construction) {move_construction<CUSTOM<int>>();}
-BOOST_AUTO_TEST_CASE(custom_const_iterator) {const_iterator<CUSTOM<int>>();}
+	TEST_CASE_TEMPLATE("set", T, TEST_ARRAYS) {
+		typename T::Allocator a;
+		auto test = details::generate_test_array<T>(a);
+		auto check = details::generate_check_for_test_array<T>();
+		//'set' did not create the correct order of items
+		REQUIRE(std::equal(test.begin(), test.end(), check.begin()));
+		test.clear(a); //needed because destructor asserts
+	}
 
-BOOST_AUTO_TEST_SUITE_END()
-BOOST_AUTO_TEST_SUITE_END()
+	TEST_CASE_TEMPLATE("copy ctor", T, TEST_ARRAYS) {
+		typename T::Allocator a;
+		//needs to be its own line, otherwise the move-construction would take place
+		auto test = details::generate_test_array<T>(a);
+		typename T::Array copy(test, a);
+		auto check = details::generate_check_for_test_array<T>();
+		//'copy' changed the order of the items
+		REQUIRE(std::equal(copy.begin(), copy.end(), check.begin()));
+		test.clear(a);
+		copy.clear(a);
+	}
+
+	TEST_CASE_TEMPLATE("move ctor", T, TEST_ARRAYS) {
+		typename T::Allocator a;
+		//two lines needed. Otherwise move/copy elision
+		auto moved_from = details::generate_test_array<T>(a);
+		typename T::Array moved_to(std::move(moved_from));
+		auto check = details::generate_check_for_test_array<T>();
+		//'move' changed the order of the items
+		REQUIRE(std::equal(moved_to.begin(), moved_to.end(), check.begin()));
+		moved_to.clear(a);
+	}
+
+	TEST_CASE_TEMPLATE("const iterator", T, TEST_ARRAYS) {
+		typename T::Allocator a;
+		auto test = details::generate_test_array<T>(a);
+		auto const_iter = test.cbegin();
+		//const iterator has the wrong type
+		REQUIRE((std::is_same<decltype(const_iter), typename T::Const_Iterator>::value));
+		test.clear(a);
+	}
+}

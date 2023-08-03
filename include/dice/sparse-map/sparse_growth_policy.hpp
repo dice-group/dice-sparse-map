@@ -242,7 +242,7 @@ namespace dice::sparse_map {
 		}
 
 		[[nodiscard]] constexpr std::size_t next_bucket_count() const {
-			if (m_iprime + 1 >= PRIMES.size()) {
+			if (static_cast<size_t>(m_iprime) + 1 >= PRIMES.size()) {
 				throw std::length_error("The hash table exceeds its maximum size.");
 			}
 

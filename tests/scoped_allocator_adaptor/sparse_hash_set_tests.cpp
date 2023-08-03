@@ -1,4 +1,6 @@
-#include <boost/test/unit_test.hpp>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
+
 #include <dice/sparse-map/sparse_set.hpp>
 #include <scoped_allocator>
 
@@ -55,12 +57,8 @@ struct SCOPED {
   using Set = details::sparse_set<value_type, Allocator>;
 };
 
-BOOST_AUTO_TEST_SUITE(scoped_allocators)
-BOOST_AUTO_TEST_SUITE(sparse_hash_set_tests)
+TEST_SUITE("sparse set with scoped allocator") {
+  TEST_CASE("normal construction"){construction<NORMAL<int>>();}
 
-BOOST_AUTO_TEST_CASE(normal_construction){construction<NORMAL<int>>();}
-
-BOOST_AUTO_TEST_CASE(scoped_construction){construction<SCOPED<int>>();}
-
-BOOST_AUTO_TEST_SUITE_END()
-BOOST_AUTO_TEST_SUITE_END()
+  TEST_CASE("scoped construction"){construction<SCOPED<int>>();}
+}

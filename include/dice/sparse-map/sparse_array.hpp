@@ -6,12 +6,12 @@
 namespace dice::sparse_map::detail {
 
 	/**
-     * WARNING: the sparse_array class doesn't free the resources allocated through
+     * WARNING: the sparse_array_type class doesn't free the resources allocated through
      * the allocator passed in parameter in each method. You have to manually call
-     * `clear(Allocator&)` when you don't need a sparse_array object anymore.
+     * `clear(Allocator&)` when you don't need a sparse_array_type object anymore.
      *
-     * The reason is that the sparse_array doesn't store the allocator to avoid
-     * wasting space in each sparse_array when the allocator has a size > 0. It only
+     * The reason is that the sparse_array_type doesn't store the allocator to avoid
+     * wasting space in each sparse_array_type when the allocator has a size > 0. It only
      * allocates/deallocates objects with the allocator that is passed in parameter.
      *
      *
@@ -22,7 +22,7 @@ namespace dice::sparse_map::detail {
      *
      * We are using raw pointers instead of std::vector to avoid loosing
      * 2*sizeof(size_t) bytes to store the capacity and size of the vector in each
-     * sparse_array. We know we can only store up to BITMAP_NB_BITS elements in the
+     * sparse_array_type. We know we can only store up to BITMAP_NB_BITS elements in the
      * array, we don't need such big types.
      *
      *
@@ -84,7 +84,7 @@ namespace dice::sparse_map::detail {
 	public:
 		/**
 		 * Map an ibucket [0, bucket_count) in the hash table to a sparse_ibucket
-		 * (a sparse_array holds multiple buckets, so there is less sparse_array than
+		 * (a sparse_array_type holds multiple buckets, so there is less sparse_array_type than
 		 * bucket_count).
 		 *
 		 * The bucket ibucket is in
@@ -97,7 +97,7 @@ namespace dice::sparse_map::detail {
 
 		/**
 		 * Map an ibucket [0, bucket_count) in the hash table to an index in the
-		 * sparse_array which corresponds to the bucket.
+		 * sparse_array_type which corresponds to the bucket.
 		 *
 		 * The bucket ibucket is in
 		 * m_sparse_buckets[sparse_ibucket(ibucket)][index_in_sparse_bucket(ibucket)]
@@ -223,8 +223,8 @@ namespace dice::sparse_map::detail {
 		}
 
 
-		// The code that manages the sparse_array must have called clear before
-		// destruction. See documentation of sparse_array for more details.
+		// The code that manages the sparse_array_type must have called clear before
+		// destruction. See documentation of sparse_array_type for more details.
 		~sparse_array() noexcept = default;
 
 		/**
@@ -459,8 +459,10 @@ namespace dice::sparse_map::detail {
 			}
 
 			if constexpr (std::is_trivially_copyable_v<value_type>) {
-				std::memcpy(&new_values[0], &m_values[0], offset * sizeof(value_type));
-				std::memcpy(&new_values[offset + 1], &m_values[offset], (m_nb_elements - offset) * sizeof(value_type));
+				if (m_values != nullptr) {
+					std::memcpy(&new_values[0], &m_values[0], offset * sizeof(value_type));
+					std::memcpy(&new_values[offset + 1], &m_values[offset], (m_nb_elements - offset) * sizeof(value_type));
+				}
 			} else {
 				// Cannot throw here as per requires clause
 				for (size_type i = 0; i < offset; i++) {
