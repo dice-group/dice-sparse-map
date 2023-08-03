@@ -42,8 +42,9 @@
 
 #include <boost/interprocess/containers/vector.hpp>
 
+#include "dice/sparse-map/sparse_bucket.hpp"
 #include "dice/sparse-map/sparse_growth_policy.hpp"
-#include "dice/sparse-map/sparse_array.hpp"
+#include "dice/sparse-map/sparse_bucket_array.hpp"
 
 namespace dice::sparse_map::detail {
 	template<typename U>
@@ -137,13 +138,11 @@ namespace dice::sparse_map::detail {
 	private:
 		static constexpr bool has_mapped_type = !std::is_same_v<mapped_type, void>;
 
-		using sparse_array_type = sparse_array<ValueType, Allocator, Sparsity>;
-
-		using sparse_buckets_allocator = typename std::allocator_traits<allocator_type>::template rebind_alloc<sparse_array_type>;
-		using sparse_buckets_container = boost::interprocess::vector<sparse_array_type, sparse_buckets_allocator>;
+		using sparse_bucket_type = sparse_bucket<value_type, allocator_type, Sparsity>;
+		using sparse_bucket_array_type = sparse_bucket_array<value_type, allocator_type, Sparsity>;
 
 	private:
-		sparse_buckets_container m_sparse_buckets_data;
+		sparse_bucket_array_type m_sparse_buckets_data;
 
 		size_type m_bucket_count;
 		size_type m_nb_elements;
@@ -162,7 +161,6 @@ namespace dice::sparse_map::detail {
 		size_type m_load_threshold_clear_deleted;
 		float m_max_load_factor;
 
-		[[no_unique_address]] allocator_type m_alloc;
 		[[no_unique_address]] hasher m_h;
 		[[no_unique_address]] key_equal m_keq;
 		[[no_unique_address]] growth_policy m_gpol;
@@ -173,32 +171,32 @@ namespace dice::sparse_map::detail {
 		private:
 			friend class sparse_hash;
 
-			using sparse_bucket_iterator = std::conditional_t<IsConst,
-															  typename sparse_buckets_container::const_iterator,
-															  typename sparse_buckets_container::iterator>;
+			using sparse_bucket_array_iterator = std::conditional_t<IsConst,
+																	typename sparse_bucket_array_type::bucket_const_iterator,
+																	typename sparse_bucket_array_type::bucket_iterator>;
 
-			using sparse_array_iterator = std::conditional_t<IsConst,
-															 typename sparse_array_type::const_iterator,
-															 typename sparse_array_type::iterator>;
+			using sparse_bucket_iterator = std::conditional_t<IsConst,
+															  typename sparse_bucket_array_type::element_const_iterator,
+															  typename sparse_bucket_array_type::element_iterator>;
 
 		private:
-			sparse_bucket_iterator m_sparse_buckets_it;
-			sparse_bucket_iterator m_sparse_buckets_end;
-			sparse_array_iterator m_sparse_array_it;
+			sparse_bucket_array_iterator cur_bucket_;
+			sparse_bucket_array_iterator end_bucket_;
+			sparse_bucket_iterator bucket_it_;
 
 		private:
 			/**
 			 * sparse_array_it should be nullptr if sparse_bucket_it ==
 			 * m_sparse_buckets_data.end(). (TODO better way?)
 			 */
-			sparse_iterator(sparse_bucket_iterator sparse_bucket_it,
-							sparse_bucket_iterator sparse_bucket_end,
-							sparse_array_iterator sparse_array_it) noexcept : m_sparse_buckets_it{sparse_bucket_it},
-																			  m_sparse_buckets_end{sparse_bucket_end},
-																			  m_sparse_array_it{sparse_array_it} {
+			sparse_iterator(sparse_bucket_array_iterator bucket,
+							sparse_bucket_array_iterator end_bucket,
+							sparse_bucket_iterator bucket_it) noexcept : cur_bucket_{bucket},
+																		 end_bucket_{end_bucket},
+																		 bucket_it_{bucket_it} {
 
-				assert((m_sparse_buckets_it == m_sparse_buckets_end && m_sparse_array_it == nullptr)
-					   || (m_sparse_buckets_it != m_sparse_buckets_end && m_sparse_array_it != nullptr));
+				assert((cur_bucket_ == end_bucket_ && bucket_it_ == nullptr)
+					   || (cur_bucket_ != end_bucket_ && bucket_it_ != nullptr));
 			}
 
 		public:
@@ -213,9 +211,9 @@ namespace dice::sparse_map::detail {
 											   typename std::allocator_traits<Allocator>::template rebind_traits<typename KeyValueSelect::both_type>::pointer>;
 
 			// Copy constructor from iterator to const_iterator.
-			sparse_iterator(sparse_iterator<!IsConst> const &other) noexcept requires (IsConst) : m_sparse_buckets_it{other.m_sparse_buckets_it},
-				  																				  m_sparse_buckets_end{other.m_sparse_buckets_end},
-				  																				  m_sparse_array_it{other.m_sparse_array_it} {
+			sparse_iterator(sparse_iterator<!IsConst> const &other) noexcept requires (IsConst) : cur_bucket_{other.cur_bucket_},
+				  end_bucket_{other.end_bucket_},
+				  bucket_it_{other.bucket_it_} {
 			}
 
 			sparse_iterator(sparse_iterator const &other) noexcept = default;
@@ -223,25 +221,25 @@ namespace dice::sparse_map::detail {
 			sparse_iterator &operator=(sparse_iterator const &other) noexcept = default;
 			sparse_iterator &operator=(sparse_iterator &&other) noexcept = default;
 
-			reference operator*() const noexcept { return KeyValueSelect::both(*m_sparse_array_it); }
-			pointer operator->() const noexcept { return &KeyValueSelect::both(*m_sparse_array_it); }
+			reference operator*() const noexcept { return KeyValueSelect::both(*bucket_it_); }
+			pointer operator->() const noexcept { return &KeyValueSelect::both(*bucket_it_); }
 
 			sparse_iterator &operator++() noexcept {
-				assert(m_sparse_array_it != nullptr);
-				++m_sparse_array_it;
+				assert(bucket_it_ != nullptr);
+				++bucket_it_;
 
-				if (m_sparse_array_it != (*m_sparse_buckets_it).end()) {
+				if (bucket_it_ != (*cur_bucket_).end()) {
 					return *this;
 				}
 
 				do {
-					if (++m_sparse_buckets_it == m_sparse_buckets_end) {
-						m_sparse_array_it = nullptr;
+					if (++cur_bucket_ == end_bucket_) {
+						bucket_it_ = nullptr;
 						return *this;
 					}
-				} while ((*m_sparse_buckets_it).empty());
+				} while ((*cur_bucket_).empty());
 
-				m_sparse_array_it = (*m_sparse_buckets_it).begin();
+				bucket_it_ = (*cur_bucket_).begin();
 				return *this;
 			}
 
@@ -253,22 +251,22 @@ namespace dice::sparse_map::detail {
 
 			template<bool OIsConst>
 			bool operator==(sparse_iterator<OIsConst> const &other) const noexcept {
-				return m_sparse_buckets_it == other.m_sparse_buckets_it && m_sparse_array_it == other.m_sparse_array_it;
+				return cur_bucket_ == other.cur_bucket_ && bucket_it_ == other.bucket_it_;
 			}
 
 			template<bool OIsConst>
 			bool operator!=(sparse_iterator<OIsConst> const &other) const noexcept {
-				return m_sparse_buckets_it != other.m_sparse_buckets_it || m_sparse_array_it != other.m_sparse_array_it;
+				return cur_bucket_ != other.cur_bucket_ || bucket_it_ != other.bucket_it_;
 			}
 		};
 
 		iterator mutable_iterator(const_iterator pos) noexcept {
 			// SAFETY: this is non-const therefore the underlying buckets are also non-const
 			// as evidenced by the fact that we can call begin on them
-			auto it_sparse_buckets = m_sparse_buckets_data.begin() + std::distance(m_sparse_buckets_data.cbegin(), pos.m_sparse_buckets_it);
+			auto it_sparse_buckets = m_sparse_buckets_data.begin() + std::distance(m_sparse_buckets_data.cbegin(), pos.cur_bucket_);
 
 			// SAFETY: this is non-const therefore the underlying sparse array is also non-const
-			auto it_array = sparse_array_type::unsafe_mutable_iterator(pos.m_sparse_array_it);
+			auto it_array = sparse_bucket_type::unsafe_mutable_iterator(pos.bucket_it_);
 
 			return iterator{it_sparse_buckets, m_sparse_buckets_data.end(), it_array};
 		}
@@ -279,7 +277,6 @@ namespace dice::sparse_map::detail {
 																		  m_bucket_count{bucket_count},
 																		  m_nb_elements{0},
 																		  m_nb_deleted_buckets{0},
-																		  m_alloc{alloc},
 																		  m_h{hash},
 																		  m_keq{equal},
 																		  m_gpol{bucket_count} {
@@ -288,7 +285,7 @@ namespace dice::sparse_map::detail {
 			}
 
 			if (m_bucket_count > 0) {
-				m_sparse_buckets_data.resize(sparse_array_type::nb_sparse_buckets(bucket_count));
+				m_sparse_buckets_data.resize(bucket_count);
 				assert(!m_sparse_buckets_data.empty());
 			}
 
@@ -304,26 +301,13 @@ namespace dice::sparse_map::detail {
 
 		~sparse_hash() { clear(); }
 
-		sparse_hash(const sparse_hash &other)
-			: m_sparse_buckets_data(std::allocator_traits<Allocator>::select_on_container_copy_construction(other.m_alloc)),
-			  m_bucket_count(other.m_bucket_count),
-			  m_nb_elements(other.m_nb_elements),
-			  m_nb_deleted_buckets(other.m_nb_deleted_buckets),
-			  m_load_threshold_rehash(other.m_load_threshold_rehash),
-			  m_load_threshold_clear_deleted(other.m_load_threshold_clear_deleted),
-			  m_max_load_factor(other.m_max_load_factor),
-			  m_alloc{std::allocator_traits<Allocator>::select_on_container_copy_construction(other.m_alloc)},
-			  m_h{other.m_h},
-			  m_keq{other.m_keq},
-			  m_gpol{other.m_gpol} {
-			copy_buckets_from(other);
-		}
+		sparse_hash(const sparse_hash &other) = default;
 
 		sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible<Allocator>::value
 												  && std::is_nothrow_move_constructible<Hash>::value
 												  && std::is_nothrow_move_constructible<KeyEqual>::value
 												  && std::is_nothrow_move_constructible<GrowthPolicy>::value
-												  && std::is_nothrow_move_constructible<sparse_buckets_container>::value)
+												  && std::is_nothrow_move_constructible<sparse_bucket_array_type>::value)
 			: m_sparse_buckets_data(std::move(other.m_sparse_buckets_data)),
 			  m_bucket_count(other.m_bucket_count),
 			  m_nb_elements(other.m_nb_elements),
@@ -331,12 +315,10 @@ namespace dice::sparse_map::detail {
 			  m_load_threshold_rehash(other.m_load_threshold_rehash),
 			  m_load_threshold_clear_deleted(other.m_load_threshold_clear_deleted),
 			  m_max_load_factor(other.m_max_load_factor),
-			  m_alloc{std::move(other.m_alloc)},
 			  m_h{std::move(other.m_h)},
 			  m_keq{std::move(other.m_keq)},
 			  m_gpol{std::move(other.m_gpol)} {
 			other.m_gpol.clear();
-			other.m_sparse_buckets_data.clear();
 			other.m_bucket_count = 0;
 			other.m_nb_elements = 0;
 			other.m_nb_deleted_buckets = 0;
@@ -345,68 +327,41 @@ namespace dice::sparse_map::detail {
 		}
 
 		sparse_hash &operator=(const sparse_hash &other) {
-			if (this != &other) {
-				clear();
-
-				if (std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value) {
-					m_alloc = other.m_alloc;
-				}
-
-				m_h = other.m_h;
-				m_keq = other.m_keq;
-				m_gpol = other.m_gpol;
-
-				if (std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value) {
-					m_sparse_buckets_data = sparse_buckets_container(other.m_alloc);
-				} else {
-					if (m_sparse_buckets_data.size() !=
-						other.m_sparse_buckets_data.size()) {
-						m_sparse_buckets_data = sparse_buckets_container(m_alloc);
-					} else {
-						m_sparse_buckets_data.clear();
-					}
-				}
-
-				copy_buckets_from(other);
-
-				m_bucket_count = other.m_bucket_count;
-				m_nb_elements = other.m_nb_elements;
-				m_nb_deleted_buckets = other.m_nb_deleted_buckets;
-				m_load_threshold_rehash = other.m_load_threshold_rehash;
-				m_load_threshold_clear_deleted = other.m_load_threshold_clear_deleted;
-				m_max_load_factor = other.m_max_load_factor;
+			if (this == &other) {
+				return *this;
 			}
 
-			return *this;
-		}
-
-		sparse_hash &operator=(sparse_hash &&other) noexcept {
 			clear();
 
-			if (!std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value && m_alloc != other.m_alloc) {
-				move_buckets_from(std::move(other));
-			} else {
-				m_alloc = std::move(other.m_alloc);
-				m_sparse_buckets_data = std::move(other.m_sparse_buckets_data);
-			}
-
-			m_h = std::move(other.m_h);
-			m_keq = std::move(other.m_keq);
-			m_gpol = std::move(other.m_gpol);
+			m_sparse_buckets_data = other.m_sparse_buckets_data;
 			m_bucket_count = other.m_bucket_count;
 			m_nb_elements = other.m_nb_elements;
 			m_nb_deleted_buckets = other.m_nb_deleted_buckets;
 			m_load_threshold_rehash = other.m_load_threshold_rehash;
 			m_load_threshold_clear_deleted = other.m_load_threshold_clear_deleted;
 			m_max_load_factor = other.m_max_load_factor;
+			m_h = other.m_h;
+			m_keq = other.m_keq;
+			m_gpol = other.m_gpol;
 
+			return *this;
+		}
+
+		sparse_hash &operator=(sparse_hash &&other) noexcept {
+			assert(this != &other);
+
+			m_sparse_buckets_data = std::move(other.m_sparse_buckets_data);
+			m_bucket_count = std::exchange(other.m_bucket_count, 0);
+			m_nb_elements = std::exchange(other.m_nb_elements, 0);
+			m_nb_deleted_buckets = std::exchange(other.m_nb_deleted_buckets, 0);
+			m_load_threshold_rehash = std::exchange(other.m_load_threshold_rehash, 0);
+			m_load_threshold_clear_deleted = std::exchange(other.m_load_threshold_clear_deleted, 0);
+			m_max_load_factor = other.m_max_load_factor;
+
+			m_h = std::move(other.m_h);
+			m_keq = std::move(other.m_keq);
+			m_gpol = std::move(other.m_gpol);
 			other.m_gpol.clear();
-			other.m_sparse_buckets_data.clear();
-			other.m_bucket_count = 0;
-			other.m_nb_elements = 0;
-			other.m_nb_deleted_buckets = 0;
-			other.m_load_threshold_rehash = 0;
-			other.m_load_threshold_clear_deleted = 0;
 
 			return *this;
 		}
@@ -433,15 +388,15 @@ namespace dice::sparse_map::detail {
 		}
 
 		const_iterator cbegin() const noexcept {
-			auto begin = m_sparse_buckets_data.cbegin();
+			auto begin = m_sparse_buckets_data.begin();
 			//vector iterator with fancy pointers have a problem with ->
-			while (begin != m_sparse_buckets_data.cend() && (*begin).empty()) {
+			while (begin != m_sparse_buckets_data.end() && (*begin).empty()) {
 				++begin;
 			}
 
 			return const_iterator{begin,
-								  m_sparse_buckets_data.cend(),
-								  begin != m_sparse_buckets_data.cend() ? (*begin).cbegin() : nullptr};
+								  m_sparse_buckets_data.end(),
+								  begin != m_sparse_buckets_data.end() ? (*begin).begin() : nullptr};
 		}
 
 		iterator end() noexcept {
@@ -455,8 +410,8 @@ namespace dice::sparse_map::detail {
 		}
 
 		const_iterator cend() const noexcept {
-			return const_iterator{m_sparse_buckets_data.cend(),
-								  m_sparse_buckets_data.cend(),
+			return const_iterator{m_sparse_buckets_data.end(),
+								  m_sparse_buckets_data.end(),
 								  nullptr};
 		}
 
@@ -470,10 +425,7 @@ namespace dice::sparse_map::detail {
 		}
 
 		void clear() noexcept {
-			for (auto &bucket : m_sparse_buckets_data) {
-				bucket.clear(m_alloc);
-			}
-
+			m_sparse_buckets_data.clear_buckets();
 			m_nb_elements = 0;
 			m_nb_deleted_buckets = 0;
 		}
@@ -568,28 +520,28 @@ namespace dice::sparse_map::detail {
 		iterator erase(iterator pos) {
 			assert(pos != end() && m_nb_elements > 0);
 			//vector iterator with fancy pointers have a problem with ->
-			auto it_sparse_array_next = (*pos.m_sparse_buckets_it).erase(m_alloc, pos.m_sparse_array_it);
+			auto next_bucket_it = m_sparse_buckets_data.erase_element(pos.cur_bucket_, pos.bucket_it_);
 			m_nb_elements--;
 			m_nb_deleted_buckets++;
 
-			if (it_sparse_array_next == (*pos.m_sparse_buckets_it).end()) {
-				auto it_sparse_buckets_next = pos.m_sparse_buckets_it;
-				do {
-					++it_sparse_buckets_next;
-				} while (it_sparse_buckets_next != m_sparse_buckets_data.end()
-						 && (*it_sparse_buckets_next).empty());
-
-				if (it_sparse_buckets_next == m_sparse_buckets_data.end()) {
-					return end();
-				} else {
-					return iterator{it_sparse_buckets_next,
-									m_sparse_buckets_data.end(),
-									(*it_sparse_buckets_next).begin()};
-				}
-			} else {
-				return iterator{pos.m_sparse_buckets_it,
+			if (next_bucket_it != (*pos.cur_bucket_).end()) {
+				return iterator{pos.cur_bucket_,
 								m_sparse_buckets_data.end(),
-								it_sparse_array_next};
+								next_bucket_it};
+			}
+
+			auto it_sparse_buckets_next = pos.cur_bucket_;
+			do {
+				++it_sparse_buckets_next;
+			} while (it_sparse_buckets_next != m_sparse_buckets_data.end()
+					 && (*it_sparse_buckets_next).empty());
+
+			if (it_sparse_buckets_next == m_sparse_buckets_data.end()) {
+				return end();
+			} else {
+				return iterator{it_sparse_buckets_next,
+								m_sparse_buckets_data.end(),
+								(*it_sparse_buckets_next).begin()};
 			}
 		}
 
@@ -629,15 +581,6 @@ namespace dice::sparse_map::detail {
 		void swap(sparse_hash &other) {
 			using std::swap;
 
-			if (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
-				swap(m_alloc, other.m_alloc);
-			} else {
-				assert(m_alloc == other.m_alloc);
-			}
-
-			swap(m_h, other.m_h);
-			swap(m_keq, other.m_keq);
-			swap(m_gpol, other.m_gpol);
 			swap(m_sparse_buckets_data, other.m_sparse_buckets_data);
 			swap(m_bucket_count, other.m_bucket_count);
 			swap(m_nb_elements, other.m_nb_elements);
@@ -645,6 +588,9 @@ namespace dice::sparse_map::detail {
 			swap(m_load_threshold_rehash, other.m_load_threshold_rehash);
 			swap(m_load_threshold_clear_deleted, other.m_load_threshold_clear_deleted);
 			swap(m_max_load_factor, other.m_max_load_factor);
+			swap(m_h, other.m_h);
+			swap(m_keq, other.m_keq);
+			swap(m_gpol, other.m_gpol);
 		}
 
 		template<class K> requires (has_mapped_type)
@@ -783,8 +729,8 @@ namespace dice::sparse_map::detail {
 	private:
 		size_type bucket_for_hash(std::size_t hash) const {
 			auto const bucket = m_gpol.bucket_for_hash(hash);
-			assert(sparse_array_type::sparse_ibucket(bucket) < m_sparse_buckets_data.size()
-						  || (bucket == 0 && m_sparse_buckets_data.empty()));
+			assert(sparse_bucket_type::sparse_ibucket(bucket) < m_sparse_buckets_data.size()
+				   || (bucket == 0 && m_sparse_buckets_data.empty()));
 
 			return bucket;
 		}
@@ -809,33 +755,6 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		// TODO encapsulate m_sparse_buckets_data to avoid the managing the allocator
-		void copy_buckets_from(const sparse_hash &other) {
-			m_sparse_buckets_data.reserve(other.m_sparse_buckets_data.size());
-
-			try {
-				for (const auto &bucket : other.m_sparse_buckets_data) {
-					m_sparse_buckets_data.emplace_back(bucket, m_alloc);
-				}
-			} catch (...) {
-				clear();
-				throw;
-			}
-		}
-
-		void move_buckets_from(sparse_hash &&other) {
-			m_sparse_buckets_data.reserve(other.m_sparse_buckets_data.size());
-
-			try {
-				for (auto &&bucket : other.m_sparse_buckets_data) {
-					m_sparse_buckets_data.emplace_back(std::move(bucket), m_alloc);
-				}
-			} catch (...) {
-				clear();
-				throw;
-			}
-		}
-
 		template<class K, class... Args>
 		std::pair<iterator, bool> insert_impl(const K &key,
 											  Args &&...value_type_args) {
@@ -845,7 +764,7 @@ namespace dice::sparse_map::detail {
 					   m_load_threshold_clear_deleted) {
 				clear_deleted_buckets();
 			}
-			assert(!m_sparse_buckets_data.empty());
+			//assert(!m_sparse_buckets_data.empty());
 
 			/**
 			 * We must insert the value in the first empty or deleted bucket we find. If
@@ -857,16 +776,15 @@ namespace dice::sparse_map::detail {
 			 */
 			bool found_first_deleted_bucket = false;
 			std::size_t sparse_ibucket_first_deleted = 0;
-			typename sparse_array_type::size_type index_in_sparse_bucket_first_deleted = 0;
+			typename sparse_bucket_type::size_type index_in_sparse_bucket_first_deleted = 0;
 
 			const std::size_t hash = m_h(key);
 			std::size_t ibucket = bucket_for_hash(hash);
 
 			std::size_t probe = 0;
 			while (true) {
-				std::size_t sparse_ibucket = sparse_array_type::sparse_ibucket(ibucket);
-				auto index_in_sparse_bucket =
-						sparse_array_type::index_in_sparse_bucket(ibucket);
+				std::size_t sparse_ibucket = sparse_bucket_type::sparse_ibucket(ibucket);
+				auto index_in_sparse_bucket = sparse_bucket_type::index_in_sparse_bucket(ibucket);
 
 				if (!m_sparse_buckets_data.empty()) {
 					if (m_sparse_buckets_data[sparse_ibucket].has_value(index_in_sparse_bucket)) {
@@ -906,10 +824,10 @@ namespace dice::sparse_map::detail {
 
 		template<class... Args>
 		std::pair<iterator, bool> insert_in_bucket(std::size_t sparse_ibucket,
-												   typename sparse_array_type::size_type index_in_sparse_bucket,
+												   typename sparse_bucket_type::size_type index_in_sparse_bucket,
 												   Args &&...value_type_args) {
 			// is not called when empty
-			auto value_it = m_sparse_buckets_data[sparse_ibucket].set(m_alloc, index_in_sparse_bucket, std::forward<Args>(value_type_args)...);
+			auto value_it = m_sparse_buckets_data.set_element(sparse_ibucket, index_in_sparse_bucket, std::forward<Args>(value_type_args)...);
 			m_nb_elements++;
 
 			return std::make_pair(iterator{std::next(m_sparse_buckets_data.begin(), sparse_ibucket),
@@ -928,8 +846,8 @@ namespace dice::sparse_map::detail {
 			std::size_t probe = 0;
 
 			while (true) {
-				auto const sparse_ibucket = sparse_array_type::sparse_ibucket(ibucket);
-				auto const index_in_sparse_bucket = sparse_array_type::index_in_sparse_bucket(ibucket);
+				auto const sparse_ibucket = sparse_bucket_type::sparse_ibucket(ibucket);
+				auto const index_in_sparse_bucket = sparse_bucket_type::index_in_sparse_bucket(ibucket);
 
 				auto &bucket = m_sparse_buckets_data[sparse_ibucket];
 
@@ -937,7 +855,7 @@ namespace dice::sparse_map::detail {
 					auto value_it = bucket.value(index_in_sparse_bucket);
 
 					if (m_keq(key, KeyValueSelect::key(*value_it))) {
-						bucket.erase(m_alloc, value_it, index_in_sparse_bucket);
+						bucket.erase(m_sparse_buckets_data.element_allocator(), value_it, index_in_sparse_bucket);
 						m_nb_elements--;
 						m_nb_deleted_buckets++;
 
@@ -962,8 +880,8 @@ namespace dice::sparse_map::detail {
 			std::size_t probe = 0;
 
 			while (true) {
-				auto const sparse_ibucket = sparse_array_type::sparse_ibucket(ibucket);
-				auto const index_in_sparse_bucket = sparse_array_type::index_in_sparse_bucket(ibucket);
+				auto const sparse_ibucket = sparse_bucket_type::sparse_ibucket(ibucket);
+				auto const index_in_sparse_bucket = sparse_bucket_type::index_in_sparse_bucket(ibucket);
 
 				auto &bucket = self.m_sparse_buckets_data[sparse_ibucket];
 
@@ -1002,7 +920,7 @@ namespace dice::sparse_map::detail {
 		}
 
 		void rehash_impl(size_type count) requires (ExceptionSafety == exception_safety::basic) {
-			sparse_hash new_table(count, m_h, m_keq, m_alloc, m_max_load_factor);
+			sparse_hash new_table(count, m_h, m_keq, m_sparse_buckets_data.element_allocator(), m_max_load_factor);
 
 			for (auto &bucket : m_sparse_buckets_data) {
 				for (auto &val : bucket) {
@@ -1010,7 +928,7 @@ namespace dice::sparse_map::detail {
 				}
 
 				// TODO try to reuse some of the memory
-				bucket.clear(m_alloc);
+				bucket.clear(m_sparse_buckets_data.element_allocator());
 			}
 
 			new_table.swap(*this);
@@ -1022,7 +940,7 @@ namespace dice::sparse_map::detail {
 		 * any exception if we reserve enough space in the sparse arrays beforehand.
 		 */
 		void rehash_impl(size_type count) requires (ExceptionSafety == exception_safety::strong) {
-			sparse_hash new_table(count, m_h, m_keq, m_alloc, m_max_load_factor);
+			sparse_hash new_table(count, m_h, m_keq, m_sparse_buckets_data.element_allocator(), m_max_load_factor);
 
 			for (const auto &bucket : m_sparse_buckets_data) {
 				for (const auto &val : bucket) {
@@ -1042,13 +960,13 @@ namespace dice::sparse_map::detail {
 			std::size_t probe = 0;
 
 			while (true) {
-				auto const sparse_ibucket = sparse_array_type::sparse_ibucket(ibucket);
-				auto const index_in_sparse_bucket = sparse_array_type::index_in_sparse_bucket(ibucket);
+				auto const sparse_ibucket = sparse_bucket_type::sparse_ibucket(ibucket);
+				auto const index_in_sparse_bucket = sparse_bucket_type::index_in_sparse_bucket(ibucket);
 
 				auto &bucket = m_sparse_buckets_data[sparse_ibucket];
 
 				if (!bucket.has_value(index_in_sparse_bucket)) {
-					bucket.set(m_alloc, index_in_sparse_bucket, std::forward<K>(key_value));
+					bucket.set(m_sparse_buckets_data.element_allocator(), index_in_sparse_bucket, std::forward<K>(key_value));
 					m_nb_elements++;
 
 					return;
