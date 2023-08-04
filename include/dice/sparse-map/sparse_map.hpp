@@ -85,7 +85,8 @@ namespace dice::sparse_map {
 			 typename Allocator = std::allocator<std::pair<Key, T>>,
 			 growth_policy GrowthPolicy = power_of_two_growth_policy<2>,
 			 exception_safety ExceptionSafety = exception_safety::basic,
-			 sparsity Sparsity = sparsity::medium>
+			 sparsity Sparsity = sparsity::medium,
+			 ratio MaxLoadFactor = std::ratio<1, 2>>
 	class sparse_map {
 		static constexpr bool key_equal_is_transparent = requires {
 			typename KeyEqual::is_transparent;
@@ -123,7 +124,7 @@ namespace dice::sparse_map {
 		};
 
 		using ht = detail::sparse_hash<std::pair<Key, T>, KVSelect, Hash, KeyEqual, Allocator,
-									   GrowthPolicy, ExceptionSafety, Sparsity, probing::quadratic>;
+									   GrowthPolicy, ExceptionSafety, Sparsity, probing::quadratic, MaxLoadFactor>;
 
 	public:
 		using key_type = typename ht::key_type;
@@ -140,14 +141,15 @@ namespace dice::sparse_map {
 		using const_pointer = typename ht::const_pointer;
 		using iterator = typename ht::iterator;
 		using const_iterator = typename ht::const_iterator;
+		static constexpr float max_load_factor = ht::max_load_factor;
 
 	public:
-		sparse_map() : sparse_map(ht::DEFAULT_INIT_BUCKET_COUNT) {}
+		sparse_map() : sparse_map(ht::default_init_bucket_count) {}
 
 		explicit sparse_map(size_type bucket_count, const Hash &hash = Hash(),
 							const KeyEqual &equal = KeyEqual(),
 							const Allocator &alloc = Allocator())
-			: m_ht(bucket_count, hash, equal, alloc, ht::DEFAULT_MAX_LOAD_FACTOR) {}
+			: m_ht(bucket_count, hash, equal, alloc) {}
 
 		sparse_map(size_type bucket_count, const Allocator &alloc)
 			: sparse_map(bucket_count, Hash(), KeyEqual(), alloc) {}
@@ -156,11 +158,11 @@ namespace dice::sparse_map {
 			: sparse_map(bucket_count, hash, KeyEqual(), alloc) {}
 
 		explicit sparse_map(const Allocator &alloc)
-			: sparse_map(ht::DEFAULT_INIT_BUCKET_COUNT, alloc) {}
+			: sparse_map(ht::default_init_bucket_count, alloc) {}
 
 		template<class InputIt>
 		sparse_map(InputIt first, InputIt last,
-				   size_type bucket_count = ht::DEFAULT_INIT_BUCKET_COUNT,
+				   size_type bucket_count = ht::default_init_bucket_count,
 				   const Hash &hash = Hash(), const KeyEqual &equal = KeyEqual(),
 				   const Allocator &alloc = Allocator())
 			: sparse_map(bucket_count, hash, equal, alloc) {
@@ -178,7 +180,7 @@ namespace dice::sparse_map {
 			: sparse_map(first, last, bucket_count, hash, KeyEqual(), alloc) {}
 
 		sparse_map(std::initializer_list<value_type> init,
-				   size_type bucket_count = ht::DEFAULT_INIT_BUCKET_COUNT,
+				   size_type bucket_count = ht::default_init_bucket_count,
 				   const Hash &hash = Hash(), const KeyEqual &equal = KeyEqual(),
 				   const Allocator &alloc = Allocator())
 			: sparse_map(init.begin(), init.end(), bucket_count, hash, equal, alloc) {
@@ -629,8 +631,6 @@ namespace dice::sparse_map {
 		[[nodiscard]] size_type max_bucket_count() const { return m_ht.max_bucket_count(); }
 
 		[[nodiscard]] float load_factor() const { return m_ht.load_factor(); }
-		[[nodiscard]] float max_load_factor() const { return m_ht.max_load_factor(); }
-		void max_load_factor(float ml) { m_ht.max_load_factor(ml); }
 
 		void rehash(size_type count) { m_ht.rehash(count); }
 		void reserve(size_type count) { m_ht.reserve(count); }

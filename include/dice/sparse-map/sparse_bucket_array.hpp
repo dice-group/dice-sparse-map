@@ -260,6 +260,10 @@ namespace dice::sparse_map::detail {
 		element_allocator_type &element_allocator() noexcept {
 			return elem_alloc_;
 		}
+
+		element_allocator_type const &element_allocator() const noexcept {
+			return elem_alloc_;
+		}
 	};
 
 } // namespace dice::sparse_map::detail

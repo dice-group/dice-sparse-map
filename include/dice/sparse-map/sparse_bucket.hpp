@@ -389,12 +389,12 @@ namespace dice::sparse_map::detail {
          * - Either we are in a situation where
          * std::is_nothrow_move_constructible<value_type>::value is true. In this
          * case, on insertion we just reallocate m_values when we reach its capacity
-         * (i.e. m_nb_elements == m_capacity), otherwise we just put the new value at
+         * (i.e. n_elements_ == m_capacity), otherwise we just put the new value at
          * its appropriate place. We can easily keep the strong exception guarantee as
          * moving the values around is safe.
          * - Otherwise we are in a situation where
          * std::is_nothrow_move_constructible<value_type>::value is false. In this
-         * case on EACH insertion we allocate a new area of m_nb_elements + 1 where we
+         * case on EACH insertion we allocate a new area of n_elements_ + 1 where we
          * copy the values of m_values into it and put the new value there. On
          * success, we set m_values to this new area. Even if slower, it's the only
          * way to preserve to strong exception guarantee.

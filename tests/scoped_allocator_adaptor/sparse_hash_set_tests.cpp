@@ -31,15 +31,15 @@ using sparse_set = dice::sparse_map::detail::sparse_hash<
     dice::sparse_map::power_of_two_growth_policy<2>,
     dice::sparse_map::exception_safety::basic,
     dice::sparse_map::sparsity::medium,
-    dice::sparse_map::probing::quadratic>;
+    dice::sparse_map::probing::quadratic,
+	dice::sparse_map::default_max_load_factor>;
 
 } // namespace details
 
 template <typename T> void construction() {
   using Type = typename T::value_type;
-  typename T::Set(T::Set::DEFAULT_INIT_BUCKET_COUNT, details::Hash<typename Type::value_type>(),
-                  std::equal_to<Type>(), typename T::Allocator(),
-                  T::Set::DEFAULT_MAX_LOAD_FACTOR);
+  typename T::Set(T::Set::default_init_bucket_count, details::Hash<typename Type::value_type>(),
+                  std::equal_to<Type>(), typename T::Allocator());
 }
 
 

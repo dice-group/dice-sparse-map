@@ -1008,12 +1008,17 @@ TEST_SUITE("sparse map") {
 			}
 		};
 
-		dice::sparse_map::sparse_map<unsigned int, unsigned int, identity_hash> map;
-		map.max_load_factor(0.8f);
+		dice::sparse_map::sparse_map<unsigned int, unsigned int, identity_hash,
+									 std::equal_to<unsigned int>,
+									 std::allocator<std::pair<unsigned int, unsigned int>>,
+									 dice::sparse_map::power_of_two_growth_policy<2>,
+									 dice::sparse_map::exception_safety::basic,
+									 dice::sparse_map::sparsity::medium,
+									 std::ratio<8, 10>> map;
 		map.rehash(64);
 
 		CHECK_EQ(map.bucket_count(), 64);
-		CHECK_EQ(map.max_load_factor(), 0.8f);
+		CHECK_EQ(map.max_load_factor, 0.8f);
 
 		for (unsigned int i = 0; i < 51; i++) {
 			CHECK(map.insert({i, i}).second);

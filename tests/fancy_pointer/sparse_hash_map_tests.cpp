@@ -53,16 +53,16 @@ namespace details {
             dice::sparse_map::power_of_two_growth_policy<2>,
             dice::sparse_map::exception_safety::basic,
             dice::sparse_map::sparsity::medium,
-            dice::sparse_map::probing::quadratic>;
+            dice::sparse_map::probing::quadratic,
+			dice::sparse_map::default_max_load_factor>;
 
     template<typename T>
     typename T::Map default_construct_map() {
         using Key = typename T::key_type;
-        return typename T::Map(T::Map::DEFAULT_INIT_BUCKET_COUNT,
+        return typename T::Map(T::Map::default_init_bucket_count,
                         std::hash<Key>(),
                         std::equal_to<Key>(),
-                        typename T::Allocator(),
-                        T::Map::DEFAULT_MAX_LOAD_FACTOR);
+                        typename T::Allocator());
     }
 
     /** Checks if all values of the map are in the initializer_list and than if the lengths are equal.

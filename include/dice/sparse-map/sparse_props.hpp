@@ -21,6 +21,14 @@ namespace dice::sparse_map {
 		medium,
 		low
 	};
+
+	template<typename T>
+	concept ratio = requires {
+		{ T::num } -> std::convertible_to<std::intmax_t>;
+		{ T::den } -> std::convertible_to<std::intmax_t>;
+	};
+
+	using default_max_load_factor = std::ratio<1, 2>;
 } // namespace dice::sparse_map
 
 #endif//DICE_SPARSE_MAP_SPARSE_PROPS_HPP

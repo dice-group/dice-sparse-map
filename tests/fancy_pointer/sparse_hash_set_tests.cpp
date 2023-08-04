@@ -28,11 +28,12 @@ namespace details {
             dice::sparse_map::power_of_two_growth_policy<2>,
             dice::sparse_map::exception_safety::basic,
             dice::sparse_map::sparsity::medium,
-            dice::sparse_map::probing::quadratic>;
+            dice::sparse_map::probing::quadratic,
+			dice::sparse_map::default_max_load_factor>;
 
     template<typename Set>
 	Set default_construct_set() {
-        return Set{Set::DEFAULT_INIT_BUCKET_COUNT, {}, {}, {}, Set::DEFAULT_MAX_LOAD_FACTOR};
+        return Set{Set::default_init_bucket_count, {}, {}, {}};
     }
 
     /** checks if all values of the set are in the initializer_list and than if the lengths are equal.
