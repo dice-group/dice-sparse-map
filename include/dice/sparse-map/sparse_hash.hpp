@@ -40,8 +40,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/interprocess/containers/vector.hpp>
-
 #include "dice/sparse-map/sparse_bucket.hpp"
 #include "dice/sparse-map/sparse_growth_policy.hpp"
 #include "dice/sparse-map/sparse_bucket_array.hpp"

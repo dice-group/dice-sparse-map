@@ -17,6 +17,7 @@ macro(make_test DIR NAME)
     target_link_libraries(${TARGET}
             doctest::doctest
             dice-sparse-map::dice-sparse-map
+            Boost::headers
     )
     set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
     add_test(NAME ${TARGET} COMMAND ${TARGET})
@@ -27,6 +28,8 @@ macro(make_test DIR NAME)
         target_compile_options(${TARGET} PRIVATE /bigobj /WX /W3 /DTSL_DEBUG /UNDEBUG)
     endif()
 endmacro ()
+
+find_package(Boost REQUIRED COMPONENTS)
 
 make_test(. custom_allocator_tests)
 make_test(. policy_tests)
