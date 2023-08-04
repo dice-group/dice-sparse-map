@@ -138,8 +138,8 @@ namespace dice::sparse_map::detail {
 	private:
 		static constexpr bool has_mapped_type = !std::is_same_v<mapped_type, void>;
 
-		using sparse_bucket_type = sparse_bucket<value_type, allocator_type, Sparsity>;
 		using sparse_bucket_array_type = sparse_bucket_array<value_type, allocator_type, Sparsity>;
+		using sparse_bucket_type = typename sparse_bucket_array_type::bucket_type;
 
 	private:
 		sparse_bucket_array_type m_sparse_buckets_data;
@@ -172,12 +172,12 @@ namespace dice::sparse_map::detail {
 			friend class sparse_hash;
 
 			using sparse_bucket_array_iterator = std::conditional_t<IsConst,
-																	typename sparse_bucket_array_type::bucket_const_iterator,
-																	typename sparse_bucket_array_type::bucket_iterator>;
+																	typename sparse_bucket_array_type::const_iterator,
+																	typename sparse_bucket_array_type::iterator>;
 
 			using sparse_bucket_iterator = std::conditional_t<IsConst,
-															  typename sparse_bucket_array_type::element_const_iterator,
-															  typename sparse_bucket_array_type::element_iterator>;
+															  typename sparse_bucket_type::const_iterator,
+															  typename sparse_bucket_type::iterator>;
 
 		private:
 			sparse_bucket_array_iterator cur_bucket_;
@@ -303,11 +303,10 @@ namespace dice::sparse_map::detail {
 
 		sparse_hash(const sparse_hash &other) = default;
 
-		sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible<Allocator>::value
-												  && std::is_nothrow_move_constructible<Hash>::value
-												  && std::is_nothrow_move_constructible<KeyEqual>::value
-												  && std::is_nothrow_move_constructible<GrowthPolicy>::value
-												  && std::is_nothrow_move_constructible<sparse_bucket_array_type>::value)
+		sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible_v<sparse_bucket_array_type>
+												  && std::is_nothrow_move_constructible_v<hasher>
+												  && std::is_nothrow_move_constructible_v<key_equal>
+												  && std::is_nothrow_move_constructible_v<GrowthPolicy>)
 			: m_sparse_buckets_data(std::move(other.m_sparse_buckets_data)),
 			  m_bucket_count(other.m_bucket_count),
 			  m_nb_elements(other.m_nb_elements),
@@ -520,11 +519,11 @@ namespace dice::sparse_map::detail {
 		iterator erase(iterator pos) {
 			assert(pos != end() && m_nb_elements > 0);
 			//vector iterator with fancy pointers have a problem with ->
-			auto next_bucket_it = m_sparse_buckets_data.erase_element(pos.cur_bucket_, pos.bucket_it_);
+			auto next_bucket_it = pos.cur_bucket_->erase(m_sparse_buckets_data.element_allocator(), pos.bucket_it_);
 			m_nb_elements--;
 			m_nb_deleted_buckets++;
 
-			if (next_bucket_it != (*pos.cur_bucket_).end()) {
+			if (next_bucket_it != pos.cur_bucket_->end()) {
 				return iterator{pos.cur_bucket_,
 								m_sparse_buckets_data.end(),
 								next_bucket_it};
@@ -541,7 +540,7 @@ namespace dice::sparse_map::detail {
 			} else {
 				return iterator{it_sparse_buckets_next,
 								m_sparse_buckets_data.end(),
-								(*it_sparse_buckets_next).begin()};
+								it_sparse_buckets_next->begin()};
 			}
 		}
 
@@ -827,7 +826,9 @@ namespace dice::sparse_map::detail {
 												   typename sparse_bucket_type::size_type index_in_sparse_bucket,
 												   Args &&...value_type_args) {
 			// is not called when empty
-			auto value_it = m_sparse_buckets_data.set_element(sparse_ibucket, index_in_sparse_bucket, std::forward<Args>(value_type_args)...);
+			auto value_it = m_sparse_buckets_data[sparse_ibucket].set(m_sparse_buckets_data.element_allocator(),
+																	  index_in_sparse_bucket,
+																	  std::forward<Args>(value_type_args)...);
 			m_nb_elements++;
 
 			return std::make_pair(iterator{std::next(m_sparse_buckets_data.begin(), sparse_ibucket),
