@@ -1,9 +1,8 @@
 #ifndef DICE_SPARSE_MAP_SPARSE_PROPS_HPP
 #define DICE_SPARSE_MAP_SPARSE_PROPS_HPP
 
-#include <bit>
-#include <cassert>
 #include <concepts>
+#include <ratio>
 
 namespace dice::sparse_map {
 	enum struct probing : bool {

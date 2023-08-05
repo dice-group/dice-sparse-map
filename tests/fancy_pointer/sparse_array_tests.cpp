@@ -13,12 +13,11 @@ constexpr auto MAX_INDEX = 32; //BITMAP_NB_BITS
 
 namespace details {
     template<typename T>
-    typename T::Array generate_test_array(typename T::Allocator &a) {
-        typename T::Array arr(MAX_INDEX, a);
+    void generate_test_array(typename T::Array &arr, typename T::Allocator &a) {
+        new (&arr) typename T::Array(MAX_INDEX, a);
         for (std::size_t i = 0; i < MAX_INDEX; ++i) {
             arr.set(a, i, static_cast<typename T::Value_Type>(i));
         }
-        return arr;
     }
 
     template<typename T>
@@ -47,7 +46,6 @@ struct CUSTOM {
 	using Value_Type = T;
 };
 
-
 #define TEST_ARRAYS STD<int>, CUSTOM<int>
 
 TEST_SUITE("sparse array with fancy pointers") {
@@ -64,7 +62,8 @@ TEST_SUITE("sparse array with fancy pointers") {
 
 	TEST_CASE_TEMPLATE("set", T, TEST_ARRAYS) {
 		typename T::Allocator a;
-		auto test = details::generate_test_array<T>(a);
+		typename T::Array test;
+		details::generate_test_array<T>(test, a);
 		auto check = details::generate_check_for_test_array<T>();
 		//'set' did not create the correct order of items
 		REQUIRE(std::equal(test.begin(), test.end(), check.begin()));
@@ -73,8 +72,8 @@ TEST_SUITE("sparse array with fancy pointers") {
 
 	TEST_CASE_TEMPLATE("copy ctor", T, TEST_ARRAYS) {
 		typename T::Allocator a;
-		//needs to be its own line, otherwise the move-construction would take place
-		auto test = details::generate_test_array<T>(a);
+		typename T::Array test;
+		details::generate_test_array<T>(test, a);
 		typename T::Array copy(test, a);
 		auto check = details::generate_check_for_test_array<T>();
 		//'copy' changed the order of the items
@@ -83,11 +82,15 @@ TEST_SUITE("sparse array with fancy pointers") {
 		copy.clear(a);
 	}
 
-	TEST_CASE_TEMPLATE("move ctor", T, TEST_ARRAYS) {
+	TEST_CASE_TEMPLATE("move ctor", T, CUSTOM<int>) {
 		typename T::Allocator a;
+		typename T::Array moved_from;
 		//two lines needed. Otherwise move/copy elision
-		auto moved_from = details::generate_test_array<T>(a);
-		typename T::Array moved_to(std::move(moved_from));
+		details::generate_test_array<T>(moved_from, a);
+
+		// calling ctor indended for uses when allocator differs between moved_from and moved_to
+		// so need to clean up moved_from afterwards
+		typename T::Array moved_to(std::move(moved_from), a);
 		auto check = details::generate_check_for_test_array<T>();
 		//'move' changed the order of the items
 		REQUIRE(std::equal(moved_to.begin(), moved_to.end(), check.begin()));
@@ -96,7 +99,8 @@ TEST_SUITE("sparse array with fancy pointers") {
 
 	TEST_CASE_TEMPLATE("const iterator", T, TEST_ARRAYS) {
 		typename T::Allocator a;
-		auto test = details::generate_test_array<T>(a);
+		typename T::Array test;
+		details::generate_test_array<T>(test, a);
 		auto const_iter = test.cbegin();
 		//const iterator has the wrong type
 		REQUIRE((std::is_same<decltype(const_iter), typename T::Const_Iterator>::value));

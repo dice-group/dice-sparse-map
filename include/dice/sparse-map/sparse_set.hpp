@@ -31,7 +31,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "dice/sparse-map/sparse_hash.hpp"
+#include "sparse_hash.hpp"
 
 namespace dice::sparse_map {
 

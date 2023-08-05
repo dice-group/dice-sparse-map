@@ -34,6 +34,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <random>
 
 #include "utils.h"
 
@@ -619,40 +620,35 @@ TEST_SUITE("sparse map") {
  * constructor
  */
 	TEST_CASE("extreme bucket count value construction") {
-		CHECK_THROWS_AS(
+		CHECK_THROWS(
 				(dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
 											  std::allocator<std::pair<int, int>>,
 											  dice::sparse_map::power_of_two_growth_policy<2>>(
-						std::numeric_limits<std::size_t>::max())),
-				std::length_error);
+						std::numeric_limits<std::size_t>::max())));
 
-		CHECK_THROWS_AS(
+		CHECK_THROWS(
 				(dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
 											  std::allocator<std::pair<int, int>>,
 											  dice::sparse_map::power_of_two_growth_policy<2>>(
-						std::numeric_limits<std::size_t>::max() / 2 + 1)),
-				std::length_error);
+						std::numeric_limits<std::size_t>::max() / 2 + 1)));
 
-		CHECK_THROWS_AS(
+		CHECK_THROWS(
 				(dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
 											  std::allocator<std::pair<int, int>>,
 											  dice::sparse_map::prime_growth_policy>(
-						std::numeric_limits<std::size_t>::max())),
-				std::length_error);
+						std::numeric_limits<std::size_t>::max())));
 
-		CHECK_THROWS_AS(
+		CHECK_THROWS(
 				(dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
 											  std::allocator<std::pair<int, int>>,
 											  dice::sparse_map::prime_growth_policy>(
-						std::numeric_limits<std::size_t>::max() / 2)),
-				std::length_error);
+						std::numeric_limits<std::size_t>::max() / 2)));
 
-		CHECK_THROWS_AS(
+		CHECK_THROWS(
 				(dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
 											  std::allocator<std::pair<int, int>>,
 											  dice::sparse_map::mod_growth_policy<>>(
-						std::numeric_limits<std::size_t>::max())),
-				std::length_error);
+						std::numeric_limits<std::size_t>::max())));
 	}
 
 	TEST_CASE("range construct") {
@@ -1245,5 +1241,27 @@ TEST_SUITE("sparse map") {
 		 * erase
 		 */
 		CHECK_EQ(map.erase(3, map.hash_function()(3)), 1);
+	}
+
+	TEST_CASE("insert iterate then remove 100M ints") {
+		dice::sparse_map::sparse_map<int, int> m;
+		std::default_random_engine rng{std::random_device{}()};
+
+		for (size_t ix = 0; ix < 100'000'000; ++ix) {
+			(void) m[static_cast<int>(rng())];
+		}
+
+		std::cout << "map size: " << m.size() << std::endl;
+
+		/*size_t sum = 0;
+		for (auto it = m.begin(); it != m.end(); ++it) {
+			sum += it->second;
+		}
+		std::cout << sum << std::endl;
+		*/
+
+		/*for (auto it = m.begin(); it != m.end(); ) {
+			it = m.erase(it);
+		}*/
 	}
 }

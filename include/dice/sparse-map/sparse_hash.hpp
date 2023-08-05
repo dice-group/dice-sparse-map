@@ -40,9 +40,9 @@
 #include <utility>
 #include <vector>
 
-#include "dice/sparse-map/sparse_bucket.hpp"
-#include "dice/sparse-map/sparse_growth_policy.hpp"
-#include "dice/sparse-map/sparse_bucket_array.hpp"
+#include "sparse_bucket.hpp"
+#include "sparse_growth_policy.hpp"
+#include "sparse_bucket_array.hpp"
 
 namespace dice::sparse_map::detail {
 	template<typename U>
@@ -284,8 +284,10 @@ namespace dice::sparse_map::detail {
 		}
 
 	public:
-		sparse_hash(size_type bucket_count, Hash const &hash, KeyEqual const &equal,
-					allocator_type const &alloc) : buckets_{alloc},
+		sparse_hash(size_type bucket_count,
+					hasher const &hash,
+					key_equal const &equal,
+					allocator_type const &alloc) : buckets_{bucket_count, alloc},
 												   n_elements_{0},
 												   n_deleted_elements_{0},
 												   load_threshold_rehash_{calc_load_threshold_rehash(bucket_count)},
@@ -293,14 +295,6 @@ namespace dice::sparse_map::detail {
 												   h_{hash},
 												   keq_{equal},
 												   gpol_{bucket_count} {
-			if (bucket_count > max_bucket_count()) {
-				throw std::length_error("The map exceeds its maximum size.");
-			}
-
-			if (bucket_count > 0) {
-				buckets_.resize(bucket_count);
-				assert(!buckets_.empty());
-			}
 
 			// Check in the constructor instead of outside of a function to avoid
 			// compilation issues when value_type is not complete.
@@ -791,8 +785,8 @@ namespace dice::sparse_map::detail {
 												   Args &&...value_type_args) {
 			// is not called when empty
 			auto value_it = buckets_[sparse_ibucket].set(buckets_.element_allocator(),
-																	  index_in_sparse_bucket,
-																	  std::forward<Args>(value_type_args)...);
+														 index_in_sparse_bucket,
+														 std::forward<Args>(value_type_args)...);
 			n_elements_++;
 
 			return std::make_pair(iterator{std::next(buckets_.begin(), sparse_ibucket),
@@ -892,10 +886,10 @@ namespace dice::sparse_map::detail {
 					new_table.insert_on_rehash(std::move(val));
 				}
 
-				// TODO try to reuse some of the memory
-				bucket.clear(buckets_.element_allocator());
+				bucket.destroy_deallocate(buckets_.element_allocator());
 			}
 
+			buckets_.forget_deallocate();
 			new_table.swap(*this);
 		}
 

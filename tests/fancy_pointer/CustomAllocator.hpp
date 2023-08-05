@@ -20,6 +20,7 @@ struct OffsetAllocator {
     using void_pointer = offset_ptr<void>;
     using const_void_pointer = offset_ptr<const void>;
     using difference_type = typename offset_ptr<value_type>::difference_type;
+	using is_always_equal = std::false_type; // pretend this isn't just stdalloc
 
     OffsetAllocator() noexcept = default;
     OffsetAllocator(OffsetAllocator const &) noexcept = default;

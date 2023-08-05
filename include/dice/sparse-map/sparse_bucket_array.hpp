@@ -1,8 +1,8 @@
 #ifndef DICE_SPARSE_MAP_SPARSE_BUCKET_ARRAY_HPP
 #define DICE_SPARSE_MAP_SPARSE_BUCKET_ARRAY_HPP
 
-#include "dice/sparse-map/sparse_props.hpp"
-#include "dice/sparse-map/sparse_bucket.hpp"
+#include "sparse_props.hpp"
+#include "sparse_bucket.hpp"
 
 namespace dice::sparse_map::detail {
 
@@ -30,66 +30,86 @@ namespace dice::sparse_map::detail {
 	private:
 		pointer buckets_ = nullptr;
 		size_type size_ = 0;
-		size_type cap_ = 0;
 		[[no_unique_address]] bucket_allocator_type bucket_alloc_;
 		[[no_unique_address]] element_allocator_type elem_alloc_; // this allocator lives here so that the allocator management code doesn't need to be written twice
 
-		[[nodiscard]] static constexpr size_type next_cap(size_type cap) noexcept {
-			return static_cast<size_type>(static_cast<double>(cap) * 1.5);
+		pointer make_new_buckets(size_type new_size) {
+			pointer new_buckets = bucket_alloc_traits::allocate(bucket_alloc_, new_size);
+			assert(new_buckets != nullptr);
+
+			static_assert(std::is_nothrow_default_constructible_v<bucket_type>);
+			for (size_type ix = 0; ix < new_size; ++ix) {
+				new (&new_buckets[ix]) bucket_type{};
+			}
+
+			return new_buckets;
+		}
+
+		void resize_drop_old(size_type new_size) {
+			if (new_size <= size_) {
+				return;
+			}
+
+			pointer new_buckets = make_new_buckets(new_size);
+			clear_deallocate();
+			buckets_ = new_buckets;
+			size_ = new_size;
 		}
 
 		void move_buckets_from(sparse_bucket_array &&other) {
-			assert(size_ == 0);
-			reserve(other.size_);
+			resize_drop_old(other.size_);
 
 			try {
-				for (auto &&bucket : other) {
-					emplace_back(std::move(bucket));
+				for (size_type ix = 0; ix < other.size_; ++ix) {
+					new (&buckets_[ix]) bucket_type{std::move(other.buckets_[ix]), elem_alloc_};
 				}
 			} catch (...) {
-				clear();
+				clear_deallocate();
 				throw;
 			}
 		}
 
 		void copy_buckets_from(sparse_bucket_array const &other) {
-			assert(size_ == 0);
-			reserve(other.size_);
+			resize_drop_old(other.size_);
 
 			try {
-				for (auto const &bucket : other) {
-					emplace_back(bucket);
+				for (size_type ix = 0; ix < other.size_; ++ix) {
+					new (&buckets_[ix]) bucket_type{other.buckets_[ix], elem_alloc_};
 				}
 			} catch (...) {
-				clear();
+				clear_deallocate();
 				throw;
 			}
 		}
 
 		void clear_deallocate() noexcept {
-			clear();
-			bucket_alloc_traits::deallocate(bucket_alloc_, buckets_, cap_);
+			clear_buckets();
+			forget_deallocate();
 			buckets_ = nullptr;
-			cap_ = 0;
+			size_ = 0;
 		}
 
 	public:
-		explicit constexpr sparse_bucket_array(element_allocator_type const &alloc) : buckets_{nullptr},
-																					  size_{0},
-																					  cap_{0},
-																					  bucket_alloc_{alloc},
-																					  elem_alloc_{alloc} {
+		explicit constexpr sparse_bucket_array(size_type size, element_allocator_type const &alloc) : buckets_{nullptr},
+																									  size_{0},
+																									  bucket_alloc_{alloc},
+																									  elem_alloc_{alloc} {
+			if (size == 0) {
+				return;
+			}
+
+			size = bucket_type::nb_sparse_buckets(size);
+			buckets_ = make_new_buckets(size);
+			size_ = size;
 		}
 
 		sparse_bucket_array(sparse_bucket_array const &other) : bucket_alloc_{bucket_alloc_traits::select_on_container_copy_construction(other.bucket_alloc_)},
 																elem_alloc_{element_alloc_traits::select_on_container_copy_construction(other.elem_alloc_)} {
-            reserve(other.size_);
 			copy_buckets_from(other);
 		}
 
 		constexpr sparse_bucket_array(sparse_bucket_array &&other) noexcept : buckets_{std::exchange(other.buckets_, nullptr)},
 																			  size_{std::exchange(other.size_, 0)},
-																			  cap_{other.cap_},
 																			  bucket_alloc_{std::move(other.bucket_alloc_)},
 																			  elem_alloc_{std::move(other.elem_alloc_)} {
 		}
@@ -99,23 +119,25 @@ namespace dice::sparse_map::detail {
 				return *this;
 			}
 
-			// no need to fully realloc, either:
-			// 1. alloc is not propagated
-			// 2. alloc is propagated but is same as this
-			// => need to fully realloc if propagate and not same as this
+			// can potentially reuse our existing buffer:
+			// propagate  + eq  => reuse buffer
+			// propagate  + neq => cannot reuse buffer
+			// npropagate + eq  => reuse buffer
+			// npropagate + neq => cannot reuse buffer
 
-			if constexpr (bucket_alloc_traits::propagate_on_container_copy_assignment::value) {
-				if (bucket_alloc_ != other.bucket_alloc_) {
-					clear_deallocate();
-					bucket_alloc_ = other.bucket_alloc_;
-					elem_alloc_ = other.elem_alloc_;
-
-					copy_buckets_from(other);
-					return *this;
-				}
+			if (bucket_alloc_traits::is_always_equal::value || bucket_alloc_ == other.bucket_alloc_) {
+				// allocator before and after are equal
+				clear_buckets();
+				copy_buckets_from(other);
+				return *this;
 			}
 
-			clear();
+			clear_deallocate();
+			if constexpr (bucket_alloc_traits::propagate_on_container_copy_assignment::value) {
+				bucket_alloc_ = other.bucket_alloc_;
+				elem_alloc_ = other.elem_alloc_;
+			}
+
 			copy_buckets_from(other);
 			return *this;
 		}
@@ -123,88 +145,54 @@ namespace dice::sparse_map::detail {
 		sparse_bucket_array &operator=(sparse_bucket_array &&other) noexcept {
 			assert(this != &other);
 
-			clear_deallocate();
+			// we can always steal the other array's buffer except when we are not supposed to
+			// propagate the allocator and they are not equal
 
-			if constexpr (!bucket_alloc_traits::propagate_on_container_move_assignment::value) {
+			if constexpr (!bucket_alloc_traits::propagate_on_container_move_assignment::value && !bucket_alloc_traits::is_always_equal::value) {
 				if (bucket_alloc_ != other.bucket_alloc_) {
-					bucket_alloc_ = std::move(other.bucket_alloc_);
-					elem_alloc_ = std::move(other.elem_alloc_);
-
 					move_buckets_from(std::move(other));
 					return *this;
 				}
 			}
 
+			clear_deallocate();
 			buckets_ = std::exchange(other.buckets_, nullptr);
 			size_ = std::exchange(other.size_, 0);
-			cap_ = std::exchange(other.cap_, 0);
+			bucket_alloc_ = std::move(other.bucket_alloc_);
+			elem_alloc_ = std::move(other.elem_alloc_);
 
 			return *this;
 		}
 
 		~sparse_bucket_array() noexcept {
-			clear_deallocate();
-		}
-
-		void reserve(size_type capacity) {
-			if (capacity <= cap_) {
-				return;
-			}
-
-			if (capacity > max_size()) [[unlikely]] {
-				throw std::length_error{"maximum possible capacity exceeded"};
-			}
-
-			pointer new_data = bucket_alloc_traits::allocate(bucket_alloc_, capacity);
-			assert(new_data != nullptr);
-
 			for (size_type ix = 0; ix < size_; ++ix) {
-				new (&new_data[ix]) bucket_type{std::move(buckets_[ix])};
+				buckets_[ix].destroy_deallocate(elem_alloc_);
 			}
-
-			static_assert(std::is_trivially_destructible_v<bucket_type>);
-			bucket_alloc_traits::deallocate(bucket_alloc_, buckets_, cap_);
-			buckets_ = new_data;
-			cap_ = capacity;
-		}
-
-		void fill(size_type size) {
-			assert(size <= cap_);
-
-			for (size_type ix = 0; ix < size; ++ix) {
-				new (&buckets_[ix]) bucket_type{};
-			}
-
-			size_ = size;
-		}
-
-		void resize(size_type size) {
-			reserve(size);
-			fill(size);
+			bucket_alloc_traits::deallocate(bucket_alloc_, buckets_, size_);
 		}
 
 		void swap(sparse_bucket_array &other) noexcept {
 			using std::swap;
 
+			static_assert(bucket_alloc_traits::propagate_on_container_swap::value,
+						  "Not swapping allocators is not implemented");
+
 			swap(buckets_, other.buckets_);
 			swap(size_, other.size_);
-			swap(cap_, other.cap_);
+			swap(bucket_alloc_, other.bucket_alloc_);
+			swap(elem_alloc_, other.elem_alloc_);
+		}
 
-			if constexpr (bucket_alloc_traits::propagate_on_container_swap::value) {
-				swap(bucket_alloc_, other.bucket_alloc_);
-				swap(elem_alloc_, other.elem_alloc_);
-			}
+		void forget_deallocate() {
+			bucket_alloc_traits::deallocate(bucket_alloc_, buckets_, size_);
+			buckets_ = nullptr;
+			size_ = 0;
 		}
 
 		void clear_buckets() noexcept {
 			for (size_type ix = 0; ix < size_; ++ix) {
 				buckets_[ix].clear(elem_alloc_);
 			}
-		}
-
-		void clear() noexcept {
-			clear_buckets();
-			size_ = 0;
 		}
 
 		[[nodiscard]] constexpr iterator begin() noexcept { return buckets_; }
@@ -226,35 +214,6 @@ namespace dice::sparse_map::detail {
 		const_reference operator[](size_type const ix) const noexcept {
 			assert(ix < size_);
 			return buckets_[ix];
-		}
-
-		template<typename ...Args>
-		iterator emplace_back(Args &&...args) {
-			if (size_ < cap_) {
-				new (std::to_address(buckets_ + size_)) bucket_type{std::forward<Args>(args)..., elem_alloc_};
-				return buckets_ + size_++;
-			}
-
-			auto const new_cap = next_cap(cap_);
-			pointer new_data = bucket_alloc_traits::allocate(bucket_alloc_, new_cap);
-
-			try {
-				new (&new_data[size_]) bucket_type{std::forward<Args>(args)..., elem_alloc_};
-			} catch (...) {
-				bucket_alloc_traits::deallocate(bucket_alloc_, new_data, new_cap);
-				throw;
-			}
-
-			for (size_type ix = 0; ix < size_; ++ix) {
-				new (&new_data[ix]) bucket_type{std::move(buckets_[ix])};
-			}
-
-			static_assert(std::is_trivially_destructible_v<bucket_type>);
-			bucket_alloc_traits::deallocate(bucket_alloc_, buckets_, cap_);
-
-			buckets_ = new_data;
-			cap_ = new_cap;
-			return buckets_ + size_++;
 		}
 
 		element_allocator_type &element_allocator() noexcept {
