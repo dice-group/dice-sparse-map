@@ -41,8 +41,8 @@
 #include <vector>
 
 #include "sparse_bucket.hpp"
-#include "sparse_growth_policy.hpp"
 #include "sparse_bucket_array.hpp"
+#include "../sparse_growth_policy.hpp"
 
 namespace dice::sparse_map::detail {
 	template<typename U>
@@ -740,8 +740,8 @@ namespace dice::sparse_map::detail {
 
 			std::size_t probe = 0;
 			while (true) {
-				std::size_t sparse_ibucket = sparse_bucket_type::sparse_ibucket(ibucket);
-				auto index_in_sparse_bucket = sparse_bucket_type::index_in_sparse_bucket(ibucket);
+				auto const sparse_ibucket = sparse_bucket_type::sparse_ibucket(ibucket);
+				auto const index_in_sparse_bucket = sparse_bucket_type::index_in_sparse_bucket(ibucket);
 
 				if (!buckets_.empty()) {
 					if (buckets_[sparse_ibucket].has_value(index_in_sparse_bucket)) {

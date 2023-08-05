@@ -1,14 +1,19 @@
 #ifndef DICE_SPARSE_MAP_SPARSE_BUCKET_HPP
 #define DICE_SPARSE_MAP_SPARSE_BUCKET_HPP
 
+#include <algorithm>
+#include <bit>
+#include <cassert>
 #include <cstring>
+#include <limits>
+#include <memory>
 
-#include "sparse_props.hpp"
+#include "../sparse_props.hpp"
 
 namespace dice::sparse_map::detail {
 
 	/**
-     * WARNING: the sparse_array_type class doesn't free the resources allocated through
+     * WARNING: the sparse_bucket class doesn't free the resources allocated through
      * the allocator passed in parameter in each method. You have to manually call
      * `clear(Allocator&)` when you don't need a sparse_array_type object anymore.
      *

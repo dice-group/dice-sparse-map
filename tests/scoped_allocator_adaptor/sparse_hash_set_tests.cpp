@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/sparse_map/sparse_set.hpp>
 #include <scoped_allocator>
 
 namespace details {

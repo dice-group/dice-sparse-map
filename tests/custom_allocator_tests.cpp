@@ -24,7 +24,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/sparse_map/sparse_map.hpp>
 #include <cstdlib>
 #include <functional>
 #include <limits>

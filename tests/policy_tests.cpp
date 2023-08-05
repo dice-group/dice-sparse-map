@@ -24,7 +24,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dice/sparse-map/sparse_growth_policy.hpp>
+#include <dice/sparse_map/sparse_growth_policy.hpp>
 
 #include <limits>
 #include <ratio>

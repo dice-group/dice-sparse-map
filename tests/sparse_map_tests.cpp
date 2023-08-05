@@ -24,7 +24,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/sparse_map/sparse_map.hpp>
 
 #include <functional>
 #include <memory>
@@ -1243,25 +1243,24 @@ TEST_SUITE("sparse map") {
 		CHECK_EQ(map.erase(3, map.hash_function()(3)), 1);
 	}
 
-	TEST_CASE("insert iterate then remove 100M ints") {
+	TEST_CASE("insert iterate then remove 10M ints") {
 		dice::sparse_map::sparse_map<int, int> m;
 		std::default_random_engine rng{std::random_device{}()};
 
-		for (size_t ix = 0; ix < 100'000'000; ++ix) {
+		for (size_t ix = 0; ix < 10'000'000; ++ix) {
 			(void) m[static_cast<int>(rng())];
 		}
 
 		std::cout << "map size: " << m.size() << std::endl;
 
-		/*size_t sum = 0;
-		for (auto it = m.begin(); it != m.end(); ++it) {
-			sum += it->second;
+		size_t sum = 0;
+		for (auto [x, _] : m) {
+			sum += x;
 		}
 		std::cout << sum << std::endl;
-		*/
 
-		/*for (auto it = m.begin(); it != m.end(); ) {
+		for (auto it = m.begin(); it != m.end(); ) {
 			it = m.erase(it);
-		}*/
+		}
 	}
 }

@@ -5,7 +5,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dice/sparse-map/sparse_hash.hpp>
+#include <dice/sparse_map/internal/sparse_hash.hpp>
 #include "CustomAllocator.hpp"
 
 // Globals

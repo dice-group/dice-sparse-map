@@ -5,8 +5,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dice/sparse-map/sparse_set.hpp>
-#include <dice/sparse-map/sparse_hash.hpp>
+#include <dice/sparse_map/sparse_set.hpp>
+#include <dice/sparse_map/internal/sparse_hash.hpp>
 #include "CustomAllocator.hpp"
 
 /* Tests are analogous to the  tests in sparse_array_tests.cpp.

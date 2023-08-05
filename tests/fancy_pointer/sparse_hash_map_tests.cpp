@@ -6,8 +6,8 @@
 #include <doctest/doctest.h>
 
 #include <unordered_map>
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_hash.hpp>
+#include <dice/sparse_map/sparse_map.hpp>
+#include <dice/sparse_map/internal/sparse_hash.hpp>
 #include "CustomAllocator.hpp"
 
 /* Tests are analogous to the  tests in sparse_array_tests.cpp.

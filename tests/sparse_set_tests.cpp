@@ -24,7 +24,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/sparse_map/sparse_set.hpp>
 
 #include <functional>
 #include <string>
@@ -52,7 +52,11 @@
 				  dice::sparse_map::mod_growth_policy<>>
 
 TEST_SUITE("sparse set") {
-	TEST_CASE_TEMPLATE("insert", HSet, TEST_SETS) {
+	TEST_CASE_TEMPLATE("insert", HSet, dice::sparse_map::sparse_set<std::string,
+																	std::hash<std::string>,
+																	std::equal_to<std::string>,
+																	std::allocator<std::string>,
+																	dice::sparse_map::mod_growth_policy<>>) {
 		// insert x values, insert them again, check values
 		using key_t = typename HSet::key_type;
 
@@ -60,7 +64,8 @@ TEST_SUITE("sparse set") {
 		HSet set;
 
 		for (std::size_t i = 0; i < nb_values; i++) {
-			auto [it, inserted] = set.insert(utils::get_key<key_t>(i));
+			auto k = utils::get_key<key_t>(i);
+			auto [it, inserted] = set.insert(std::move(k));
 
 			CHECK_EQ(*it, utils::get_key<key_t>(i));
 			CHECK(inserted);

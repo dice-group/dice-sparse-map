@@ -1,7 +1,7 @@
 #ifndef DICE_SPARSE_MAP_SPARSE_BUCKET_ARRAY_HPP
 #define DICE_SPARSE_MAP_SPARSE_BUCKET_ARRAY_HPP
 
-#include "sparse_props.hpp"
+#include "../sparse_props.hpp"
 #include "sparse_bucket.hpp"
 
 namespace dice::sparse_map::detail {
