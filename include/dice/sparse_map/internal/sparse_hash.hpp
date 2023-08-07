@@ -27,7 +27,6 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
-#include <climits>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -38,13 +37,12 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "sparse_bucket.hpp"
 #include "sparse_bucket_array.hpp"
 #include "../sparse_growth_policy.hpp"
 
-namespace dice::sparse_map::detail {
+namespace dice::sparse_map::internal {
 	template<typename U>
 	struct is_power_of_two_policy : std::false_type {
 	};
@@ -59,7 +57,7 @@ namespace dice::sparse_map::detail {
 	 * `ValueType` is what will be stored by `sparse_hash` (usually `std::pair<Key,
 	 * T>` for map and `Key` for set).
 	 *
-	 * `KeySelect` should be a `FunctionObject` which takes a `ValueType` in
+	 * `k_select` should be a `FunctionObject` which takes a `ValueType` in
 	 * parameter and returns a reference to the key.
 	 *
 	 * `ValueSelect` should be a `FunctionObject` which takes a `ValueType` in
@@ -77,7 +75,7 @@ namespace dice::sparse_map::detail {
 	 * linear `std::vector<bucket>` for [0, bucket_count) where each bucket stores
 	 * one value, we have a `std::vector<sparse_array_type>` (buckets_)
 	 * where each `sparse_array_type` stores multiple values (up to
-	 * `sparse_array_type::BITMAP_NB_BITS`). To convert a one dimensional `ibucket`
+	 * `sparse_array_type::discriminant_bits`). To convert a one dimensional `ibucket`
 	 * position to a position in `std::vector<sparse_array_type>` and a position in
 	 * `sparse_array_type`, use respectively the methods
 	 * `sparse_array_type::sparse_ibucket(ibucket)` and
@@ -93,37 +91,37 @@ namespace dice::sparse_map::detail {
 			 sparsity Sparsity,
 			 probing Probing,
 			 ratio MaxLoadFactor>
-	class sparse_hash {
+	struct sparse_hash {
 	private:
 		template<typename VSel>
-		struct GetMappedType {
+		struct get_mapped_type {
 			using type = void;
 			using const_reference = void;
 			using reference = void;
 		};
 
 		template<typename VSel> requires requires { typename VSel::value_type; }
-		struct GetMappedType<VSel> {
+		struct get_mapped_type<VSel> {
 			using type = typename VSel::value_type;
-			using const_reference = const type &;
+			using const_reference = type const &;
 			using reference = type &;
 		};
 
 	public:
 		template<bool IsConst>
-		class sparse_iterator;
+		struct sparse_iterator;
 
 		using key_type = typename KeyValueSelect::key_type;
-		using mapped_type = typename GetMappedType<KeyValueSelect>::type;
-		using mapped_const_reference = typename GetMappedType<KeyValueSelect>::const_reference;
-		using mapped_reference = typename GetMappedType<KeyValueSelect>::reference;
+		using mapped_type = typename get_mapped_type<KeyValueSelect>::type;
+		using mapped_const_reference = typename get_mapped_type<KeyValueSelect>::const_reference;
+		using mapped_reference = typename get_mapped_type<KeyValueSelect>::reference;
 		using value_type = ValueType;
 		using hasher = Hash;
 		using key_equal = KeyEqual;
 		using allocator_type = Allocator;
 		using growth_policy = GrowthPolicy;
 		using reference = value_type &;
-		using const_reference = const value_type &;
+		using const_reference = value_type const &;
 		using size_type = typename std::allocator_traits<allocator_type>::size_type;
 		using pointer = typename std::allocator_traits<allocator_type>::pointer;
 		using const_pointer = typename std::allocator_traits<allocator_type>::const_pointer;
@@ -156,6 +154,10 @@ namespace dice::sparse_map::detail {
 		using sparse_bucket_type = typename sparse_bucket_array_type::bucket_type;
 
 	private:
+		[[no_unique_address]] hasher h_;
+		[[no_unique_address]] key_equal keq_;
+		[[no_unique_address]] growth_policy gpol_;
+
 		sparse_bucket_array_type buckets_;
 		size_type bucket_count_;
 
@@ -163,26 +165,22 @@ namespace dice::sparse_map::detail {
 		size_type n_deleted_elements_;
 
 		/**
-		 * Maximum that n_elements_ can reach before a rehash occurs automatically
+		 * Maximum that size_ can reach before a rehash occurs automatically
 		 * to grow the hash table.
 		 */
 		size_type load_threshold_rehash_;
 
 		/**
-		 * Maximum that n_elements_ + n_deleted_elements_ can reach before cleaning
+		 * Maximum that size_ + n_deleted_elements_ can reach before cleaning
 		 * up the buckets marked as deleted.
 		 */
 		size_type load_threshold_clear_deleted_;
 
-		[[no_unique_address]] hasher h_;
-		[[no_unique_address]] key_equal keq_;
-		[[no_unique_address]] growth_policy gpol_;
-
 	public:
 		template<bool IsConst>
-		class sparse_iterator {
+		struct sparse_iterator {
 		private:
-			friend class sparse_hash;
+			friend sparse_hash;
 
 			using sparse_bucket_array_iterator = std::conditional_t<IsConst,
 																	typename sparse_bucket_array_type::const_iterator,
@@ -288,15 +286,15 @@ namespace dice::sparse_map::detail {
 		sparse_hash(size_type bucket_count,
 					hasher const &hash,
 					key_equal const &equal,
-					allocator_type const &alloc) : buckets_{bucket_count, alloc},
+					allocator_type const &alloc) : h_{hash},
+												   keq_{equal},
+												   gpol_{bucket_count},
+												   buckets_{bucket_count, alloc},
 												   bucket_count_{bucket_count},
 												   n_elements_{0},
 												   n_deleted_elements_{0},
 												   load_threshold_rehash_{calc_load_threshold_rehash(bucket_count)},
-												   load_threshold_clear_deleted_{calc_load_threshold_clear_deleted(bucket_count)},
-												   h_{hash},
-												   keq_{equal},
-												   gpol_{bucket_count} {
+												   load_threshold_clear_deleted_{calc_load_threshold_clear_deleted(bucket_count)} {
 
 			// Check in the constructor instead of outside of a function to avoid
 			// compilation issues when value_type is not complete.
@@ -312,21 +310,26 @@ namespace dice::sparse_map::detail {
 		sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible_v<sparse_bucket_array_type>
 												  && std::is_nothrow_move_constructible_v<hasher>
 												  && std::is_nothrow_move_constructible_v<key_equal>
-												  && std::is_nothrow_move_constructible_v<GrowthPolicy>)
-			: buckets_{std::move(other.buckets_)},
+												  && std::is_nothrow_move_constructible_v<growth_policy>)
+			: h_{std::move(other.h_)},
+			  keq_{std::move(other.keq_)},
+			  gpol_{std::move(other.gpol_)},
+			  buckets_{std::move(other.buckets_)},
 			  bucket_count_{std::exchange(other.bucket_count_, 0)},
 			  n_elements_{std::exchange(other.n_elements_, 0)},
 			  n_deleted_elements_{std::exchange(other.n_deleted_elements_, 0)},
 			  load_threshold_rehash_{std::exchange(other.load_threshold_rehash_, 0)},
-			  load_threshold_clear_deleted_{std::exchange(other.load_threshold_clear_deleted_, 0)},
-			  h_{std::move(other.h_)},
-			  keq_{std::move(other.keq_)},
-			  gpol_{std::move(other.gpol_)} {
+			  load_threshold_clear_deleted_{std::exchange(other.load_threshold_clear_deleted_, 0)} {
 			other.gpol_.clear();
 		}
 
 		sparse_hash &operator=(sparse_hash &&other) noexcept {
 			assert(this != &other);
+
+			h_ = std::move(other.h_);
+			keq_ = std::move(other.keq_);
+			gpol_ = std::move(other.gpol_);
+			other.gpol_.clear();
 
 			buckets_ = std::move(other.buckets_);
 			bucket_count_ = std::exchange(other.bucket_count_, 0);
@@ -334,11 +337,6 @@ namespace dice::sparse_map::detail {
 			n_deleted_elements_ = std::exchange(other.n_deleted_elements_, 0);
 			load_threshold_rehash_ = std::exchange(other.load_threshold_rehash_, 0);
 			load_threshold_clear_deleted_ = std::exchange(other.load_threshold_clear_deleted_, 0);
-
-			h_ = std::move(other.h_);
-			keq_ = std::move(other.keq_);
-			gpol_ = std::move(other.gpol_);
-			other.gpol_.clear();
 
 			return *this;
 		}
@@ -349,56 +347,53 @@ namespace dice::sparse_map::detail {
 			return buckets_.element_allocator();
 		}
 
-		iterator begin() noexcept {
+		[[nodiscard]] iterator begin() noexcept {
 			auto begin = buckets_.begin();
-			//vector iterator with fancy pointers have a problem with ->
-			while (begin != buckets_.end() && (*begin).empty()) {
+			while (begin != buckets_.end() && begin->empty()) {
 				++begin;
 			}
 
-			//vector iterator with fancy pointers have a problem with ->
 			return iterator{begin,
 							buckets_.end(),
-							begin != buckets_.end() ? (*begin).begin() : nullptr};
+							begin != buckets_.end() ? begin->begin() : nullptr};
 		}
 
-		const_iterator begin() const noexcept {
+		[[nodiscard]] const_iterator begin() const noexcept {
 			return cbegin();
 		}
 
-		const_iterator cbegin() const noexcept {
+		[[nodiscard]] const_iterator cbegin() const noexcept {
 			auto begin = buckets_.begin();
-			//vector iterator with fancy pointers have a problem with ->
-			while (begin != buckets_.end() && (*begin).empty()) {
+			while (begin != buckets_.end() && begin->empty()) {
 				++begin;
 			}
 
 			return const_iterator{begin,
 								  buckets_.end(),
-								  begin != buckets_.end() ? (*begin).begin() : nullptr};
+								  begin != buckets_.end() ? begin->begin() : nullptr};
 		}
 
-		iterator end() noexcept {
+		[[nodiscard]] iterator end() noexcept {
 			return iterator{buckets_.end(),
 							buckets_.end(),
 							nullptr};
 		}
 
-		const_iterator end() const noexcept {
+		[[nodiscard]] const_iterator end() const noexcept {
 			return cend();
 		}
 
-		const_iterator cend() const noexcept {
+		[[nodiscard]] const_iterator cend() const noexcept {
 			return const_iterator{buckets_.end(),
 								  buckets_.end(),
 								  nullptr};
 		}
 
-		bool empty() const noexcept { return n_elements_ == 0; }
+		[[nodiscard]] bool empty() const noexcept { return n_elements_ == 0; }
 
-		size_type size() const noexcept { return n_elements_; }
+		[[nodiscard]] size_type size() const noexcept { return n_elements_; }
 
-		size_type max_size() const noexcept {
+		[[nodiscard]] size_type max_size() const noexcept {
 			return std::min(std::allocator_traits<Allocator>::max_size(),
 							buckets_.max_size());
 		}
@@ -423,7 +418,7 @@ namespace dice::sparse_map::detail {
 			return insert(std::forward<P>(value)).first;
 		}
 
-		template<class InputIt>
+		template<typename InputIt>
 		void insert(InputIt first, InputIt last) {
 			if (std::is_base_of<
 						std::forward_iterator_tag,
@@ -443,7 +438,7 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		template<class K, class M>
+		template<typename K, typename M>
 		std::pair<iterator, bool> insert_or_assign(K &&key, M &&obj) {
 			auto it = try_emplace(std::forward<K>(key), std::forward<M>(obj));
 			if (!it.second) {
@@ -453,7 +448,7 @@ namespace dice::sparse_map::detail {
 			return it;
 		}
 
-		template<class K, class M>
+		template<typename K, typename M>
 		iterator insert_or_assign(const_iterator hint, K &&key, M &&obj) {
 			if (hint != cend() && keq_(KeyValueSelect::key(*hint), key)) {
 				auto it = mutable_iterator(hint);
@@ -465,24 +460,24 @@ namespace dice::sparse_map::detail {
 			return insert_or_assign(std::forward<K>(key), std::forward<M>(obj)).first;
 		}
 
-		template<class... Args>
+		template<typename ...Args>
 		std::pair<iterator, bool> emplace(Args &&...args) {
 			return insert(value_type(std::forward<Args>(args)...));
 		}
 
-		template<class... Args>
+		template<typename ...Args>
 		iterator emplace_hint(const_iterator hint, Args &&...args) {
 			return insert_hint(hint, value_type(std::forward<Args>(args)...));
 		}
 
-		template<class K, class... Args>
+		template<typename K, typename ...Args>
 		std::pair<iterator, bool> try_emplace(K &&key, Args &&...args) {
 			return insert_impl(key, std::piecewise_construct,
 							   std::forward_as_tuple(std::forward<K>(key)),
 							   std::forward_as_tuple(std::forward<Args>(args)...));
 		}
 
-		template<class K, class... Args>
+		template<typename K, typename ...Args>
 		iterator try_emplace_hint(const_iterator hint, K &&key, Args &&...args) {
 			if (hint != cend() && keq_(KeyValueSelect::key(*hint), key)) {
 				return mutable_iterator(hint);
@@ -546,17 +541,17 @@ namespace dice::sparse_map::detail {
 			return to_delete;
 		}
 
-		template<class K>
-		size_type erase(const K &key) {
+		template<typename K>
+		size_type erase(K const &key) {
 			return erase(key, h_(key));
 		}
 
-		template<class K>
-		size_type erase(const K &key, std::size_t hash) {
+		template<typename K>
+		size_type erase(K const &key, std::size_t hash) {
 			return erase_impl(key, hash);
 		}
 
-		void swap(sparse_hash &other) {
+		void swap(sparse_hash &other) noexcept {
 			using std::swap;
 
 			swap(buckets_, other.buckets_);
@@ -570,110 +565,107 @@ namespace dice::sparse_map::detail {
 			swap(gpol_, other.gpol_);
 		}
 
-		template<class K> requires (has_mapped_type)
-		mapped_reference at(const K &key) {
+		template<typename K> requires (has_mapped_type)
+		mapped_reference at(K const &key) {
 			return at_impl(*this, key, h_(key));
 		}
 
-		template<class K> requires (has_mapped_type)
-		mapped_reference at(const K &key, std::size_t hash) {
+		template<typename K> requires (has_mapped_type)
+		mapped_reference at(K const &key, std::size_t hash) {
 			return at_impl(*this, key, hash);
 		}
 
-		template<class K> requires (has_mapped_type)
-		mapped_const_reference at(const K &key) const {
+		template<typename K> requires (has_mapped_type)
+		mapped_const_reference at(K const &key) const {
 			return at_impl(*this, key, h_(key));
 		}
 
-		template<class K> requires (has_mapped_type)
-		mapped_const_reference at(const K &key, std::size_t hash) const {
+		template<typename K> requires (has_mapped_type)
+		mapped_const_reference at(K const &key, std::size_t hash) const {
 			return at_impl(*this, key, hash);
 		}
 
-		template<class K> requires (has_mapped_type)
+		template<typename K> requires (has_mapped_type)
 		mapped_reference operator[](K &&key) {
 			return try_emplace(std::forward<K>(key)).first->second;
 		}
 
-		template<class K>
-		bool contains(const K &key) const {
-			return contains(key, h_(key));
+		template<typename K>
+		[[nodiscard]] bool contains(K const &key) const noexcept {
+			return find(key, h_(key)) != cend();
 		}
 
-		template<class K>
-		bool contains(const K &key, std::size_t hash) const {
-			return count(key, hash) != 0;
+		template<typename K>
+		[[nodiscard]] bool contains(K const &key, std::size_t hash) const noexcept {
+			return find(key, hash) != cend();
 		}
 
-		template<class K>
-		size_type count(const K &key) const {
+		template<typename K>
+		[[nodiscard]] size_type count(K const &key) const noexcept {
 			return count(key, h_(key));
 		}
 
-		template<class K>
-		size_type count(const K &key, std::size_t hash) const {
-			if (find(key, hash) != cend()) {
-				return 1;
-			} else {
-				return 0;
-			}
+		template<typename K>
+		[[nodiscard]] size_type count(K const &key, std::size_t hash) const noexcept {
+			return static_cast<size_type>(find(key, hash) != cend());
 		}
 
-		template<class K>
-		iterator find(const K &key) {
+		template<typename K>
+		[[nodiscard]] iterator find(K const &key) noexcept {
 			return find_impl(*this, key, h_(key));
 		}
 
-		template<class K>
-		iterator find(const K &key, std::size_t hash) {
+		template<typename K>
+		[[nodiscard]] iterator find(K const &key, std::size_t hash) noexcept {
 			return find_impl(*this, key, hash);
 		}
 
-		template<class K>
-		const_iterator find(const K &key) const {
+		template<typename K>
+		[[nodiscard]] const_iterator find(K const &key) const noexcept {
 			return find_impl(*this, key, h_(key));
 		}
 
-		template<class K>
-		const_iterator find(const K &key, std::size_t hash) const {
+		template<typename K>
+		[[nodiscard]] const_iterator find(K const &key, std::size_t hash) const noexcept {
 			return find_impl(*this, key, hash);
 		}
 
-		template<class K>
-		std::pair<iterator, iterator> equal_range(const K &key) {
+		template<typename K>
+		std::pair<iterator, iterator> equal_range(K const &key) noexcept {
 			return equal_range(key, h_(key));
 		}
 
-		template<class K>
-		std::pair<iterator, iterator> equal_range(const K &key, std::size_t hash) {
+		template<typename K>
+		std::pair<iterator, iterator> equal_range(K const &key, std::size_t hash) noexcept {
 			iterator it = find(key, hash);
-			return std::make_pair(it, (it == end()) ? it : std::next(it));
+			return std::make_pair(it, it == end() ? it : std::next(it));
 		}
 
-		template<class K>
-		std::pair<const_iterator, const_iterator> equal_range(const K &key) const {
+		template<typename K>
+		std::pair<const_iterator, const_iterator> equal_range(K const &key) const noexcept {
 			return equal_range(key, h_(key));
 		}
 
-		template<class K>
-		std::pair<const_iterator, const_iterator> equal_range(
-				const K &key, std::size_t hash) const {
+		template<typename K>
+		std::pair<const_iterator, const_iterator> equal_range(K const &key, std::size_t hash) const noexcept {
 			const_iterator it = find(key, hash);
 			return std::make_pair(it, (it == cend()) ? it : std::next(it));
 		}
 
-		size_type bucket_count() const { return bucket_count_; }
+		[[nodiscard]] size_type bucket_count() const noexcept {
+			return bucket_count_;
+		}
 
-		size_type max_bucket_count() const {
+		[[nodiscard]] size_type max_bucket_count() const noexcept {
 			return buckets_.max_size();
 		}
 
-		float load_factor() const {
-			if (bucket_count() == 0) {
+		[[nodiscard]] float load_factor() const noexcept {
+			if (bucket_count_ == 0) {
 				return 0;
 			}
 
-			return float(n_elements_) / float(bucket_count());
+			return static_cast<float>(n_elements_) / static_cast<float>(bucket_count_);
 		}
 
 		void rehash(size_type count) {
@@ -689,7 +681,7 @@ namespace dice::sparse_map::detail {
 		[[nodiscard]] key_equal key_eq() const { return keq_; }
 
 	private:
-		size_type bucket_for_hash(std::size_t hash) const {
+		[[nodiscard]] size_type bucket_for_hash(std::size_t hash) const noexcept {
 			auto const bucket = gpol_.bucket_for_hash(hash);
 			assert(sparse_bucket_type::sparse_ibucket(bucket) < buckets_.size()
 				   || (bucket == 0 && buckets_.empty()));
@@ -697,7 +689,7 @@ namespace dice::sparse_map::detail {
 			return bucket;
 		}
 
-		size_type next_bucket(size_type ibucket, [[maybe_unused]] size_type iprobe) const requires (is_power_of_two_policy<growth_policy>::value) {
+		[[nodiscard]] size_type next_bucket(size_type ibucket, [[maybe_unused]] size_type iprobe) const noexcept requires (is_power_of_two_policy<growth_policy>::value) {
 			if constexpr (Probing == probing::linear) {
 				return (ibucket + 1) & gpol_.mask();
 			} else {
@@ -706,7 +698,7 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		size_type next_bucket(size_type ibucket, [[maybe_unused]] size_type iprobe) const requires (!is_power_of_two_policy<growth_policy>::value) {
+		[[nodiscard]] size_type next_bucket(size_type ibucket, [[maybe_unused]] size_type iprobe) const noexcept requires (!is_power_of_two_policy<growth_policy>::value) {
 			if constexpr (Probing == probing::linear) {
 				ibucket++;
 				return ibucket != bucket_count_ ? ibucket : 0;
@@ -717,8 +709,8 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		template<class K, class... Args>
-		std::pair<iterator, bool> insert_impl(const K &key,
+		template<typename K, typename ...Args>
+		std::pair<iterator, bool> insert_impl(K const &key,
 											  Args &&...value_type_args) {
 			if (size() >= load_threshold_rehash_) {
 				rehash_impl(gpol_.next_bucket_count());
@@ -783,7 +775,7 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		template<class... Args>
+		template<typename ...Args>
 		std::pair<iterator, bool> insert_in_bucket(std::size_t sparse_ibucket,
 												   typename sparse_bucket_type::size_type index_in_sparse_bucket,
 												   Args &&...value_type_args) {
@@ -799,7 +791,7 @@ namespace dice::sparse_map::detail {
 					true);
 		}
 
-		template<class K>
+		template<typename K>
 		size_type erase_impl(K const &key, std::size_t hash) {
 			if (buckets_.empty()) {
 				return 0;
@@ -833,8 +825,8 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		template<typename Self, class K>
-		static auto find_impl(Self &&self, K const &key, std::size_t hash) {
+		template<typename Self, typename K>
+		[[nodiscard]] static auto find_impl(Self &&self, K const &key, std::size_t hash) noexcept {
 			if (self.buckets_.empty()) {
 				return self.end();
 			}
@@ -905,8 +897,8 @@ namespace dice::sparse_map::detail {
 		void rehash_impl(size_type count) requires (ExceptionSafety == exception_safety::strong) {
 			sparse_hash new_table(count, h_, keq_, buckets_.element_allocator());
 
-			for (const auto &bucket : buckets_) {
-				for (const auto &val : bucket) {
+			for (auto const &bucket : buckets_) {
+				for (auto const &val : bucket) {
 					new_table.insert_on_rehash(val);
 				}
 			}
@@ -916,7 +908,7 @@ namespace dice::sparse_map::detail {
 
 		template<typename K>
 		void insert_on_rehash(K &&key_value) {
-			const key_type &key = KeyValueSelect::key(key_value);
+			key_type const &key = KeyValueSelect::key(key_value);
 
 			std::size_t const hash = h_(key);
 			std::size_t ibucket = bucket_for_hash(hash);
@@ -942,6 +934,7 @@ namespace dice::sparse_map::detail {
 			}
 		}
 	};
-}// namespace dice::sparse_map
 
-#endif
+} // namespace dice::sparse_map::internal
+
+#endif//DICE_SPARSE_MAP_SPARSE_HASH_HPP

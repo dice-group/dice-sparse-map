@@ -4,7 +4,7 @@
 #include "../sparse_props.hpp"
 #include "sparse_bucket.hpp"
 
-namespace dice::sparse_map::detail {
+namespace dice::sparse_map::internal {
 
 	template<typename T, typename Allocator, sparsity Sparsity>
 	struct sparse_bucket_array {
@@ -210,25 +210,25 @@ namespace dice::sparse_map::detail {
 		[[nodiscard]] constexpr size_type size() const noexcept { return size_; }
 		[[nodiscard]] constexpr size_type max_size() const noexcept { return bucket_alloc_traits::max_size(bucket_alloc_); };
 
-		reference operator[](size_type const ix) noexcept {
+		[[nodiscard]] reference operator[](size_type const ix) noexcept {
 			assert(ix < size_);
 			return buckets_[ix];
 		}
 
-		const_reference operator[](size_type const ix) const noexcept {
+		[[nodiscard]] const_reference operator[](size_type const ix) const noexcept {
 			assert(ix < size_);
 			return buckets_[ix];
 		}
 
-		element_allocator_type &element_allocator() noexcept {
+		[[nodiscard]] element_allocator_type &element_allocator() noexcept {
 			return elem_alloc_;
 		}
 
-		element_allocator_type const &element_allocator() const noexcept {
+		[[nodiscard]] element_allocator_type const &element_allocator() const noexcept {
 			return elem_alloc_;
 		}
 	};
 
-} // namespace dice::sparse_map::detail
+} // namespace dice::sparse_map::internal
 
 #endif//DICE_SPARSE_MAP_SPARSE_BUCKET_ARRAY_HPP

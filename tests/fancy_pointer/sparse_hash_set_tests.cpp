@@ -23,7 +23,7 @@ namespace details {
     };
 
     template<typename T, typename Alloc>
-    using sparse_set = dice::sparse_map::detail::sparse_hash<
+    using sparse_set = dice::sparse_map::internal::sparse_hash<
             T, KeySelect<T>, std::hash<T>, std::equal_to<T>, Alloc,
             dice::sparse_map::power_of_two_growth_policy<2>,
             dice::sparse_map::exception_safety::basic,

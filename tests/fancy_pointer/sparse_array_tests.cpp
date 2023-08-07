@@ -9,7 +9,7 @@
 #include "CustomAllocator.hpp"
 
 // Globals
-constexpr auto MAX_INDEX = 32; //BITMAP_NB_BITS
+constexpr auto MAX_INDEX = 32; //discriminant_bits
 
 namespace details {
     template<typename T>
@@ -33,7 +33,7 @@ namespace details {
 template <typename T, dice::sparse_map::sparsity Sparsity = dice::sparse_map::sparsity::medium>
 struct STD {
     using Allocator = std::allocator<T>;
-    using Array = dice::sparse_map::detail::sparse_bucket<T, std::allocator<T>, Sparsity>;
+    using Array = dice::sparse_map::internal::sparse_bucket<T, std::allocator<T>, Sparsity>;
     using Const_Iterator = T const*;
 	using Value_Type = T;
 };
@@ -41,7 +41,7 @@ struct STD {
 template<typename T, dice::sparse_map::sparsity Sparsity = dice::sparse_map::sparsity::medium>
 struct CUSTOM {
     using Allocator = OffsetAllocator<T>;
-    using Array = dice::sparse_map::detail::sparse_bucket<T, OffsetAllocator<T>, Sparsity>;
+    using Array = dice::sparse_map::internal::sparse_bucket<T, OffsetAllocator<T>, Sparsity>;
     using Const_Iterator = boost::interprocess::offset_ptr<const T>;
 	using Value_Type = T;
 };

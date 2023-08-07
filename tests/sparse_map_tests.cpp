@@ -153,13 +153,13 @@ TEST_SUITE("sparse map") {
 		dice::sparse_map::sparse_map<int, int> map{{1, 0}, {2, 1}, {3, 2}};
 
 		// Wrong hint
-		CHECK(map.insert(map.find(2), std::make_pair(3, 4)) == map.find(3));
+		CHECK_EQ(map.insert(map.find(2), std::make_pair(3, 4)), map.find(3));
 
 		// Good hint
-		CHECK(map.insert(map.find(2), std::make_pair(2, 4)) == map.find(2));
+		CHECK_EQ(map.insert(map.find(2), std::make_pair(2, 4)), map.find(2));
 
 		// end() hint
-		CHECK(map.insert(map.find(10), std::make_pair(2, 4)) == map.find(2));
+		CHECK_EQ(map.insert(map.find(10), std::make_pair(2, 4)), map.find(2));
 
 		CHECK_EQ(map.size(), 3);
 
@@ -179,35 +179,34 @@ TEST_SUITE("sparse map") {
 		dice::sparse_map::sparse_map<int, int> map{{1, 0}, {2, 1}, {3, 2}};
 
 		// Wrong hint
-		CHECK(map.emplace_hint(map.find(2), std::piecewise_construct,
-							   std::forward_as_tuple(3),
-							   std::forward_as_tuple(4)) == map.find(3));
+		CHECK_EQ(map.emplace_hint(map.find(2), std::piecewise_construct,
+								  std::forward_as_tuple(3),
+								  std::forward_as_tuple(4)),
+				 map.find(3));
 
 		// Good hint
-		CHECK(map.emplace_hint(map.find(2), std::piecewise_construct,
-							   std::forward_as_tuple(2),
-							   std::forward_as_tuple(4)) == map.find(2));
+		CHECK_EQ(map.emplace_hint(map.find(2), std::piecewise_construct,
+								  std::forward_as_tuple(2),
+								  std::forward_as_tuple(4)),
+				 map.find(2));
 
 		// end() hint
-		CHECK(map.emplace_hint(map.find(10), std::piecewise_construct,
-							   std::forward_as_tuple(2),
-							   std::forward_as_tuple(4)) == map.find(2));
+		CHECK_EQ(map.emplace_hint(map.find(10), std::piecewise_construct,
+								  std::forward_as_tuple(2),
+								  std::forward_as_tuple(4)),
+				 map.find(2));
 
 		CHECK_EQ(map.size(), 3);
 
 		// end() hint, new value
-		CHECK_EQ(
-				map.emplace_hint(map.find(10), std::piecewise_construct,
-								 std::forward_as_tuple(4), std::forward_as_tuple(3))
-						->first,
-				4);
+		CHECK_EQ(map.emplace_hint(map.find(10), std::piecewise_construct,
+								 std::forward_as_tuple(4), std::forward_as_tuple(3))->first,
+				 4);
 
 		// Wrong hint, new value
-		CHECK_EQ(
-				map.emplace_hint(map.find(2), std::piecewise_construct,
-								 std::forward_as_tuple(5), std::forward_as_tuple(4))
-						->first,
-				5);
+		CHECK_EQ(map.emplace_hint(map.find(2), std::piecewise_construct,
+								  std::forward_as_tuple(5), std::forward_as_tuple(4))->first,
+				 5);
 
 		CHECK_EQ(map.size(), 5);
 	}
@@ -215,16 +214,16 @@ TEST_SUITE("sparse map") {
 	TEST_CASE("emplace") {
 		dice::sparse_map::sparse_map<std::int64_t, move_only_test> map;
 
-		auto [it, inserted] =
-				map.emplace(std::piecewise_construct, std::forward_as_tuple(10),
-							std::forward_as_tuple(1));
+		auto [it, inserted] = map.emplace(std::piecewise_construct,
+										  std::forward_as_tuple(10),
+										  std::forward_as_tuple(1));
 		CHECK_EQ(it->first, 10);
 		CHECK_EQ(it->second, move_only_test(1));
 		CHECK(inserted);
 
-		std::tie(it, inserted) =
-				map.emplace(std::piecewise_construct, std::forward_as_tuple(10),
-							std::forward_as_tuple(3));
+		std::tie(it, inserted) = map.emplace(std::piecewise_construct,
+											 std::forward_as_tuple(10),
+											 std::forward_as_tuple(3));
 		CHECK_EQ(it->first, 10);
 		CHECK_EQ(it->second, move_only_test(1));
 		CHECK(!inserted);

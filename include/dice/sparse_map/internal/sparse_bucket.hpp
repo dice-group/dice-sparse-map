@@ -10,7 +10,7 @@
 
 #include "../sparse_props.hpp"
 
-namespace dice::sparse_map::detail {
+namespace dice::sparse_map::internal {
 
 	/**
      * WARNING: the sparse_bucket class doesn't free the resources allocated through
@@ -23,13 +23,13 @@ namespace dice::sparse_map::detail {
      *
      *
      *
-     * Index denotes a value between [0, BITMAP_NB_BITS), it is an index similar to
-     * std::vector. Offset denotes the real position in `m_values` corresponding to
+     * Index denotes a value between [0, discriminant_bits), it is an index similar to
+     * std::vector. Offset denotes the real position in `values_` corresponding to
      * an index.
      *
      * We are using raw pointers instead of std::vector to avoid loosing
      * 2*sizeof(size_t) bytes to store the capacity and size of the vector in each
-     * sparse_array_type. We know we can only store up to BITMAP_NB_BITS elements in the
+     * sparse_array_type. We know we can only store up to discriminant_bits elements in the
      * array, we don't need such big types.
      *
      *
@@ -53,7 +53,7 @@ namespace dice::sparse_map::detail {
 		using iterator = pointer;
 		using const_iterator = const_pointer;
 
-		static constexpr size_type CAPACITY_GROWTH_STEP = []() {
+		static constexpr size_type capacity_growth_step = []() {
 			switch (Sparsity) {
 				case sparsity::high:   return 2;
 				case sparsity::medium: return 4;
@@ -61,32 +61,32 @@ namespace dice::sparse_map::detail {
 			}
 		}();
 
-		using bitmap_type = std::uint_least64_t;
-		static constexpr std::size_t BITMAP_NB_BITS = 64;
-		static constexpr std::size_t BUCKET_SHIFT = 6;
+		using discriminant_type = std::uint_least64_t;
+		static constexpr std::size_t discriminant_bits = 64;
 
-		static constexpr std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
+		static constexpr std::size_t bucket_shift = 6;
+		static constexpr std::size_t bucket_mask = discriminant_bits - 1;
 
-		static_assert(std::has_single_bit(BITMAP_NB_BITS) == 1,
-					  "BITMAP_NB_BITS must be a power of two.");
-		static_assert(std::numeric_limits<bitmap_type>::digits >= BITMAP_NB_BITS,
-					  "bitmap_type must be able to hold at least BITMAP_NB_BITS.");
-		static_assert((std::size_t(1) << BUCKET_SHIFT) == BITMAP_NB_BITS,
-					  "(1 << BUCKET_SHIFT) must be equal to BITMAP_NB_BITS.");
-		static_assert(std::numeric_limits<size_type>::max() >= BITMAP_NB_BITS,
-					  "size_type must be big enough to hold BITMAP_NB_BITS.");
-		static_assert(std::is_unsigned<bitmap_type>::value,
-					  "bitmap_type must be unsigned.");
-		static_assert((std::numeric_limits<bitmap_type>::max() & BUCKET_MASK) == BITMAP_NB_BITS - 1);
+		static_assert(std::has_single_bit(discriminant_bits),
+					  "discriminant_bits must be a power of two.");
+		static_assert(std::numeric_limits<discriminant_type>::digits >= discriminant_bits,
+					  "discriminant_type must be able to hold at least discriminant_bits.");
+		static_assert((std::size_t(1) << bucket_shift) == discriminant_bits,
+					  "(1 << bucket_shift) must be equal to discriminant_bits.");
+		static_assert(std::numeric_limits<size_type>::max() >= discriminant_bits,
+					  "size_type must be big enough to hold discriminant_bits.");
+		static_assert(std::is_unsigned<discriminant_type>::value,
+					  "discriminant_type must be unsigned.");
+		static_assert((std::numeric_limits<discriminant_type>::max() & bucket_mask) == discriminant_bits - 1);
 
 	private:
-		pointer m_values = nullptr;
+		pointer values_ = nullptr;
 
-		bitmap_type m_bitmap_vals = 0;
-		bitmap_type m_bitmap_deleted_vals = 0;
+		discriminant_type value_discriminant_ = 0;
+		discriminant_type deleted_discriminant_ = 0;
 
-		size_type m_nb_elements = 0;
-		size_type m_capacity = 0;
+		size_type size_ = 0;
+		size_type capacity_ = 0;
 
 	public:
 		/**
@@ -98,8 +98,8 @@ namespace dice::sparse_map::detail {
 		 * m_sparse_buckets[sparse_ibucket(ibucket)][index_in_sparse_bucket(ibucket)]
 		 * instead of something like m_buckets[ibucket] in a classical hash table.
 		 */
-		static constexpr std::size_t sparse_ibucket(std::size_t ibucket) noexcept {
-			return ibucket >> BUCKET_SHIFT;
+		[[nodiscard]] static constexpr std::size_t sparse_ibucket(std::size_t ibucket) noexcept {
+			return ibucket >> bucket_shift;
 		}
 
 		/**
@@ -110,11 +110,11 @@ namespace dice::sparse_map::detail {
 		 * m_sparse_buckets[sparse_ibucket(ibucket)][index_in_sparse_bucket(ibucket)]
 		 * instead of something like m_buckets[ibucket] in a classical hash table.
 		 */
-		static constexpr size_type index_in_sparse_bucket(std::size_t ibucket) noexcept {
-			return static_cast<size_type>(ibucket & BUCKET_MASK);
+		[[nodiscard]] static constexpr size_type index_in_sparse_bucket(std::size_t ibucket) noexcept {
+			return static_cast<size_type>(ibucket & bucket_mask);
 		}
 
-		static constexpr std::size_t nb_sparse_buckets(std::size_t bucket_count) noexcept {
+		[[nodiscard]] static constexpr std::size_t nb_sparse_buckets(std::size_t bucket_count) noexcept {
 			if (bucket_count == 0) {
 				return 0;
 			}
@@ -143,32 +143,32 @@ namespace dice::sparse_map::detail {
 		// destruction. See documentation of sparse_array_type for more details.
 		~sparse_bucket() noexcept = default;
 
-		sparse_bucket(size_type capacity, allocator_type &alloc) : m_capacity{capacity} {
-			if (m_capacity == 0) {
+		sparse_bucket(size_type capacity, allocator_type &alloc) : capacity_{capacity} {
+			if (capacity_ == 0) {
 				return;
 			}
 
-			m_values = alloc_traits::allocate(alloc, m_capacity);
-			assert(m_values != nullptr);// allocate should throw if there is a failure
+			values_ = alloc_traits::allocate(alloc, capacity_);
+			assert(values_ != nullptr);// allocate should throw if there is a failure
 		}
 
-		sparse_bucket(sparse_bucket const &other, allocator_type &alloc) : m_values{nullptr},
-																		   m_bitmap_vals{other.m_bitmap_vals},
-																		   m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
-																		   m_nb_elements{0},
-																		   m_capacity{other.m_capacity} {
+		sparse_bucket(sparse_bucket const &other, allocator_type &alloc) : values_{nullptr},
+																		   value_discriminant_{other.value_discriminant_},
+																		   deleted_discriminant_{other.deleted_discriminant_},
+																		   size_{0},
+																		   capacity_{other.capacity_} {
 
-			assert(other.m_capacity >= other.m_nb_elements);
-			if (m_capacity == 0) {
+			assert(other.capacity_ >= other.size_);
+			if (capacity_ == 0) {
 				return;
 			}
 
-			m_values = alloc_traits::allocate(alloc, m_capacity);
-			assert(m_values != nullptr);// allocate should throw if there is a failure
+			values_ = alloc_traits::allocate(alloc, capacity_);
+			assert(values_ != nullptr);// allocate should throw if there is a failure
 
 			try {
-				for (; m_nb_elements < other.m_nb_elements; ++m_nb_elements) {
-					construct_at(alloc, m_values + m_nb_elements, other.m_values[m_nb_elements]);
+				for (; size_ < other.size_; ++size_) {
+					construct_at(alloc, values_ + size_, other.values_[size_]);
 				}
 			} catch (...) {
 				clear(alloc);
@@ -176,35 +176,35 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		sparse_bucket(sparse_bucket &&other, allocator_type &alloc) : m_bitmap_vals{other.m_bitmap_vals},
-																	  m_bitmap_deleted_vals{other.m_bitmap_deleted_vals},
-																	  m_nb_elements{0},
-																	  m_capacity{other.m_capacity} {
+		sparse_bucket(sparse_bucket &&other, allocator_type &alloc) : value_discriminant_{other.value_discriminant_},
+																	  deleted_discriminant_{other.deleted_discriminant_},
+																	  size_{0},
+																	  capacity_{other.capacity_} {
 			// this ctor must only be called when the allocator is actually different
 			// cannot check if the allocators were actually different, but the static_assert helps
 			static_assert(!alloc_traits::is_always_equal::value);
 
-			assert(other.m_capacity >= other.m_nb_elements);
-			if (m_capacity == 0) {
+			assert(other.capacity_ >= other.size_);
+			if (capacity_ == 0) {
 				return;
 			}
 
-			m_values = alloc_traits::allocate(alloc, m_capacity);
-			assert(m_values != nullptr); // allocate should throw if there is a failure
+			values_ = alloc_traits::allocate(alloc, capacity_);
+			assert(values_ != nullptr); // allocate should throw if there is a failure
 
 			if constexpr (std::is_trivially_copyable_v<value_type>) {
-				std::memcpy(&m_values[0], &other.m_values[0], other.m_nb_elements * sizeof(value_type));
-				m_nb_elements = other.m_nb_elements;
+				std::memcpy(&values_[0], &other.values_[0], other.size_ * sizeof(value_type));
+				size_ = other.size_;
 			} else if constexpr (std::is_nothrow_move_constructible_v<value_type>) {
-				for (size_type i = 0; i < other.m_nb_elements; i++) {
-					construct_at(alloc, &m_values[i], std::move(other.m_values[i]));
+				for (size_type i = 0; i < other.size_; i++) {
+					construct_at(alloc, &values_[i], std::move(other.values_[i]));
 				}
 
-				m_nb_elements = other.m_nb_elements;
+				size_ = other.size_;
 			} else {
 				try {
-					for (; m_nb_elements < other.m_nb_elements; ++m_nb_elements) {
-						construct_at(alloc, &m_values[m_nb_elements], std::move(other.m_values[m_nb_elements]));
+					for (; size_ < other.size_; ++size_) {
+						construct_at(alloc, &values_[size_], std::move(other.values_[size_]));
 					}
 				} catch (...) {
 					clear(alloc);
@@ -226,49 +226,49 @@ namespace dice::sparse_map::detail {
 			}
 		}
 
-		[[nodiscard]] constexpr iterator begin() noexcept { return m_values; }
-		[[nodiscard]] constexpr iterator end() noexcept { return m_values + m_nb_elements; }
+		[[nodiscard]] constexpr iterator begin() noexcept { return values_; }
+		[[nodiscard]] constexpr iterator end() noexcept { return values_ + size_; }
 		[[nodiscard]] constexpr const_iterator begin() const noexcept { return cbegin(); }
 		[[nodiscard]] constexpr const_iterator end() const noexcept { return cend(); }
-		[[nodiscard]] constexpr const_iterator cbegin() const noexcept { return m_values; }
-		[[nodiscard]] constexpr const_iterator cend() const noexcept { return m_values + m_nb_elements; }
+		[[nodiscard]] constexpr const_iterator cbegin() const noexcept { return values_; }
+		[[nodiscard]] constexpr const_iterator cend() const noexcept { return values_ + size_; }
 
-		[[nodiscard]] constexpr bool empty() const noexcept { return m_nb_elements == 0; }
+		[[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
 
-		[[nodiscard]] constexpr size_type size() const noexcept { return m_nb_elements; }
+		[[nodiscard]] constexpr size_type size() const noexcept { return size_; }
 
 		void destroy_deallocate(allocator_type &alloc) noexcept(std::is_nothrow_destructible_v<value_type>) {
-			destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
+			destroy_and_deallocate_values(alloc, values_, size_, capacity_);
 		}
 
 		void clear(allocator_type &alloc) noexcept(std::is_nothrow_destructible_v<value_type>) {
 			destroy_deallocate(alloc);
 
-			m_values = nullptr;
-			m_bitmap_vals = 0;
-			m_bitmap_deleted_vals = 0;
-			m_nb_elements = 0;
-			m_capacity = 0;
+			values_ = nullptr;
+			value_discriminant_ = 0;
+			deleted_discriminant_ = 0;
+			size_ = 0;
+			capacity_ = 0;
 		}
 
 		[[nodiscard]] constexpr bool has_value(size_type index) const noexcept {
-			assert(index < BITMAP_NB_BITS);
-			return (m_bitmap_vals & (bitmap_type{1} << index)) != 0;
+			assert(index < discriminant_bits);
+			return (value_discriminant_ & (discriminant_type{1} << index)) != 0;
 		}
 
 		[[nodiscard]] constexpr bool has_deleted_value(size_type index) const noexcept {
-			assert(index < BITMAP_NB_BITS);
-			return (m_bitmap_deleted_vals & (bitmap_type{1} << index)) != 0;
+			assert(index < discriminant_bits);
+			return (deleted_discriminant_ & (discriminant_type{1} << index)) != 0;
 		}
 
-		iterator value(size_type index) noexcept {
+		[[nodiscard]] iterator value(size_type index) noexcept {
 			assert(has_value(index));
-			return m_values + index_to_offset(index);
+			return values_ + index_to_offset(index);
 		}
 
-		const_iterator value(size_type index) const noexcept {
+		[[nodiscard]] const_iterator value(size_type index) const noexcept {
 			assert(has_value(index));
-			return m_values + index_to_offset(index);
+			return values_ + index_to_offset(index);
 		}
 
 		/**
@@ -281,15 +281,15 @@ namespace dice::sparse_map::detail {
 			const size_type offset = index_to_offset(index);
 			insert_at_offset(alloc, offset, std::forward<Args>(value_args)...);
 
-			m_bitmap_vals |= bitmap_type{1} << index;
-			m_bitmap_deleted_vals &= ~(bitmap_type{1} << index);
+			value_discriminant_ |= discriminant_type{1} << index;
+			deleted_discriminant_ &= ~(discriminant_type{1} << index);
 
-			m_nb_elements += 1;
+			size_ += 1;
 
 			assert(has_value(index));
 			assert(!has_deleted_value(index));
 
-			return m_values + offset;
+			return values_ + offset;
 		}
 
 		iterator erase(allocator_type &alloc, iterator position) {
@@ -305,25 +305,25 @@ namespace dice::sparse_map::detail {
 			auto const offset = static_cast<size_type>(std::distance(begin(), position));
 			erase_at_offset(alloc, offset);
 
-			m_bitmap_vals &= ~(bitmap_type{1} << index);
-			m_bitmap_deleted_vals |= bitmap_type{1} << index;
+			value_discriminant_ &= ~(discriminant_type{1} << index);
+			deleted_discriminant_ |= discriminant_type{1} << index;
 
-			m_nb_elements -= 1;
+			size_ -= 1;
 
 			assert(!has_value(index));
 			assert(has_deleted_value(index));
 
-			return m_values + offset;
+			return values_ + offset;
 		}
 
 		void swap(sparse_bucket &other) noexcept {
 			using std::swap;
 
-			swap(m_values, other.m_values);
-			swap(m_bitmap_vals, other.m_bitmap_vals);
-			swap(m_bitmap_deleted_vals, other.m_bitmap_deleted_vals);
-			swap(m_nb_elements, other.m_nb_elements);
-			swap(m_capacity, other.m_capacity);
+			swap(values_, other.values_);
+			swap(value_discriminant_, other.value_discriminant_);
+			swap(deleted_discriminant_, other.deleted_discriminant_);
+			swap(size_, other.size_);
+			swap(capacity_, other.capacity_);
 		}
 
 	private:
@@ -341,15 +341,15 @@ namespace dice::sparse_map::detail {
 		}
 
 		[[nodiscard]] constexpr size_type index_to_offset(size_type index) const noexcept {
-			assert(index < BITMAP_NB_BITS);
-			return std::popcount(m_bitmap_vals & ((bitmap_type{1} << index) - bitmap_type{1}));
+			assert(index < discriminant_bits);
+			return std::popcount(value_discriminant_ & ((discriminant_type{1} << index) - discriminant_type{1}));
 		}
 
 		[[nodiscard]] constexpr size_t offset_to_index(size_t offset) const noexcept {
-			assert(offset < static_cast<size_t>(std::popcount(m_bitmap_vals)));
+			assert(offset < static_cast<size_t>(std::popcount(value_discriminant_)));
 
 			size_type index = 0;
-			bitmap_type acc = m_bitmap_vals;
+			discriminant_type acc = value_discriminant_;
 
 			while (true) {
 				size_t const ones = std::countr_one(acc);
@@ -370,7 +370,7 @@ namespace dice::sparse_map::detail {
 		}
 
 		[[nodiscard]] constexpr size_type next_capacity() const noexcept {
-			return static_cast<size_type>(m_capacity + CAPACITY_GROWTH_STEP);
+			return static_cast<size_type>(capacity_ + capacity_growth_step);
 		}
 
 		/**
@@ -379,20 +379,20 @@ namespace dice::sparse_map::detail {
          * Two situations:
          * - Either we are in a situation where
          * std::is_nothrow_move_constructible<value_type>::value is true. In this
-         * case, on insertion we just reallocate m_values when we reach its capacity
-         * (i.e. n_elements_ == m_capacity), otherwise we just put the new value at
+         * case, on insertion we just reallocate values_ when we reach its capacity
+         * (i.e. size_ == capacity_), otherwise we just put the new value at
          * its appropriate place. We can easily keep the strong exception guarantee as
          * moving the values around is safe.
          * - Otherwise we are in a situation where
          * std::is_nothrow_move_constructible<value_type>::value is false. In this
-         * case on EACH insertion we allocate a new area of n_elements_ + 1 where we
-         * copy the values of m_values into it and put the new value there. On
-         * success, we set m_values to this new area. Even if slower, it's the only
+         * case on EACH insertion we allocate a new area of size_ + 1 where we
+         * copy the values of values_ into it and put the new value there. On
+         * success, we set values_ to this new area. Even if slower, it's the only
          * way to preserve to strong exception guarantee.
          */
 		template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
 		void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
-			if (m_nb_elements < m_capacity) {
+			if (size_ < capacity_) {
 				insert_at_offset_no_realloc(alloc, offset, std::forward<Args>(value_args)...);
 			} else {
 				insert_at_offset_realloc(alloc, offset, next_capacity(), std::forward<Args>(value_args)...);
@@ -401,33 +401,33 @@ namespace dice::sparse_map::detail {
 
 		template<typename ...Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
 		void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
-			insert_at_offset_realloc(alloc, offset, m_nb_elements + 1, std::forward<Args>(value_args)...);
+			insert_at_offset_realloc(alloc, offset, size_ + 1, std::forward<Args>(value_args)...);
 		}
 
 		template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
 		void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset, Args &&...value_args) {
-			assert(offset <= m_nb_elements);
-			assert(m_nb_elements < m_capacity);
+			assert(offset <= size_);
+			assert(size_ < capacity_);
 
 			if constexpr (std::is_trivially_copyable_v<value_type>) {
-				std::memmove(&m_values[offset + 1], &m_values[offset], (m_nb_elements - offset) * sizeof(value_type));
+				std::memmove(&values_[offset + 1], &values_[offset], (size_ - offset) * sizeof(value_type));
 			} else {
-				for (size_type i = m_nb_elements; i > offset; i--) {
-					construct_at(alloc, &m_values[i], std::move(m_values[i - 1]));
-					destroy_at(alloc, &m_values[i - 1]);
+				for (size_type i = size_; i > offset; i--) {
+					construct_at(alloc, &values_[i], std::move(values_[i - 1]));
+					destroy_at(alloc, &values_[i - 1]);
 				}
 			}
 
 			try {
-				construct_at(alloc, &m_values[offset], std::forward<Args>(value_args)...);
+				construct_at(alloc, &values_[offset], std::forward<Args>(value_args)...);
 			} catch (...) {
 				// revert
 				if constexpr (std::is_trivially_copyable_v<value_type>) {
-					std::memmove(&m_values[offset], &m_values[offset + 1], (m_nb_elements - offset) * sizeof(value_type));
+					std::memmove(&values_[offset], &values_[offset + 1], (size_ - offset) * sizeof(value_type));
 				} else {
-					for (size_type i = offset; i < m_nb_elements; i++) {
-						construct_at(alloc, &m_values[i], std::move(m_values[i + 1]));
-						destroy_at(alloc, &m_values[i + 1]);
+					for (size_type i = offset; i < size_; i++) {
+						construct_at(alloc, &values_[i], std::move(values_[i + 1]));
+						destroy_at(alloc, &values_[i + 1]);
 					}
 				}
 
@@ -438,7 +438,7 @@ namespace dice::sparse_map::detail {
 		template<typename ...Args> requires (std::is_nothrow_move_constructible_v<value_type>)
 		void insert_at_offset_realloc(allocator_type &alloc, size_type offset,
 									  size_type new_capacity, Args &&...value_args) {
-			assert(new_capacity > m_nb_elements);
+			assert(new_capacity > size_);
 
 			pointer new_values = alloc_traits::allocate(alloc, new_capacity);
 			assert(new_values != nullptr); // Allocate should throw if there is a failure
@@ -451,30 +451,30 @@ namespace dice::sparse_map::detail {
 			}
 
 			if constexpr (std::is_trivially_copyable_v<value_type>) {
-				if (m_values != nullptr) {
-					std::memcpy(&new_values[0], &m_values[0], offset * sizeof(value_type));
-					std::memcpy(&new_values[offset + 1], &m_values[offset], (m_nb_elements - offset) * sizeof(value_type));
+				if (values_ != nullptr) {
+					std::memcpy(&new_values[0], &values_[0], offset * sizeof(value_type));
+					std::memcpy(&new_values[offset + 1], &values_[offset], (size_ - offset) * sizeof(value_type));
 				}
 			} else {
 				// Cannot throw here as per requires clause
 				for (size_type i = 0; i < offset; i++) {
-					construct_at(alloc, &new_values[i], std::move(m_values[i]));
+					construct_at(alloc, &new_values[i], std::move(values_[i]));
 				}
 
-				for (size_type i = offset; i < m_nb_elements; i++) {
-					construct_at(alloc, &new_values[i + 1], std::move(m_values[i]));
+				for (size_type i = offset; i < size_; i++) {
+					construct_at(alloc, &new_values[i + 1], std::move(values_[i]));
 				}
 			}
 
-			destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
+			destroy_and_deallocate_values(alloc, values_, size_, capacity_);
 
-			m_values = new_values;
-			m_capacity = new_capacity;
+			values_ = new_values;
+			capacity_ = new_capacity;
 		}
 
 		template<typename ...Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
 		void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
-			assert(new_capacity > m_nb_elements);
+			assert(new_capacity > size_);
 
 			pointer new_values = alloc_traits::allocate(alloc, new_capacity);
 			assert(new_values != nullptr); // Allocate should throw if there is a failure
@@ -482,15 +482,15 @@ namespace dice::sparse_map::detail {
 			size_type nb_new_values = 0;
 			try {
 				for (size_type i = 0; i < offset; i++) {
-					construct_at(alloc, &new_values[i], m_values[i]);
+					construct_at(alloc, &new_values[i], values_[i]);
 					nb_new_values++;
 				}
 
 				construct_at(alloc, &new_values[offset], std::forward<Args>(value_args)...);
 				nb_new_values++;
 
-				for (size_type i = offset; i < m_nb_elements; i++) {
-					construct_at(alloc, &new_values[i + 1], m_values[i]);
+				for (size_type i = offset; i < size_; i++) {
+					construct_at(alloc, &new_values[i + 1], values_[i]);
 					nb_new_values++;
 				}
 			} catch (...) {
@@ -498,12 +498,12 @@ namespace dice::sparse_map::detail {
 				throw;
 			}
 
-			assert(nb_new_values == m_nb_elements + 1);
+			assert(nb_new_values == size_ + 1);
 
-			destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
+			destroy_and_deallocate_values(alloc, values_, size_, capacity_);
 
-			m_values = new_values;
-			m_capacity = new_capacity;
+			values_ = new_values;
+			capacity_ = new_capacity;
 		}
 
 		/**
@@ -516,37 +516,37 @@ namespace dice::sparse_map::detail {
          * - Otherwise we are in a situation where
          * 		std::is_nothrow_move_constructible<value_type>::value is false. Copy all
          * 		the values except the one at offset into a new heap area. On success, we
-         * 		set m_values to this new area. Even if slower, it's the only way to
+         * 		set values_ to this new area. Even if slower, it's the only way to
          * 		preserve to strong exception guarantee.
          */
 		template<typename... Args> requires (std::is_nothrow_move_constructible_v<value_type>)
 		void erase_at_offset([[maybe_unused]] allocator_type &alloc, size_type offset) noexcept {
-			assert(offset < m_nb_elements);
+			assert(offset < size_);
 
-			destroy_at(alloc, &m_values[offset]);
+			destroy_at(alloc, &values_[offset]);
 
 			if constexpr (std::is_trivially_copyable_v<value_type>) {
-				std::memmove(&m_values[offset], &m_values[offset + 1], (m_nb_elements - offset - 1) * sizeof(value_type));
+				std::memmove(&values_[offset], &values_[offset + 1], (size_ - offset - 1) * sizeof(value_type));
 			} else {
-				for (size_type i = offset + 1; i < m_nb_elements; ++i) {
-					construct_at(alloc, &m_values[i - 1], std::move(m_values[i]));
-					destroy_at(alloc, &m_values[i]);
+				for (size_type i = offset + 1; i < size_; ++i) {
+					construct_at(alloc, &values_[i - 1], std::move(values_[i]));
+					destroy_at(alloc, &values_[i]);
 				}
 			}
 		}
 
 		template<typename ...Args> requires (!std::is_nothrow_move_constructible_v<value_type>)
 		void erase_at_offset(allocator_type &alloc, size_type offset) {
-			assert(offset < m_nb_elements);
+			assert(offset < size_);
 
-			if (offset + 1 == m_nb_elements) {
+			if (offset + 1 == size_) {
 				// Erasing the last element, don't need to reallocate. We keep the capacity.
-				destroy_at(alloc, &m_values[offset]);
+				destroy_at(alloc, &values_[offset]);
 				return;
 			}
 
-			assert(m_nb_elements > 1);
-			auto const new_capacity = m_nb_elements - 1;
+			assert(size_ > 1);
+			auto const new_capacity = size_ - 1;
 
 			pointer new_values = alloc_traits::allocate(alloc, new_capacity);
 			assert(new_values != nullptr); // Allocate should throw if there is a failure
@@ -554,12 +554,12 @@ namespace dice::sparse_map::detail {
 			size_type nb_new_values = 0;
 			try {
 				for (size_type i = 0; i < offset; ++i) {
-					construct_at(alloc, &new_values[i], m_values[i]);
+					construct_at(alloc, &new_values[i], values_[i]);
 					nb_new_values++;
 				}
 
-				for (size_type i = offset + 1; i < m_nb_elements; ++i) {
-					construct_at(alloc, &new_values[i - 1], m_values[i]);
+				for (size_type i = offset + 1; i < size_; ++i) {
+					construct_at(alloc, &new_values[i - 1], values_[i]);
 					nb_new_values++;
 				}
 			} catch (...) {
@@ -567,15 +567,15 @@ namespace dice::sparse_map::detail {
 				throw;
 			}
 
-			assert(nb_new_values == m_nb_elements - 1);
+			assert(nb_new_values == size_ - 1);
 
-			destroy_and_deallocate_values(alloc, m_values, m_nb_elements, m_capacity);
+			destroy_and_deallocate_values(alloc, values_, size_, capacity_);
 
-			m_values = new_values;
-			m_capacity = new_capacity;
+			values_ = new_values;
+			capacity_ = new_capacity;
 		}
 	};
 
-} // namespace dice::sparse_map::detail
+} // namespace dice::sparse_map::internal
 
 #endif//DICE_SPARSE_MAP_SPARSE_BUCKET_HPP

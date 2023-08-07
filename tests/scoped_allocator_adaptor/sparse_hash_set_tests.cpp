@@ -26,7 +26,7 @@ struct Hash {
 };
 
 template <typename T, typename Alloc>
-using sparse_set = dice::sparse_map::detail::sparse_hash<
+using sparse_set = dice::sparse_map::internal::sparse_hash<
     T, details::KeySelect<T>, Hash<typename T::value_type>, std::equal_to<T>, Alloc,
     dice::sparse_map::power_of_two_growth_policy<2>,
     dice::sparse_map::exception_safety::basic,
