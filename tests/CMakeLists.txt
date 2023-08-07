@@ -23,9 +23,9 @@ macro(make_test DIR NAME)
     add_test(NAME ${TARGET} COMMAND ${TARGET})
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        target_compile_options(${TARGET} PRIVATE -Werror -Wall -Wextra -Wold-style-cast -DTSL_DEBUG -UNDEBUG)
+        target_compile_options(${TARGET} PRIVATE -Werror -Wall -Wextra -Wold-style-cast)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-        target_compile_options(${TARGET} PRIVATE /bigobj /WX /W3 /DTSL_DEBUG /UNDEBUG)
+        target_compile_options(${TARGET} PRIVATE /bigobj /WX /W3)
     endif()
 endmacro ()
 
