@@ -93,18 +93,18 @@ jobs:
         if: runner.os == 'Linux'
 
       - name: Configure CMake (macOS)
-        run: cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -B build
+        run: cmake -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -B build
         env:
           CXX: ${{matrix.config.cxx}}
           CXXFLAGS: ${{matrix.config.cxx-flags}}
         if: runner.os == 'macOS'
 
-      - name: Build (Linux or macOS)
+      - name: Build
         working-directory: build
         run: cmake --build . --verbose --parallel 2
         if: runner.os == 'Linux' || runner.os == 'macOS'
 
-      - name: Test (Linux or macOS)
+      - name: Test
         working-directory: build
         run: ctest --parallel 2 --verbose
         if: runner.os == 'Linux' || runner.os == 'macOS'
