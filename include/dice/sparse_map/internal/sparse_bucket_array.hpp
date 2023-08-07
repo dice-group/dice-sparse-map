@@ -10,7 +10,7 @@ namespace dice::sparse_map::internal {
 	struct sparse_bucket_array {
 	private:
 		using element_alloc_traits = std::allocator_traits<Allocator>;
-		using bucket_alloc_traits = std::allocator_traits<Allocator>::template rebind_traits<sparse_bucket<T, Allocator, Sparsity>>;
+		using bucket_alloc_traits = typename std::allocator_traits<Allocator>::template rebind_traits<sparse_bucket<T, Allocator, Sparsity>>;
 
 		using bucket_allocator_type = typename bucket_alloc_traits::allocator_type;
 		using element_allocator_type = typename element_alloc_traits::allocator_type;
