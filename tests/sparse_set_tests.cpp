@@ -52,11 +52,7 @@
 				  dice::sparse_map::mod_growth_policy<>>
 
 TEST_SUITE("sparse set") {
-	TEST_CASE_TEMPLATE("insert", HSet, dice::sparse_map::sparse_set<std::string,
-																	std::hash<std::string>,
-																	std::equal_to<std::string>,
-																	std::allocator<std::string>,
-																	dice::sparse_map::mod_growth_policy<>>) {
+	TEST_CASE_TEMPLATE("insert", HSet, TEST_SETS) {
 		// insert x values, insert them again, check values
 		using key_t = typename HSet::key_type;
 

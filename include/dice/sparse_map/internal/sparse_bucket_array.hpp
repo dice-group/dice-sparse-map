@@ -94,6 +94,10 @@ namespace dice::sparse_map::detail {
 																									  size_{0},
 																									  bucket_alloc_{alloc},
 																									  elem_alloc_{alloc} {
+			if (size > max_size()) [[unlikely]] {
+				throw std::length_error{"Maximum sparse_bucket_array length exceeded"};
+			}
+
 			if (size == 0) {
 				return;
 			}

@@ -157,6 +157,7 @@ namespace dice::sparse_map::detail {
 
 	private:
 		sparse_bucket_array_type buckets_;
+		size_type bucket_count_;
 
 		size_type n_elements_;
 		size_type n_deleted_elements_;
@@ -288,6 +289,7 @@ namespace dice::sparse_map::detail {
 					hasher const &hash,
 					key_equal const &equal,
 					allocator_type const &alloc) : buckets_{bucket_count, alloc},
+												   bucket_count_{bucket_count},
 												   n_elements_{0},
 												   n_deleted_elements_{0},
 												   load_threshold_rehash_{calc_load_threshold_rehash(bucket_count)},
@@ -312,6 +314,7 @@ namespace dice::sparse_map::detail {
 												  && std::is_nothrow_move_constructible_v<key_equal>
 												  && std::is_nothrow_move_constructible_v<GrowthPolicy>)
 			: buckets_{std::move(other.buckets_)},
+			  bucket_count_{std::exchange(other.bucket_count_, 0)},
 			  n_elements_{std::exchange(other.n_elements_, 0)},
 			  n_deleted_elements_{std::exchange(other.n_deleted_elements_, 0)},
 			  load_threshold_rehash_{std::exchange(other.load_threshold_rehash_, 0)},
@@ -326,6 +329,7 @@ namespace dice::sparse_map::detail {
 			assert(this != &other);
 
 			buckets_ = std::move(other.buckets_);
+			bucket_count_ = std::exchange(other.bucket_count_, 0);
 			n_elements_ = std::exchange(other.n_elements_, 0);
 			n_deleted_elements_ = std::exchange(other.n_deleted_elements_, 0);
 			load_threshold_rehash_ = std::exchange(other.load_threshold_rehash_, 0);
@@ -412,8 +416,7 @@ namespace dice::sparse_map::detail {
 
 		template<typename P>
 		iterator insert_hint(const_iterator hint, P &&value) {
-			if (hint != cend() &&
-				keq_(KeyValueSelect::key(*hint), KeyValueSelect::key(value))) {
+			if (hint != cend() && keq_(KeyValueSelect::key(*hint), KeyValueSelect::key(value))) {
 				return mutable_iterator(hint);
 			}
 
@@ -557,6 +560,7 @@ namespace dice::sparse_map::detail {
 			using std::swap;
 
 			swap(buckets_, other.buckets_);
+			swap(bucket_count_, other.bucket_count_);
 			swap(n_elements_, other.n_elements_);
 			swap(n_deleted_elements_, other.n_deleted_elements_);
 			swap(load_threshold_rehash_, other.load_threshold_rehash_);
@@ -658,7 +662,7 @@ namespace dice::sparse_map::detail {
 			return std::make_pair(it, (it == cend()) ? it : std::next(it));
 		}
 
-		size_type bucket_count() const { return buckets_.size(); }
+		size_type bucket_count() const { return bucket_count_; }
 
 		size_type max_bucket_count() const {
 			return buckets_.max_size();
@@ -705,11 +709,11 @@ namespace dice::sparse_map::detail {
 		size_type next_bucket(size_type ibucket, [[maybe_unused]] size_type iprobe) const requires (!is_power_of_two_policy<growth_policy>::value) {
 			if constexpr (Probing == probing::linear) {
 				ibucket++;
-				return (ibucket != bucket_count()) ? ibucket : 0;
+				return ibucket != bucket_count_ ? ibucket : 0;
 			} else {
 				assert(Probing == probing::quadratic);
 				ibucket += iprobe;
-				return (ibucket < bucket_count()) ? ibucket : ibucket % bucket_count();
+				return ibucket < bucket_count_ ? ibucket : ibucket % bucket_count_;
 			}
 		}
 
@@ -752,7 +756,7 @@ namespace dice::sparse_map::detail {
 														   value_it},
 												  false);
 						}
-					} else if (buckets_[sparse_ibucket].has_deleted_value(index_in_sparse_bucket) && probe < buckets_.size()) {
+					} else if (buckets_[sparse_ibucket].has_deleted_value(index_in_sparse_bucket) && probe < bucket_count_) {
 						if (!found_first_deleted_bucket) {
 							found_first_deleted_bucket = true;
 							sparse_ibucket_first_deleted = sparse_ibucket;
@@ -820,7 +824,7 @@ namespace dice::sparse_map::detail {
 
 						return 1;
 					}
-				} else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= buckets_.size()) {
+				} else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= bucket_count_) {
 					return 0;
 				}
 
@@ -853,7 +857,7 @@ namespace dice::sparse_map::detail {
 														 self.buckets_.end(),
 														 value_it};
 					}
-				} else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= self.buckets_.size()) {
+				} else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= self.bucket_count_) {
 					return self.end();
 				}
 
@@ -874,7 +878,7 @@ namespace dice::sparse_map::detail {
 		void clear_deleted_buckets() {
 			// TODO could be optimized, we could do it in-place instead of allocating a
 			// new bucket array.
-			rehash_impl(buckets_.size());
+			rehash_impl(bucket_count_);
 			assert(n_deleted_elements_ == 0);
 		}
 

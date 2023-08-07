@@ -423,8 +423,8 @@ namespace dice::sparse_map {
 			return m_ht.at(key, precalculated_hash);
 		}
 
-		[[nodiscard]] T &operator[](const Key &key) { return m_ht[key]; }
-		[[nodiscard]] T &operator[](Key &&key) { return m_ht[std::move(key)]; }
+		T &operator[](const Key &key) { return m_ht[key]; }
+		T &operator[](Key &&key) { return m_ht[std::move(key)]; }
 
 		[[nodiscard]] size_type count(const Key &key) const { return m_ht.count(key); }
 
