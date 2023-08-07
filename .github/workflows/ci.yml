@@ -10,12 +10,12 @@ jobs:
         config:
         - {
             name: macos-x64-gcc,
-            os:  macos-10.15,
+            os:  macos-13.5,
             cxx: g++,
           }
         - {
             name: macos-x64-clang,
-            os:  macos-10.15,
+            os:  macos-13.5,
             cxx: clang++,
           }
         - {
@@ -91,19 +91,28 @@ jobs:
         run: vcpkg install boost-interprocess
         if: runner.os == 'macOS'
 
-      - name: Configure CMake (Linux or macOS)
+      - name: Configure CMake (Linux)
+        run: cmake -DCMAKE_BUILD_TYPE=Debug -B build
+        env:
+          CXX: ${{matrix.config.cxx}}
+          CXXFLAGS: ${{matrix.config.cxx-flags}}
+        if: runner.os == 'Linux'
+
+      - name: Configure CMake (macOS)
         run: cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -B build
         env:
           CXX: ${{matrix.config.cxx}}
           CXXFLAGS: ${{matrix.config.cxx-flags}}
-        if: runner.os == 'Linux' || runner.os == 'macOS'
+        if: runner.os == 'macOS'
 
       - name: Build (Linux or macOS)
-        run: cmake --build ${{github.workspace}}/build --verbose
+        working-directory: build
+        run: cmake --build . --verbose --parallel 2
         if: runner.os == 'Linux' || runner.os == 'macOS'
 
       - name: Test (Linux or macOS)
-        run: ${{github.workspace}}/build/tsl_sparse_map_tests
+        working-directory: build
+        run: ctest --parallel 2 --verbose
         if: runner.os == 'Linux' || runner.os == 'macOS'
 
       - name: Coverage
