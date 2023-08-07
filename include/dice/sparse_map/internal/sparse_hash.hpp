@@ -269,6 +269,11 @@ namespace dice::sparse_map::internal {
 			bool operator!=(sparse_iterator<OIsConst> const &other) const noexcept {
 				return cur_bucket_ != other.cur_bucket_ || bucket_it_ != other.bucket_it_;
 			}
+
+			template<bool OIsConst>
+			bool operator<(sparse_iterator<OIsConst> const &other) const noexcept {
+				return cur_bucket_ < other.cur_bucket_ || (cur_bucket_ == other.cur_bucket_ && bucket_it_ < other.bucket_it_);
+			}
 		};
 
 		iterator mutable_iterator(const_iterator pos) noexcept {
@@ -523,18 +528,9 @@ namespace dice::sparse_map::internal {
 		}
 
 		iterator erase(const_iterator first, const_iterator last) {
-			//TODO why doesn't this work
-			/*auto it = mutable_iterator(first);
-			while (it != last) {
-				it = erase(it);
-			}
-
-			return it;*/
-
-			// TODO Optimize, could avoid the call to std::distance.
 			auto const nb_elements_to_erase = static_cast<size_type>(std::distance(first, last));
 			auto to_delete = mutable_iterator(first);
-			for (size_type i = 0; i < nb_elements_to_erase; i++) {
+			for (size_type i = 0; i < nb_elements_to_erase; ++i) {
 				to_delete = erase(to_delete);
 			}
 
@@ -710,14 +706,10 @@ namespace dice::sparse_map::internal {
 		}
 
 		template<typename K, typename ...Args>
-		std::pair<iterator, bool> insert_impl(K const &key,
-											  Args &&...value_type_args) {
-			if (size() >= load_threshold_rehash_) {
+		std::pair<iterator, bool> insert_impl(K const &key, Args &&...value_type_args) {
+			if (buckets_.empty()) {
 				rehash_impl(gpol_.next_bucket_count());
-			} else if (size() + n_deleted_elements_ >= load_threshold_clear_deleted_) {
-				clear_deleted_buckets();
 			}
-			assert(!buckets_.empty());
 
 			/**
 			 * We must insert the value in the first empty or deleted bucket we find. If
@@ -731,41 +723,54 @@ namespace dice::sparse_map::internal {
 			std::size_t sparse_ibucket_first_deleted = 0;
 			typename sparse_bucket_type::size_type index_in_sparse_bucket_first_deleted = 0;
 
-			const std::size_t hash = h_(key);
-			std::size_t ibucket = bucket_for_hash(hash);
+			auto const hash = h_(key);
+			auto ibucket = bucket_for_hash(hash);
 
 			std::size_t probe = 0;
 			while (true) {
 				auto const sparse_ibucket = sparse_bucket_type::sparse_ibucket(ibucket);
 				auto const index_in_sparse_bucket = sparse_bucket_type::index_in_sparse_bucket(ibucket);
 
-				if (!buckets_.empty()) {
-					if (buckets_[sparse_ibucket].has_value(index_in_sparse_bucket)) {
-						auto value_it = buckets_[sparse_ibucket].value(index_in_sparse_bucket);
-						if (keq_(key, KeyValueSelect::key(*value_it))) {
-							return std::make_pair(iterator{std::next(buckets_.begin(), sparse_ibucket),
-														   buckets_.end(),
-														   value_it},
-												  false);
-						}
-					} else if (buckets_[sparse_ibucket].has_deleted_value(index_in_sparse_bucket) && probe < bucket_count_) {
-						if (!found_first_deleted_bucket) {
-							found_first_deleted_bucket = true;
-							sparse_ibucket_first_deleted = sparse_ibucket;
-							index_in_sparse_bucket_first_deleted = index_in_sparse_bucket;
-						}
-					} else if (found_first_deleted_bucket) {
+				if (buckets_[sparse_ibucket].has_value(index_in_sparse_bucket)) {
+					auto value_it = buckets_[sparse_ibucket].value(index_in_sparse_bucket);
+					if (keq_(key, KeyValueSelect::key(*value_it))) {
+						return std::make_pair(iterator{std::next(buckets_.begin(), sparse_ibucket),
+													   buckets_.end(),
+													   value_it},
+											  false);
+					}
+				} else if (buckets_[sparse_ibucket].has_deleted_value(index_in_sparse_bucket) && probe < bucket_count_) {
+					if (!found_first_deleted_bucket) {
+						found_first_deleted_bucket = true;
+						sparse_ibucket_first_deleted = sparse_ibucket;
+						index_in_sparse_bucket_first_deleted = index_in_sparse_bucket;
+					}
+				} else {
+					/**
+					 * At this point we are sure that the value does not exist
+					 * in the hash table.
+					 * First check if we satisfy load and delete thresholds, and if not,
+					 * rehash the hash table (and therefore start over). Otherwise, just
+					 * insert the value into the appropriate bucket.
+					 */
+					if (size() >= load_threshold_rehash_) {
+						rehash_impl(gpol_.next_bucket_count());
+						return insert_impl(key, std::forward<Args>(value_type_args)...);
+					}
+
+					if (size() + n_deleted_elements_ >= load_threshold_clear_deleted_) {
+						clear_deleted_buckets();
+						return insert_impl(key, std::forward<Args>(value_type_args)...);
+					}
+
+					if (found_first_deleted_bucket) {
 						auto it = insert_in_bucket(sparse_ibucket_first_deleted,
 												   index_in_sparse_bucket_first_deleted,
 												   std::forward<Args>(value_type_args)...);
-						n_deleted_elements_--;
-
+						n_deleted_elements_ -= 1;
 						return it;
-					} else {
-						return insert_in_bucket(sparse_ibucket, index_in_sparse_bucket,
-												std::forward<Args>(value_type_args)...);
 					}
-				} else {
+
 					return insert_in_bucket(sparse_ibucket, index_in_sparse_bucket,
 											std::forward<Args>(value_type_args)...);
 				}
@@ -811,8 +816,8 @@ namespace dice::sparse_map::internal {
 
 					if (keq_(key, KeyValueSelect::key(*value_it))) {
 						bucket.erase(buckets_.element_allocator(), value_it, index_in_sparse_bucket);
-						n_elements_--;
-						n_deleted_elements_++;
+						n_elements_ -= 1;
+						n_deleted_elements_ += 1;
 
 						return 1;
 					}
