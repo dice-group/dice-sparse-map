@@ -1,6 +1,6 @@
 name: CI
 
-on: [push, pull_request, release]
+on: [ pull_request ]
 
 jobs:
   build:
@@ -8,49 +8,40 @@ jobs:
       fail-fast: false
       matrix:
         config:
-        - {
-            name: macos-x64-gcc,
-            os:  macos-13.5,
-            cxx: g++,
-          }
-        - {
-            name: macos-x64-clang,
-            os:  macos-13.5,
-            cxx: clang++,
-          }
-        - {
-          name: linux-x64-clang-14,
-          os: ubuntu-22.04,
-          cxx: clang++-14,
-        }
-        - {
-          name: linux-x64-clang-15,
-          os: ubuntu-22.04,
-          cxx: clang++-15,
-        }
-        - {
-          name: linux-x64-clang-16-sanitize,
-          os: ubuntu-20.04,
-          cxx: clang++-16,
-          cxx-flags: "-fsanitize=address,undefined",
-        }
-        - {
-          name: linux-x64-gcc-11-coverage,
-          os: ubuntu-20.04,
-          cxx: g++-11,
-          cxx-flags: --coverage,
-          gcov-tool: gcov-11,
-        }
-        - {
-          name: linux-x64-gcc-12,
-          os: ubuntu-22.04,
-          cxx: g++-12,
-        }
-        - {
-          name: linux-x64-gcc-13,
-          os: ubuntu-22.04,
-          cxx: g++-13,
-        }
+        # These get queued but never actually run
+        #- name: macos-x64-gcc,
+        #  os:  macos-13.5,
+        #  cxx: g++,
+        #- name: macos-x64-clang,
+        #  os:  macos-13.5,
+        #  cxx: clang++,
+
+        - name: linux-x64-clang-14
+          os: ubuntu-22.04
+          cxx: clang++-14
+
+        - name: linux-x64-clang-15
+          os: ubuntu-22.04
+          cxx: clang++-15
+
+        - name: linux-x64-clang-16-sanitize
+          os: ubuntu-22.04
+          cxx: clang++-16
+          cxx-flags: -fsanitize=undefined -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls
+
+        - name: linux-x64-gcc-11-coverage
+          os: ubuntu-22.04
+          cxx: g++-11
+          cxx-flags: --coverage
+          gcov-tool: gcov-11
+
+        - name: linux-x64-gcc-12
+          os: ubuntu-22.04
+          cxx: g++-12
+
+        - name: linux-x64-gcc-13
+          os: ubuntu-22.04
+          cxx: g++-13
 
     runs-on: ${{matrix.config.os}}
     steps:
