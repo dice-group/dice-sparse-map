@@ -77,7 +77,7 @@ jobs:
         id: install_cc
         uses: rlalik/setup-cpp-compiler@v1.2
         with:
-          compiler: ${{ inputs.compiler }}
+          compiler: ${{ inputs.cxx }}
         if: runner.os == 'Linux'
 
       - name: Check out sources
