@@ -425,9 +425,7 @@ namespace dice::sparse_map::internal {
 
 		template<typename InputIt>
 		void insert(InputIt first, InputIt last) {
-			if (std::is_base_of<
-						std::forward_iterator_tag,
-						typename std::iterator_traits<InputIt>::iterator_category>::value) {
+			if constexpr (std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<InputIt>::iterator_category>) {
 				const auto nb_elements_insert = std::distance(first, last);
 				const size_type nb_free_buckets = load_threshold_rehash_ - size();
 				assert(load_threshold_rehash_ >= size());
