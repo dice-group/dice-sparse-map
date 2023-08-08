@@ -154,9 +154,7 @@ namespace dice::sparse_map::internal {
 		using sparse_bucket_type = typename sparse_bucket_array_type::bucket_type;
 
 	private:
-		[[no_unique_address]] hasher h_;
-		[[no_unique_address]] key_equal keq_;
-		[[no_unique_address]] growth_policy gpol_;
+		growth_policy gpol_;
 
 		sparse_bucket_array_type buckets_;
 		size_type bucket_count_;
@@ -175,6 +173,9 @@ namespace dice::sparse_map::internal {
 		 * up the buckets marked as deleted.
 		 */
 		size_type load_threshold_clear_deleted_;
+
+		[[no_unique_address]] hasher h_;
+		[[no_unique_address]] key_equal keq_;
 
 	public:
 		template<bool IsConst>
@@ -291,15 +292,15 @@ namespace dice::sparse_map::internal {
 		sparse_hash(size_type bucket_count,
 					hasher const &hash,
 					key_equal const &equal,
-					allocator_type const &alloc) : h_{hash},
-												   keq_{equal},
-												   gpol_{bucket_count},
+					allocator_type const &alloc) : gpol_{bucket_count},
 												   buckets_{bucket_count, alloc},
 												   bucket_count_{bucket_count},
 												   n_elements_{0},
 												   n_deleted_elements_{0},
 												   load_threshold_rehash_{calc_load_threshold_rehash(bucket_count)},
-												   load_threshold_clear_deleted_{calc_load_threshold_clear_deleted(bucket_count)} {
+												   load_threshold_clear_deleted_{calc_load_threshold_clear_deleted(bucket_count)},
+												   h_{hash},
+												   keq_{equal} {
 
 			// Check in the constructor instead of outside of a function to avoid
 			// compilation issues when value_type is not complete.
@@ -312,27 +313,21 @@ namespace dice::sparse_map::internal {
 		sparse_hash(sparse_hash const &other) = default;
 		sparse_hash &operator=(sparse_hash const &other) = default;
 
-		sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible_v<sparse_bucket_array_type>
-												  && std::is_nothrow_move_constructible_v<hasher>
-												  && std::is_nothrow_move_constructible_v<key_equal>
-												  && std::is_nothrow_move_constructible_v<growth_policy>)
-			: h_{std::move(other.h_)},
-			  keq_{std::move(other.keq_)},
-			  gpol_{std::move(other.gpol_)},
-			  buckets_{std::move(other.buckets_)},
-			  bucket_count_{std::exchange(other.bucket_count_, 0)},
-			  n_elements_{std::exchange(other.n_elements_, 0)},
-			  n_deleted_elements_{std::exchange(other.n_deleted_elements_, 0)},
-			  load_threshold_rehash_{std::exchange(other.load_threshold_rehash_, 0)},
-			  load_threshold_clear_deleted_{std::exchange(other.load_threshold_clear_deleted_, 0)} {
+		sparse_hash(sparse_hash &&other) noexcept : gpol_{std::move(other.gpol_)},
+													buckets_{std::move(other.buckets_)},
+													bucket_count_{std::exchange(other.bucket_count_, 0)},
+													n_elements_{std::exchange(other.n_elements_, 0)},
+													n_deleted_elements_{std::exchange(other.n_deleted_elements_, 0)},
+													load_threshold_rehash_{std::exchange(other.load_threshold_rehash_, 0)},
+													load_threshold_clear_deleted_{std::exchange(other.load_threshold_clear_deleted_, 0)},
+													h_{std::move(other.h_)},
+													keq_{std::move(other.keq_)} {
 			other.gpol_.clear();
 		}
 
 		sparse_hash &operator=(sparse_hash &&other) noexcept {
 			assert(this != &other);
 
-			h_ = std::move(other.h_);
-			keq_ = std::move(other.keq_);
 			gpol_ = std::move(other.gpol_);
 			other.gpol_.clear();
 
@@ -342,6 +337,9 @@ namespace dice::sparse_map::internal {
 			n_deleted_elements_ = std::exchange(other.n_deleted_elements_, 0);
 			load_threshold_rehash_ = std::exchange(other.load_threshold_rehash_, 0);
 			load_threshold_clear_deleted_ = std::exchange(other.load_threshold_clear_deleted_, 0);
+
+			h_ = std::move(other.h_);
+			keq_ = std::move(other.keq_);
 
 			return *this;
 		}
