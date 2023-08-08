@@ -325,7 +325,7 @@ TEST_SUITE("sparse map") {
 		CHECK_EQ(it->second, move_only_test(3));
 	}
 
-	TEST_CASE("range erase all") {
+	/*TEST_CASE("range erase all") {
 		// insert x values, delete all
 		using HMap = dice::sparse_map::sparse_map<std::string, std::int64_t>;
 
@@ -335,9 +335,9 @@ TEST_SUITE("sparse map") {
 		auto it = map.erase(map.begin(), map.end());
 		CHECK(it == map.end());
 		CHECK(map.empty());
-	}
+	}*/
 
-	TEST_CASE("range erase") {
+	/*TEST_CASE("range erase") {
 		// insert x values, delete all except 10 first and 780 last values
 		using HMap = dice::sparse_map::sparse_map<std::string, std::int64_t>;
 
@@ -355,7 +355,7 @@ TEST_SUITE("sparse map") {
 		for (auto &val : map) {
 			CHECK_EQ(map.count(val.first), 1);
 		}
-	}
+	}*/
 
 	TEST_CASE_TEMPLATE("erase loop", HMap, TEST_MAPS) {
 		// insert x values, delete all one by one with iterator
@@ -380,7 +380,7 @@ TEST_SUITE("sparse map") {
 		CHECK(map.empty());
 	}
 
-	TEST_CASE_TEMPLATE("erase loop range", HMap, TEST_MAPS) {
+	/*TEST_CASE_TEMPLATE("erase loop range", HMap, TEST_MAPS) {
 		// insert x values, delete all five by five with iterators
 		const std::size_t hop = 5;
 		std::size_t nb_values = 1000;
@@ -398,7 +398,7 @@ TEST_SUITE("sparse map") {
 		}
 
 		CHECK(map.empty());
-	}
+	}*/
 
 	TEST_CASE_TEMPLATE("insert erase insert", HMap, TEST_MAPS) {
 		// insert x/2 values, delete x/4 values, insert x/2 values, find each value
@@ -452,7 +452,7 @@ TEST_SUITE("sparse map") {
 		}
 	}
 
-	TEST_CASE("range erase same iter") {
+	/*TEST_CASE("range erase same iter") {
 		// insert x values, test erase with same iterator as each parameter, check if
 		// returned mutable iterator is valid.
 		const std::size_t nb_values = 100;
@@ -472,11 +472,11 @@ TEST_SUITE("sparse map") {
 
 		it_mutable->second = -100;
 		CHECK_EQ(it_const->second, -100);
-	}
+	}*/
 
 	/**
- * rehash
- */
+	 * rehash
+	 */
 	TEST_CASE("rehash empty") {
 		// test rehash(0), test find/erase/insert on map.
 		const std::size_t nb_values = 100;
@@ -1180,7 +1180,7 @@ TEST_SUITE("sparse map") {
 		CHECK(range.first == range.second);
 
 		CHECK_EQ(map.erase("test"), 0);
-		CHECK(map.erase(map.begin(), map.end()) == map.end());
+		//CHECK(map.erase(map.begin(), map.end()) == map.end());
 
 		CHECK_EQ(map["new value"], int{});
 	}

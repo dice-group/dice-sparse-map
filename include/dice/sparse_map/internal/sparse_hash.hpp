@@ -523,6 +523,10 @@ namespace dice::sparse_map::internal {
 			return erase(mutable_iterator(pos));
 		}
 
+		[[deprecated("This function is originally from tsl::sparse_hash but it doesn't really make much sense to use, because\n"
+					 "the items between two iterators are effectively random (they are not sorted or anything) so you don't know what you were deleting "
+					 "(except if you manually checked all of them, in which case you could have just deleted them then)\n"
+					 "So this function is effectively just: 'please erase distance(first, last) number of random elements'")]]
 		iterator erase(const_iterator first, const_iterator last) {
 			auto const nb_elements_to_erase = static_cast<size_type>(std::distance(first, last));
 			auto to_delete = mutable_iterator(first);
