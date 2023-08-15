@@ -2,8 +2,8 @@
  * @bief Home of a custom allocator for testing with fancy pointers.
  */
 
-#ifndef TSL_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP
-#define TSL_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP
+#ifndef DICE_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP
+#define DICE_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP
 
 #include <boost/interprocess/offset_ptr.hpp>
 
@@ -20,6 +20,7 @@ struct OffsetAllocator {
     using void_pointer = offset_ptr<void>;
     using const_void_pointer = offset_ptr<const void>;
     using difference_type = typename offset_ptr<value_type>::difference_type;
+	using is_always_equal = std::false_type; // pretend this isn't just stdalloc
 
     OffsetAllocator() noexcept = default;
     OffsetAllocator(OffsetAllocator const &) noexcept = default;
@@ -43,4 +44,4 @@ struct OffsetAllocator {
     }
 };
 
-#endif //TSL_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP
+#endif //DICE_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP

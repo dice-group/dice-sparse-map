@@ -6,18 +6,12 @@ project(dice-sparse-map
 include(cmake/boilerplate_init.cmake)
 boilerplate_init()
 
-find_package(Boost REQUIRED)
-
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
 add_library("${PROJECT_NAME}::${PROJECT_NAME}" ALIAS "${PROJECT_NAME}")
 
 target_include_directories(${PROJECT_NAME}
         INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
-
-target_link_libraries(${PROJECT_NAME} INTERFACE
-        Boost::headers
-        )
 
 if(MSVC)
     target_sources(${PROJECT_NAME} INTERFACE
@@ -30,4 +24,9 @@ if (IS_TOP_LEVEL)
     install_interface_library("${PROJECT_NAME}" "${PROJECT_NAME}" "${PROJECT_NAME}" "include")
 endif ()
 
-
+if (BUILD_TESTING AND IS_TOP_LEVEL)
+    message("Building testing")
+    include(CTest)
+    enable_testing()
+    add_subdirectory(tests)
+endif ()

@@ -2,10 +2,12 @@
  * @brief Checks for fancy pointer support in the sparse_hash implementation for pair values (maps).
  */
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
+
 #include <unordered_map>
-#include <boost/test/unit_test.hpp>
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_hash.hpp>
+#include <dice/sparse_map/sparse_map.hpp>
+#include <dice/sparse_map/internal/sparse_hash.hpp>
 #include "CustomAllocator.hpp"
 
 /* Tests are analogous to the  tests in sparse_array_tests.cpp.
@@ -13,43 +15,54 @@
  */
 namespace details {
     template<typename Key, typename T>
-    struct KeySelect {
+    struct KeyValueSelect {
         using key_type = Key;
-        const key_type &operator()(std::pair<Key, T> const &key_value) const noexcept {
-            return key_value.first;
-        }
-        key_type &operator()(std::pair<Key, T> &key_value) noexcept {
-            return key_value.first;
-        }
+		using value_type = T;
+		using both_type = std::pair<Key const, T>;
+
+		template<typename K>
+		static key_type const &key(std::pair<K, T> const &key_value) noexcept {
+			return key_value.first;
+		}
+
+		template<typename K>
+		static value_type const &value(std::pair<K, T> const &key_value) noexcept {
+			return key_value.second;
+		}
+
+		template<typename K>
+		static value_type &value(std::pair<K, T> &key_value) noexcept {
+			return key_value.second;
+		}
+
+		template<typename K>
+		static both_type const &both(std::pair<K, T> const &key_value) noexcept {
+			return reinterpret_cast<both_type const &>(key_value);
+		}
+
+		template<typename K>
+		static both_type &both(std::pair<K, T> &key_value) noexcept {
+			return reinterpret_cast<both_type &>(key_value);
+		}
     };
 
-    template<typename Key, typename T>
-    struct ValueSelect {
-        using value_type = T;
-        const value_type &operator()(std::pair<Key, T> const &key_value) const noexcept {
-            return key_value.second;
-        }
-        value_type &operator()(std::pair<Key, T> &key_value) noexcept {
-            return key_value.second;
-        }
-    };
 
     template<typename Key, typename T, typename Alloc>
-    using sparse_map= dice::sparse_map::detail_sparse_hash::sparse_hash<
-            std::pair<Key, T>, KeySelect<Key, T>, ValueSelect<Key,T>, std::hash<T>, std::equal_to<T>, Alloc,
-            dice::sparse_map::sh::power_of_two_growth_policy<2>,
-            dice::sparse_map::sh::exception_safety::basic,
-            dice::sparse_map::sh::sparsity::medium,
-            dice::sparse_map::sh::probing::quadratic>;
+    using sparse_map = dice::sparse_map::internal::sparse_hash<
+            std::pair<Key, T>, KeyValueSelect<Key, T>, std::hash<T>, std::equal_to<T>, Alloc,
+            dice::sparse_map::power_of_two_growth_policy<2>,
+            dice::sparse_map::exception_safety::basic,
+            dice::sparse_map::sparsity::medium,
+            dice::sparse_map::probing::quadratic,
+			dice::sparse_map::default_max_load_factor>;
 
     template<typename T>
     typename T::Map default_construct_map() {
         using Key = typename T::key_type;
-        return typename T::Map(T::Map::DEFAULT_INIT_BUCKET_COUNT,
+        return typename T::Map(T::Map::default_init_bucket_count,
                         std::hash<Key>(),
                         std::equal_to<Key>(),
-                        typename T::Allocator(),
-                        T::Map::DEFAULT_MAX_LOAD_FACTOR);
+                        typename T::Allocator());
     }
 
     /** Checks if all values of the map are in the initializer_list and than if the lengths are equal.
@@ -72,62 +85,6 @@ namespace details {
     }
 }
 
-template<typename T>
-void construction() {
-   auto map = details::default_construct_map<T>();
-}
-
-template <typename T>
-void insert(std::initializer_list<typename T::value_type> l) {
-    auto map = details::default_construct_map<T>();
-    for (auto dataPair : l)  map.insert(dataPair);
-    //'insert' did not create exactly the values needed
-    BOOST_REQUIRE(details::is_equal(map, l));
-}
-
-template <typename T>
-void iterator_insert(std::initializer_list<typename T::value_type> l) {
-   auto map = details::default_construct_map<T>();
-   map.insert(l.begin(), l.end());
-   //'insert' with iterators did not create exactly the values needed
-   BOOST_REQUIRE(details::is_equal(map, l));
-}
-
-template <typename T>
-void iterator_access(typename T::value_type single_value) {
-    auto map = details::default_construct_map<T>();
-    map.insert(single_value);
-    //iterator cannot access single value
-    BOOST_REQUIRE( (*(map.begin()) == single_value));
-}
-
-template <typename T>
-void iterator_access_multi(std::initializer_list<typename T::value_type> l) {
-    auto map = details::default_construct_map<T>();
-    map.insert(l.begin(), l.end());
-    std::vector<typename T::value_type> l_sorted = l;
-    std::vector<typename T::value_type> map_sorted(map.begin(), map.end());
-    std::sort(l_sorted.begin(), l_sorted.end());
-    std::sort(map_sorted.begin(), map_sorted.end());
-    //iterating over the map didn't work
-    BOOST_REQUIRE(std::equal(l_sorted.begin(), l_sorted.end(),
-                                  map_sorted.begin()));
-}
-
-template<typename T>
-void value(std::initializer_list<typename T::value_type> l, typename T::value_type to_change) {
-    auto map = details::default_construct_map<T>();
-    map.insert(l.begin(), l.end());
-    map[to_change.first] = to_change.second;
-
-    std::unordered_map<typename T::value_type::first_type, typename T::value_type::second_type> check(l.begin(), l.end());
-    check[to_change.first] = to_change.second;
-
-    //changing a single value didn't work
-    BOOST_REQUIRE(details::is_equal(map, check));
-}
-
-
 template<typename Key, typename T>
 struct STD {
     using key_type = Key;
@@ -145,38 +102,83 @@ struct CUSTOM {
 };
 
 
-BOOST_AUTO_TEST_SUITE(fancy_pointers)
-BOOST_AUTO_TEST_SUITE(sparse_hash_map_tests)
+#define TEST_MAPS STD<int, int>, CUSTOM<int, int>
 
-BOOST_AUTO_TEST_CASE(std_alloc_compiles) {construction<STD<int, int>>();}
-BOOST_AUTO_TEST_CASE(std_alloc_insert) {insert<STD<int, int>>({{1,2},{3,4},{5,6}});}
-BOOST_AUTO_TEST_CASE(std_alloc_iterator_insert) {insert<STD<int, int>>({{1,2},{3,4},{5,6}});}
-BOOST_AUTO_TEST_CASE(std_alloc_iterator_access) {iterator_access<STD<int, int>>({1,42});}
-BOOST_AUTO_TEST_CASE(std_alloc_iterator_access_multi) {iterator_access_multi<STD<int, int>>({{1,2},{3,4},{5,6}});}
-BOOST_AUTO_TEST_CASE(std_alloc_value) {value<STD<int, int>>({{1,2},{3,4},{5,6}}, {1, 42});}
+TEST_SUITE("sparse map with fancy pointers") {
+	TEST_CASE_TEMPLATE("construction", T, TEST_MAPS) {
+		auto map = details::default_construct_map<T>();
+	}
 
-BOOST_AUTO_TEST_CASE(custom_alloc_compiles) {construction<CUSTOM<int, int>>();}
-BOOST_AUTO_TEST_CASE(custom_alloc_insert) {insert<CUSTOM<int, int>>({{1,2},{3,4},{5,6}});}
-BOOST_AUTO_TEST_CASE(custom_alloc_iterator_insert) {insert<CUSTOM<int, int>>({{1,2},{3,4},{5,6}});}
-BOOST_AUTO_TEST_CASE(custom_alloc_iterator_access) {iterator_access<CUSTOM<int, int>>({1,42});}
-BOOST_AUTO_TEST_CASE(custom_alloc_iterator_access_multi) {iterator_access_multi<CUSTOM<int, int>>({{1,2},{3,4},{5,6}});}
-BOOST_AUTO_TEST_CASE(custom_alloc_value) {value<CUSTOM<int, int>>({{1,2},{3,4},{5,6}}, {1, 42});}
+	TEST_CASE_TEMPLATE("insert", T, TEST_MAPS) {
+		std::initializer_list<typename T::value_type> l{{1,2},{3,4},{5,6}};
 
-BOOST_AUTO_TEST_CASE(full_map) {
-    dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, OffsetAllocator<std::pair<int,int>>> map;
-    std::vector<std::pair<int,int>> data = {
-            {0,1},{2,3},{4,5},{6,7},{8,9}
-    };
-    map.insert(data.begin(), data.end());
-    auto check = [&map](std::pair<int,int> p) {
-        if (!map.contains(p.first)) return false;
-        return map.at(p.first) == p.second;
-    };
-    //size did not match
-    BOOST_REQUIRE(data.size() == map.size());
-    //map did not contain all values
-    BOOST_REQUIRE(std::all_of(data.begin(), data.end(), check));
+		auto map = details::default_construct_map<T>();
+		for (auto dataPair : l)  map.insert(dataPair);
+		//'insert' did not create exactly the values needed
+		REQUIRE(details::is_equal(map, l));
+	}
+
+	TEST_CASE_TEMPLATE("iter insert", T, TEST_MAPS) {
+		std::initializer_list<typename T::value_type> l{{1,2},{3,4},{5,6}};
+
+		auto map = details::default_construct_map<T>();
+		map.insert(l.begin(), l.end());
+		//'insert' with iterators did not create exactly the values needed
+		REQUIRE(details::is_equal(map, l));
+	}
+
+	TEST_CASE_TEMPLATE("iter access", T, TEST_MAPS) {
+		typename T::value_type single_value{1,42};
+
+		auto map = details::default_construct_map<T>();
+		map.insert(single_value);
+		//iterator cannot access single value
+		REQUIRE((*map.begin()).first == single_value.first);
+		REQUIRE((*map.begin()).second == single_value.second);
+	}
+
+	TEST_CASE_TEMPLATE("iter access multi", T, TEST_MAPS) {
+		std::initializer_list<typename T::value_type> l{{1,2},{3,4},{5,6}};
+
+		auto map = details::default_construct_map<T>();
+		map.insert(l.begin(), l.end());
+		std::vector<typename T::value_type> l_sorted = l;
+		std::vector<typename T::value_type> map_sorted(map.begin(), map.end());
+		std::sort(l_sorted.begin(), l_sorted.end());
+		std::sort(map_sorted.begin(), map_sorted.end());
+		//iterating over the map didn't work
+		REQUIRE(std::equal(l_sorted.begin(), l_sorted.end(),
+								 map_sorted.begin()));
+	}
+
+	TEST_CASE_TEMPLATE("value", T, TEST_MAPS) {
+		typename T::value_type to_change{1, 42};
+		std::initializer_list<typename T::value_type> l{{1,2},{3,4},{5,6}};
+
+		auto map = details::default_construct_map<T>();
+		map.insert(l.begin(), l.end());
+		map[to_change.first] = to_change.second;
+
+		std::unordered_map<typename T::value_type::first_type, typename T::value_type::second_type> check(l.begin(), l.end());
+		check[to_change.first] = to_change.second;
+
+		//changing a single value didn't work
+		REQUIRE(details::is_equal(map, check));
+	}
+
+	TEST_CASE("full map") {
+		dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, OffsetAllocator<std::pair<int,int>>> map;
+		std::vector<std::pair<int,int>> data = {
+				{0,1},{2,3},{4,5},{6,7},{8,9}
+		};
+		map.insert(data.begin(), data.end());
+		auto check = [&map](std::pair<int,int> p) {
+			if (!map.contains(p.first)) return false;
+			return map.at(p.first) == p.second;
+		};
+		//size did not match
+		REQUIRE(data.size() == map.size());
+		//map did not contain all values
+		REQUIRE(std::all_of(data.begin(), data.end(), check));
+	}
 }
-
-BOOST_AUTO_TEST_SUITE_END()
-BOOST_AUTO_TEST_SUITE_END()

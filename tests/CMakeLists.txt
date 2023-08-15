@@ -1,33 +1,41 @@
-cmake_minimum_required(VERSION 3.18)
+include(FetchContent)
+FetchContent_Declare(
+        DocTest
+        GIT_REPOSITORY "https://github.com/doctest/doctest.git"
+        GIT_TAG "v2.4.11"
+        GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(DocTest)
 
-project(tsl_sparse_map_tests)
+macro(make_test DIR NAME)
+    if ("${DIR}" STREQUAL ".")
+        set(TARGET ${NAME})
+    else ()
+        set(TARGET ${DIR}-${NAME})
+    endif ()
 
-add_executable(tsl_sparse_map_tests "main.cpp"
-        "custom_allocator_tests.cpp"
-        "policy_tests.cpp"
-        "popcount_tests.cpp"
-        "sparse_map_tests.cpp"
-        "sparse_set_tests.cpp"
-        "fancy_pointer/sparse_array_tests.cpp"
-        "fancy_pointer/sparse_hash_map_tests.cpp"
-        "fancy_pointer/sparse_hash_set_tests.cpp"
-        "scoped_allocator_adaptor/sparse_array_tests.cpp"
-        "scoped_allocator_adaptor/sparse_hash_set_tests.cpp"
-        )
+    add_executable(${TARGET} ${DIR}/${NAME}.cpp)
+    target_link_libraries(${TARGET}
+            doctest::doctest
+            dice-sparse-map::dice-sparse-map
+            Boost::headers
+    )
+    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+    add_test(NAME ${TARGET} COMMAND ${TARGET})
 
-target_compile_features(tsl_sparse_map_tests PRIVATE cxx_std_20)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        target_compile_options(${TARGET} PRIVATE -Werror -Wall -Wextra -Wold-style-cast)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        target_compile_options(${TARGET} PRIVATE /bigobj /WX /W3)
+    endif()
+endmacro ()
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(tsl_sparse_map_tests PRIVATE -Werror -Wall -Wextra -Wold-style-cast -DTSL_DEBUG -UNDEBUG)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    target_compile_options(tsl_sparse_map_tests PRIVATE /bigobj /WX /W3 /DTSL_DEBUG /UNDEBUG)
-endif()
+find_package(Boost REQUIRED COMPONENTS)
 
-# Boost::unit_test_framework
-set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost 1.54.0 REQUIRED COMPONENTS unit_test_framework)
-target_link_libraries(tsl_sparse_map_tests PRIVATE Boost::unit_test_framework)
-
-# dice-sparse-map::dice-sparse-map
-add_subdirectory(../ ${CMAKE_CURRENT_BINARY_DIR}/Dice/sparse-map)
-target_link_libraries(tsl_sparse_map_tests PRIVATE dice-sparse-map::dice-sparse-map)
+make_test(. custom_allocator_tests)
+make_test(. policy_tests)
+make_test(. sparse_map_tests)
+make_test(. sparse_set_tests)
+make_test(fancy_pointer sparse_array_tests)
+make_test(fancy_pointer sparse_hash_map_tests)
+make_test(fancy_pointer sparse_hash_set_tests)
+make_test(scoped_allocator_adaptor sparse_hash_set_tests)
