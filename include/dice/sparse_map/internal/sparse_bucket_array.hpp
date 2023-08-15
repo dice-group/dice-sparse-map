@@ -169,6 +169,10 @@ namespace dice::sparse_map::internal {
 		}
 
 		~sparse_bucket_array() noexcept {
+			if (buckets_ == nullptr) {
+				return;
+			}
+
 			for (size_type ix = 0; ix < size_; ++ix) {
 				buckets_[ix].destroy_deallocate(elem_alloc_);
 			}

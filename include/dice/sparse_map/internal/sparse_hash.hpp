@@ -707,7 +707,7 @@ namespace dice::sparse_map::internal {
 
 		template<typename K, typename ...Args>
 		std::pair<iterator, bool> insert_impl(K const &key, Args &&...value_type_args) {
-			if (buckets_.empty()) {
+			if (buckets_.empty()) [[unlikely]] {
 				rehash_impl(gpol_.next_bucket_count());
 			}
 
