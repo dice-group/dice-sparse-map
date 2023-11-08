@@ -19,8 +19,11 @@ if (IS_TOP_LEVEL AND USE_CONAN)
     install_packages_via_conan("${CMAKE_SOURCE_DIR}/conanfile.py" "${CONAN_OPTIONS}")
 endif ()
 
-
-find_package(Boost REQUIRED COMPONENTS)
+if (BUILD_TESTING)
+    find_package(Boost REQUIRED)
+else ()
+    find_package(Boost REQUIRED COMPONENTS)
+endif ()
 
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
