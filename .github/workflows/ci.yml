@@ -1,6 +1,6 @@
 name: CI
 
-on: [push, pull_request, release]
+on: [pull_request]
 
 jobs:
   build:
@@ -42,13 +42,13 @@ jobs:
       - name: Get minimum cmake version
         uses: lukka/get-cmake@v3.24.3
         with:
-          cmakeVersion: ${{ inputs.cmake-version }}
+          cmakeVersion: 3.22.6
 
       - name: Install compiler
         id: install_cc
         uses: rlalik/setup-cpp-compiler@v1.2
         with:
-          compiler: ${{ inputs.cxx }}
+          compiler: ${{ matrix.config.cxx }}
 
       - name: Install mold
         uses: rui314/setup-mold@v1
@@ -60,7 +60,7 @@ jobs:
         env:
           CC: ${{ steps.install_cc.outputs.cc }}
           CXX: ${{ steps.install_cc.outputs.cxx }}
-          CXXFLAGS: ${{ inputs.cxx-flags }}
+          CXXFLAGS: ${{ matrix.config.cxx-flags }}
         run: cmake -DCMAKE_BUILD_TYPE=Debug -S tests -B build_dir
 
       - name: Build
