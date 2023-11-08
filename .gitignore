@@ -109,5 +109,7 @@ fabric.properties
 # End of https://www.toptal.com/developers/gitignore/api/c++,ninja,cmake,intellij+all,conan
 
 .idea/
-test_package/build
+test_package/build/
 test_package/CMakeUserPresets.json
+build/
+CMakeUserPresets.json
