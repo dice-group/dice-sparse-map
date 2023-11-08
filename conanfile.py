@@ -32,9 +32,6 @@ class Recipe(ConanFile):
     def layout(self):
         cmake_layout(self)
 
-    def package_id(self):
-        self.info.header_only()
-
     def package(self):
         cmake = CMake(self)
         cmake.configure()
@@ -44,3 +41,7 @@ class Recipe(ConanFile):
             rmdir(self, os.path.join(self.package_folder, dir))
 
         copy(self, "LICENSE*", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
+
+    def package_info(self):
+        self.cpp_info.bindirs = []
+        self.cpp_info.libdirs = []
