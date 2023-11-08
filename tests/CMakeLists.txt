@@ -1,4 +1,4 @@
-find_package(Boost REQUIRED COMPONENTS unit_test_framework)
+find_package(Boost REQUIRED)
 
 add_executable(tsl_sparse_map_tests "main.cpp"
         "custom_allocator_tests.cpp"

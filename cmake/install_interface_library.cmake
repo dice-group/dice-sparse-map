@@ -2,7 +2,6 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 function(install_interface_library TARGET_NAME NAMESPACE LIBRARY_NAME INCLUDE_PATH)
-
     target_include_directories(
             ${TARGET_NAME} INTERFACE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 

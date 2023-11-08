@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22.3)
+cmake_minimum_required(VERSION 3.22)
 project(dice-sparse-map
         VERSION 0.2.4
         DESCRIPTION "C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers.")
@@ -12,31 +12,37 @@ option(BUILD_TESTING "Build tests" OFF)
 if (PROJECT_IS_TOP_LEVEL AND USE_CONAN)
     include(cmake/conan_cmake.cmake)
 
-    if (NOT BUILD_TESTING)
-        set(CONAN_OPTIONS "-o boost/*:header_only=True")
+    if (BUILD_TESTING)
+        set(CONAN_OPTIONS "with_test_deps=True")
+    else ()
+        set(CONAN_OPTIONS "boost/*:header_only=True")
     endif ()
 
     install_packages_via_conan("${CMAKE_SOURCE_DIR}/conanfile.py" "${CONAN_OPTIONS}")
 endif ()
 
 
-find_package(Boost REQUIRED COMPONENTS)
+find_package(Boost 1.83.0 REQUIRED COMPONENTS)
 
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
-add_library("${PROJECT_NAME}::${PROJECT_NAME}" ALIAS "${PROJECT_NAME}")
+add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
-        INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+        INTERFACE
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        )
 
-target_link_libraries(${PROJECT_NAME} INTERFACE
+target_link_libraries(${PROJECT_NAME}
+        INTERFACE
         Boost::headers
         )
 
 if(MSVC)
-    target_sources(${PROJECT_NAME} INTERFACE
-                   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tsl-sparse-map.natvis>"
-                   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_DATAROOTDIR}/tsl-sparse-map.natvis>")
+    target_sources(${PROJECT_NAME}
+            INTERFACE
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tsl-sparse-map.natvis>"
+            "$<INSTALL_INTERFACE:${CMAKE_INSTALL_DATAROOTDIR}/tsl-sparse-map.natvis>")
 endif()
 
 if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)

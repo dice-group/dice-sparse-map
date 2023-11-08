@@ -2,7 +2,7 @@ import os
 import re
 
 from conan import ConanFile
-from conan.tools.cmake import CMake, cmake_layout
+from conan.tools.cmake import CMake
 from conan.tools.files import rmdir, copy, load
 
 
@@ -13,10 +13,12 @@ class Recipe(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
     generators = ("CMakeDeps", "CMakeToolchain")
+    options = {"with_test_deps": [True, False]}
+    default_options = {"with_test_deps": False}
     no_copy_source = True
 
     def requirements(self):
-        self.requires("boost/1.81.0")
+        self.requires("boost/1.83.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
@@ -31,9 +33,6 @@ class Recipe(ConanFile):
             cmake_file = load(self, os.path.join(self.recipe_folder, "CMakeLists.txt"))
             self.description = re.search(r"project\([^)]*DESCRIPTION\s+\"([^\"]+)\"[^)]*\)", cmake_file).group(1)
 
-    def layout(self):
-        cmake_layout(self)
-
     def package(self):
         cmake = CMake(self)
         cmake.configure(variables={"USE_CONAN": False})
@@ -47,3 +46,12 @@ class Recipe(ConanFile):
     def package_info(self):
         self.cpp_info.bindirs = []
         self.cpp_info.libdirs = []
+
+        self.cpp_info.set_property("cmake_find_mode", "both")
+        self.cpp_info.set_property("cmake_target_name", "dice-sparse-map::dice-sparse-map")
+        self.cpp_info.set_property("cmake_file_name", "dice-sparse-map")
+
+        if self.options.with_test_deps:
+            self.cpp_info.requires = ["boost::boost"]
+        else:
+            self.cpp_info.requires = ["boost::headers"]
