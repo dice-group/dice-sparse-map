@@ -7,7 +7,7 @@ include(cmake/boilerplate_init.cmake)
 boilerplate_init()
 
 option(USE_CONAN "Use conan to fetch dependencies" ON)
-option(BUILD_TESTING "Build tests" ON)
+option(BUILD_TESTING "Build tests" OFF)
 
 if (IS_TOP_LEVEL AND USE_CONAN)
     include(cmake/conan_cmake.cmake)
