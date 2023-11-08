@@ -21,8 +21,8 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_compile_options(tsl_sparse_map_tests PRIVATE /bigobj /WX /W3 /DTSL_DEBUG /UNDEBUG)
 endif()
 
-# Boost::unit_test_framework
-target_link_libraries(tsl_sparse_map_tests PRIVATE Boost::unit_test_framework)
-
-# dice-sparse-map::dice-sparse-map
-target_link_libraries(tsl_sparse_map_tests PRIVATE dice-sparse-map::dice-sparse-map)
+target_link_libraries(tsl_sparse_map_tests
+        PRIVATE
+        Boost::unit_test_framework
+        dice-sparse-map::dice-sparse-map
+        )
