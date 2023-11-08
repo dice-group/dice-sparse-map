@@ -26,3 +26,5 @@ target_link_libraries(tsl_sparse_map_tests
         Boost::unit_test_framework
         dice-sparse-map::dice-sparse-map
         )
+
+add_test(NAME tsl_sparse_map_tests COMMAND tsl_sparse_map_tests)

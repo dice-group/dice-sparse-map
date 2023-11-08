@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.22.3)
 project(dice-sparse-map
         VERSION 0.2.4
         DESCRIPTION "C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers.")
@@ -9,7 +9,7 @@ boilerplate_init()
 option(USE_CONAN "Use conan to fetch dependencies" ON)
 option(BUILD_TESTING "Build tests" OFF)
 
-if (IS_TOP_LEVEL AND USE_CONAN)
+if (PROJECT_IS_TOP_LEVEL AND USE_CONAN)
     include(cmake/conan_cmake.cmake)
 
     if (NOT BUILD_TESTING)
@@ -39,14 +39,14 @@ if(MSVC)
                    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_DATAROOTDIR}/tsl-sparse-map.natvis>")
 endif()
 
-if (IS_TOP_LEVEL AND BUILD_TESTING)
+if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
     message("Tests are configured to be build.")
     include(CTest)
     enable_testing()
     add_subdirectory(tests)
 endif ()
 
-if (IS_TOP_LEVEL)
+if (PROJECT_IS_TOP_LEVEL)
     include(cmake/install_interface_library.cmake)
     install_interface_library("${PROJECT_NAME}" "${PROJECT_NAME}" "${PROJECT_NAME}" "include")
 endif ()
