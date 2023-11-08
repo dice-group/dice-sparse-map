@@ -8,11 +8,11 @@ from conan.tools.files import rmdir, copy, load
 
 class Recipe(ConanFile):
     url = "https://github.com/dice-group/dice-sparse-map"
-    topics = ("c++20", "hash-map", "data-structures", "header-only", "hash-table")
+    topics = "c++20", "hash-map", "data-structures", "header-only", "hash-table"
 
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
-    generators = ("CMakeDeps", "CMakeToolchain")
+    generators = "CMakeDeps", "CMakeToolchain"
     options = {"with_test_deps": [True, False]}
     default_options = {"with_test_deps": False}
     no_copy_source = True
