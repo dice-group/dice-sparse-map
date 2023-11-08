@@ -39,6 +39,10 @@ jobs:
           echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-16 main" | sudo tee /etc/apt/sources.list.d/llvm-16.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/llvm-16.gpg > /dev/null
 
+      - name: Install tools
+        run: |
+          sudo apt-get install -y python3 python3-pip
+
       - name: Get minimum cmake version
         uses: lukka/get-cmake@v3.24.3
         with:
@@ -53,6 +57,12 @@ jobs:
       - name: Install mold
         uses: rui314/setup-mold@v1
 
+      - name: Configure conan
+        run: |
+          pip3 install "conan==1.60.1"
+          conan profile new --detect default
+          conan profile update settings.compiler.libcxx=libstdc++11 default
+
       - name: Check out sources
         uses: actions/checkout@v3
 
@@ -61,14 +71,15 @@ jobs:
           CC: ${{ steps.install_cc.outputs.cc }}
           CXX: ${{ steps.install_cc.outputs.cxx }}
           CXXFLAGS: ${{ matrix.config.cxx-flags }}
-        run: cmake -DCMAKE_BUILD_TYPE=Debug -S tests -B build_dir
+        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
 
       - name: Build
         working-directory: build-dir
         run: cmake --build . --parallel 2
 
-      - name: Test
-        run: ${{github.workspace}}/build/tsl_sparse_map_tests
+      - name: Run tests
+        working-directory: build_dir
+        run: ctest --parallel 2 --verbose
 
       - name: Coverage
         run: |
