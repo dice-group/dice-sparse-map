@@ -6,6 +6,13 @@ project(dice-sparse-map
 include(cmake/boilerplate_init.cmake)
 boilerplate_init()
 
+option(USE_CONAN "Use conan to fetch dependencies" ON)
+if (IS_TOP_LEVEL AND USE_CONAN)
+    include(cmake/conan_cmake.cmake)
+    install_packages_via_conan("${CMAKE_SOURCE_DIR}/conanfile.py" "boost/*:header_only=True")
+endif ()
+
+
 find_package(Boost REQUIRED)
 
 add_library(${PROJECT_NAME} INTERFACE)
@@ -29,5 +36,4 @@ if (IS_TOP_LEVEL)
     include(cmake/install_interface_library.cmake)
     install_interface_library("${PROJECT_NAME}" "${PROJECT_NAME}" "${PROJECT_NAME}" "include")
 endif ()
-
 
