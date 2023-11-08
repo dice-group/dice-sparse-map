@@ -1,6 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
-
-project(tsl_sparse_map_tests)
+find_package(Boost REQUIRED COMPONENTS unit_test_framework)
 
 add_executable(tsl_sparse_map_tests "main.cpp"
         "custom_allocator_tests.cpp"
@@ -24,10 +22,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 endif()
 
 # Boost::unit_test_framework
-set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost 1.54.0 REQUIRED COMPONENTS unit_test_framework)
 target_link_libraries(tsl_sparse_map_tests PRIVATE Boost::unit_test_framework)
 
 # dice-sparse-map::dice-sparse-map
-add_subdirectory(../ ${CMAKE_CURRENT_BINARY_DIR}/Dice/sparse-map)
 target_link_libraries(tsl_sparse_map_tests PRIVATE dice-sparse-map::dice-sparse-map)

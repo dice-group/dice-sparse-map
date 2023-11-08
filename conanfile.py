@@ -12,9 +12,11 @@ class Recipe(ConanFile):
 
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
-    requires = "boost/1.79.0"
     generators = ("CMakeDeps", "CMakeToolchain")
     no_copy_source = True
+
+    def requirements(self):
+        self.requires("boost/1.81.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
@@ -34,7 +36,7 @@ class Recipe(ConanFile):
 
     def package(self):
         cmake = CMake(self)
-        cmake.configure()
+        cmake.configure(variables={"USE_CONAN": False})
         cmake.install()
 
         for dir in ("lib", "res", "share"):

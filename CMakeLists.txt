@@ -7,13 +7,20 @@ include(cmake/boilerplate_init.cmake)
 boilerplate_init()
 
 option(USE_CONAN "Use conan to fetch dependencies" ON)
+option(BUILD_TESTING "Build tests" ON)
+
 if (IS_TOP_LEVEL AND USE_CONAN)
     include(cmake/conan_cmake.cmake)
-    install_packages_via_conan("${CMAKE_SOURCE_DIR}/conanfile.py" "boost/*:header_only=True")
+
+    if (NOT BUILD_TESTING)
+        set(CONAN_OPTIONS "-o boost/*:header_only=True")
+    endif ()
+
+    install_packages_via_conan("${CMAKE_SOURCE_DIR}/conanfile.py" "${CONAN_OPTIONS}")
 endif ()
 
 
-find_package(Boost REQUIRED)
+find_package(Boost REQUIRED COMPONENTS)
 
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
@@ -32,8 +39,14 @@ if(MSVC)
                    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_DATAROOTDIR}/tsl-sparse-map.natvis>")
 endif()
 
+if (IS_TOP_LEVEL AND BUILD_TESTING)
+    message("Tests are configured to be build.")
+    include(CTest)
+    enable_testing()
+    add_subdirectory(tests)
+endif ()
+
 if (IS_TOP_LEVEL)
     include(cmake/install_interface_library.cmake)
     install_interface_library("${PROJECT_NAME}" "${PROJECT_NAME}" "${PROJECT_NAME}" "include")
 endif ()
-
