@@ -50,8 +50,4 @@ class Recipe(ConanFile):
         self.cpp_info.set_property("cmake_find_mode", "both")
         self.cpp_info.set_property("cmake_target_name", "dice-sparse-map::dice-sparse-map")
         self.cpp_info.set_property("cmake_file_name", "dice-sparse-map")
-
-        if self.options.with_test_deps:
-            self.cpp_info.requires = ["boost::boost"]
-        else:
-            self.cpp_info.requires = ["boost::headers"]
+        self.cpp_info.requires = ["boost::headers"]
