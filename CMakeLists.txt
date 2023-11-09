@@ -12,15 +12,12 @@ option(BUILD_TESTING "Build tests" OFF)
 if (PROJECT_IS_TOP_LEVEL AND USE_CONAN)
     include(cmake/conan_cmake.cmake)
 
-    if (NOT BUILD_TESTING)
-        set(CONAN_OPTIONS "boost/*:header_only=True")
+    if (BUILD_TESTING)
+        set(CONAN_OPTIONS "with_test_deps=True")
     endif ()
 
     install_packages_via_conan("${CMAKE_SOURCE_DIR}/conanfile.py" "${CONAN_OPTIONS}")
 endif ()
-
-
-find_package(Boost REQUIRED COMPONENTS)
 
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
@@ -29,11 +26,6 @@ add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME}
         INTERFACE
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        )
-
-target_link_libraries(${PROJECT_NAME}
-        INTERFACE
-        Boost::headers
         )
 
 if(MSVC)

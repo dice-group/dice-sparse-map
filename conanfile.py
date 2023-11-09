@@ -14,9 +14,12 @@ class Recipe(ConanFile):
     package_type = "header-library"
     generators = "CMakeDeps", "CMakeToolchain"
     no_copy_source = True
+    options = {"with_test_deps": [True, False]}
+    default_options = {"with_test_deps": False}
 
     def requirements(self):
-        self.requires("boost/1.83.0")
+        if self.options.with_test_deps:
+            self.requires("boost/1.83.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
@@ -48,4 +51,3 @@ class Recipe(ConanFile):
         self.cpp_info.set_property("cmake_find_mode", "both")
         self.cpp_info.set_property("cmake_target_name", "dice-sparse-map::dice-sparse-map")
         self.cpp_info.set_property("cmake_file_name", "dice-sparse-map")
-        self.cpp_info.requires = ["boost::headers"]
