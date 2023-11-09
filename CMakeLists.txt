@@ -12,9 +12,8 @@ option(BUILD_TESTING "Build tests" OFF)
 if (PROJECT_IS_TOP_LEVEL AND USE_CONAN)
     include(cmake/conan_cmake.cmake)
 
-    if (BUILD_TESTING)
-        set(CONAN_OPTIONS "with_test_deps=True")
-    else ()
+    if (NOT BUILD_TESTING)
+        # This makes problems with conan2, do not know why
         set(CONAN_OPTIONS "boost/*:header_only=True")
     endif ()
 
