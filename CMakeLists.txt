@@ -21,7 +21,7 @@ if (PROJECT_IS_TOP_LEVEL AND USE_CONAN)
 endif ()
 
 
-find_package(Boost 1.83.0 REQUIRED COMPONENTS)
+find_package(Boost REQUIRED COMPONENTS)
 
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
