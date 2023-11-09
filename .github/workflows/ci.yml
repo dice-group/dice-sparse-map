@@ -63,6 +63,13 @@ jobs:
           conan profile new --detect default
           conan profile update settings.compiler.libcxx=libstdc++11 default
 
+      - name: Cache conan data
+        id: cache-conan
+        uses: actions/cache@v3
+        with:
+          path: ~/.conan/data
+          key: ${{ matrix.config.os }}-${{ matrix.config.cxx }}-conan
+
       - name: Check out sources
         uses: actions/checkout@v3
 
