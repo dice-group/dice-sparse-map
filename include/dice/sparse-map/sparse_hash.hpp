@@ -40,7 +40,6 @@
 #include <vector>
 
 #include "dice/sparse-map/sparse_growth_policy.hpp"
-#include "boost/container/vector.hpp"
 
 #ifdef __INTEL_COMPILER
 #include <immintrin.h>  // For _popcnt32 and _popcnt64
@@ -1105,7 +1104,7 @@ class sparse_hash : private Allocator,
   using sparse_buckets_allocator = typename std::allocator_traits<
       allocator_type>::template rebind_alloc<sparse_array>;
   using sparse_buckets_container =
-      boost::container::vector<sparse_array, sparse_buckets_allocator>;
+      std::vector<sparse_array, sparse_buckets_allocator>;
  public:
   /**
    * The `operator*()` and `operator->()` methods return a const reference and

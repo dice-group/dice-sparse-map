@@ -1,6 +1,6 @@
 name: CI
 
-on: [push, pull_request, release]
+on: [pull_request]
 
 jobs:
   build:
@@ -8,97 +8,89 @@ jobs:
       fail-fast: false
       matrix:
         config:
-        - {
-            name: linux-x64-clang-9,
-            os: ubuntu-18.04,
-            cxx: clang++-9,
-            cmake-build-type: Release
-          }
-        - {
-            name: macos-x64-gcc,
-            os:  macos-10.15,
-            cxx: g++,
-            cmake-build-type: Release
-          }
-        - {
-            name: macos-x64-clang,
-            os:  macos-10.15,
-            cxx: clang++,
-            cmake-build-type: Release
-          }
-        - {
-            name: linux-x64-clang-12-sanitize,
-            os: ubuntu-20.04,
-            cxx: clang++-12,
-            cxx-flags: "-fsanitize=address,undefined",
-            cmake-build-type: Release
-          }
-        - {
-            name: linux-x64-gcc-10-coverage,
-            os: ubuntu-20.04,
-            cxx: g++-10,
-            cxx-flags: --coverage,
-            gcov-tool: gcov-10,
-            cmake-build-type: Debug
-          }
-        - {
-          name: linux-x64-clang-11,
-          os: ubuntu-20.04,
-          cxx: clang++-11,
-          cmake-build-type: Release
-        }
-        - {
-          name: linux-x64-clang-12,
-          os: ubuntu-22.04,
-          cxx: clang++-12,
-          cmake-build-type: Release
-        }
-        - {
-          name: linux-x64-clang-13,
-          os: ubuntu-22.04,
-          cxx: clang++-13,
-          cmake-build-type: Release
-        }
-        - {
-          name: linux-x64-clang-14,
-          os: ubuntu-22.04,
-          cxx: clang++-14,
-          cmake-build-type: Release
-        }
-        - {
-          name: linux-x64-gcc-11,
-          os: ubuntu-22.04,
-          cxx: g++-11,
-          cmake-build-type: Release
-        }
+          - name: linux-x64-clang-15
+            os: ubuntu-22.04
+            cxx: clang++-15
+          - name: linux-x64-clang-16-sanitize
+            os: ubuntu-20.04
+            cxx: clang++-16
+            cxx-flags: "-fsanitize=address,undefined"
+
+          - name: linux-x64-gcc-12
+            os: ubuntu-22.04
+            cxx: g++-12
+          - name: linux-x64-gcc-13-coverage
+            os: ubuntu-22.04
+            cxx: g++-13
+            cxx-flags: -Werror --coverage
+            gcov-tool: gcov-10
+
     name: ${{matrix.config.name}}
     runs-on: ${{matrix.config.os}}
     steps:
-    - uses: actions/checkout@v2
+      # setup env
+      - name: Add repos for for gcc-13 and clang-16
+        run: |
+          # gcc-13
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          
+          # clang-16
+          source /etc/os-release
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-16 main" | sudo tee /etc/apt/sources.list.d/llvm-16.list
+          curl https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/llvm-16.gpg > /dev/null
 
-    # Linux or macOS
-    - name: Install boost (Linux or macOS)
-      run: vcpkg install boost-test boost-container boost-interprocess
-      if: runner.os == 'Linux' || runner.os == 'macOS'
+      - name: Install tools
+        run: |
+          sudo apt-get install -y python3 python3-pip
 
-    - name: Configure CMake (Linux or macOS)
-      run: cmake -DCMAKE_BUILD_TYPE=${{matrix.config.cmake-build-type}} -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -S ${{github.workspace}}/tests -B ${{github.workspace}}/build
-      env:
-        CXX: ${{matrix.config.cxx}}
-        CXXFLAGS: ${{matrix.config.cxx-flags}}
-      if: runner.os == 'Linux' || runner.os == 'macOS'
+      - name: Get minimum cmake version
+        uses: lukka/get-cmake@v3.24.3
+        with:
+          cmakeVersion: 3.22.6
 
-    - name: Build (Linux or macOS)
-      run: cmake --build ${{github.workspace}}/build --verbose
-      if: runner.os == 'Linux' || runner.os == 'macOS'
+      - name: Install compiler
+        id: install_cc
+        uses: rlalik/setup-cpp-compiler@v1.2
+        with:
+          compiler: ${{ matrix.config.cxx }}
 
-    - name: Test (Linux or macOS)
-      run: ${{github.workspace}}/build/tsl_sparse_map_tests
-      if: runner.os == 'Linux' || runner.os == 'macOS'
+      - name: Install mold
+        uses: rui314/setup-mold@v1
 
-    - name: Coverage
-      run: |
-        sudo apt-get install -y lcov
-        lcov -c -b ${{github.workspace}}/include -d ${{github.workspace}}/build -o ${{github.workspace}}/coverage.info --no-external --gcov-tool ${{matrix.config.gcov-tool}}
-        bash <(curl -s https://codecov.io/bash) -f ${{github.workspace}}/coverage.info
-      if: ${{matrix.config.name == 'linux-x64-gcc-10-coverage'}}
+      - name: Configure conan
+        run: |
+          pip3 install "conan==1.60.1"
+          conan profile new --detect default
+          conan profile update settings.compiler.libcxx=libstdc++11 default
+
+      - name: Cache conan data
+        id: cache-conan
+        uses: actions/cache@v3
+        with:
+          path: ~/.conan/data
+          key: ${{ matrix.config.os }}-${{ matrix.config.cxx }}-conan
+
+      - name: Check out sources
+        uses: actions/checkout@v3
+
+      - name: Configure CMake
+        env:
+          CC: ${{ steps.install_cc.outputs.cc }}
+          CXX: ${{ steps.install_cc.outputs.cxx }}
+          CXXFLAGS: ${{ matrix.config.cxx-flags }}
+        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+
+      - name: Build
+        working-directory: build_dir
+        run: cmake --build . --parallel 2
+
+      - name: Run tests
+        working-directory: build_dir
+        run: ctest --parallel 2 --verbose
+
+      #- name: Coverage
+      #  run: |
+      #    sudo apt-get install -y lcov
+      #    lcov -c -b ${{github.workspace}}/include -d ${{github.workspace}}/build -o ${{github.workspace}}/coverage.info --no-external --gcov-tool ${{matrix.config.gcov-tool}}
+      #    bash <(curl -s https://codecov.io/bash) -f ${{github.workspace}}/coverage.info
+      #  if: ${{matrix.config.name == 'linux-x64-gcc-13-coverage'}}

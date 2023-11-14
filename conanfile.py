@@ -2,19 +2,24 @@ import os
 import re
 
 from conan import ConanFile
-from conan.tools.cmake import CMake, cmake_layout
+from conan.tools.cmake import CMake
 from conan.tools.files import rmdir, copy, load
 
 
 class Recipe(ConanFile):
     url = "https://github.com/dice-group/dice-sparse-map"
-    topics = ("c++20", "hash-map", "data-structures", "header-only", "hash-table")
-
+    topics = "c++20", "hash-map", "data-structures", "header-only", "hash-table"
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
-    requires = "boost/1.79.0"
-    generators = ("CMakeDeps", "CMakeToolchain")
+    package_type = "header-library"
+    generators = "CMakeDeps", "CMakeToolchain"
     no_copy_source = True
+    options = {"with_test_deps": [True, False]}
+    default_options = {"with_test_deps": False}
+
+    def requirements(self):
+        if self.options.with_test_deps:
+            self.requires("boost/1.83.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
@@ -29,18 +34,20 @@ class Recipe(ConanFile):
             cmake_file = load(self, os.path.join(self.recipe_folder, "CMakeLists.txt"))
             self.description = re.search(r"project\([^)]*DESCRIPTION\s+\"([^\"]+)\"[^)]*\)", cmake_file).group(1)
 
-    def layout(self):
-        cmake_layout(self)
-
-    def package_id(self):
-        self.info.header_only()
-
     def package(self):
         cmake = CMake(self)
-        cmake.configure()
+        cmake.configure(variables={"USE_CONAN": False})
         cmake.install()
 
         for dir in ("lib", "res", "share"):
             rmdir(self, os.path.join(self.package_folder, dir))
 
         copy(self, "LICENSE*", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
+
+    def package_info(self):
+        self.cpp_info.bindirs = []
+        self.cpp_info.libdirs = []
+
+        self.cpp_info.set_property("cmake_find_mode", "both")
+        self.cpp_info.set_property("cmake_target_name", "dice-sparse-map::dice-sparse-map")
+        self.cpp_info.set_property("cmake_file_name", "dice-sparse-map")

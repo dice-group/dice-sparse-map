@@ -1,7 +1,8 @@
 import os
-from conan.tools.cmake import CMake, CMakeToolchain
-from conan.tools.layout import cmake_layout
 from conan import ConanFile
+from conan.tools.build import can_run
+from conan.tools.cmake import CMake, cmake_layout
+
 
 required_conan_version = ">=1.59"
 
@@ -10,9 +11,8 @@ class TestPackageConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     generators = "CMakeDeps", "CMakeToolchain"
 
-    def generate(self):
-        tc = CMakeToolchain(self)
-        tc.generate()
+    def requirements(self):
+        self.requires(self.tested_reference_str)
 
     def layout(self):
         cmake_layout(self)
@@ -23,4 +23,6 @@ class TestPackageConan(ConanFile):
         cmake.build()
 
     def test(self):
-        self.run(os.path.join(self.cpp.build.bindirs[0], "example"), run_environment=True)
+        if can_run(self):
+            cmd = os.path.join(self.cpp.build.bindir, "example")
+            self.run(cmd, env="conanrun")

@@ -1,6 +1,8 @@
 #ifndef DICE_SPARSE_MAP_BOOST_OFFSET_POINTER_HPP
 #define DICE_SPARSE_MAP_BOOST_OFFSET_POINTER_HPP
 
+#if __has_include(<boost/interprocess/offset_ptr.hpp>)
+
 #include "dice/sparse-map/sparse_hash.hpp" //needed, so the basic template is already included
 #include <boost/interprocess/offset_ptr.hpp>
 
@@ -21,4 +23,5 @@ struct Remove_Const<boost::interprocess::offset_ptr<PT, DT, OT, OA>> {
 };
 } // namespace dice
 
+#endif // __has_include(<boost/interprocess/offset_ptr.hpp>)
 #endif // DICE_SPARSE_MAP_BOOST_OFFSET_POINTER_HPP
