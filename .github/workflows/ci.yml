@@ -58,7 +58,7 @@ jobs:
         uses: rui314/setup-mold@v1
 
       - name: Configure conan
-        uses: dice-group/cpp-conan-release-reusable-workflow/.github/workflows/configure_conan.yml@feature/conan2_utils
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/configure_conan.yml@feature/conan2_utils
 
       - name: add conan user
         run: |
