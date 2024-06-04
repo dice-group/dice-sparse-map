@@ -2,7 +2,7 @@ import os
 import re
 
 from conan import ConanFile
-from conan.tools.cmake import CMake
+from conan.tools.cmake import cmake_layout, CMake
 from conan.tools.files import rmdir, copy, load
 
 
@@ -14,12 +14,9 @@ class Recipe(ConanFile):
     package_type = "header-library"
     generators = "CMakeDeps", "CMakeToolchain"
     no_copy_source = True
-    options = {"with_test_deps": [True, False]}
-    default_options = {"with_test_deps": False}
 
     def requirements(self):
-        if self.options.with_test_deps:
-            self.requires("boost/1.83.0")
+        self.test_requires("boost/1.83.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
@@ -34,9 +31,20 @@ class Recipe(ConanFile):
             cmake_file = load(self, os.path.join(self.recipe_folder, "CMakeLists.txt"))
             self.description = re.search(r"project\([^)]*DESCRIPTION\s+\"([^\"]+)\"[^)]*\)", cmake_file).group(1)
 
+    def layout(self):
+        cmake_layout(self)
+
+    def build(self):
+        if not self.conf.get("tools.build:skip_test", default=False):
+            cmake = CMake(self)
+            cmake.configure()
+            cmake.build()
+
+    def package_id(self):
+        self.info.clear()
+
     def package(self):
         cmake = CMake(self)
-        cmake.configure(variables={"USE_CONAN": False})
         cmake.install()
 
         for dir in ("lib", "res", "share"):
