@@ -30,23 +30,16 @@ jobs:
     steps:
       # setup env
       - name: Add repos for for gcc-13 and clang-16
-        run: |
-          # gcc-13
-          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
-          
-          # clang-16
-          source /etc/os-release
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-16 main" | sudo tee /etc/apt/sources.list.d/llvm-16.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/llvm-16.gpg > /dev/null
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/setup_apt@main
 
       - name: Install tools
         run: |
           sudo apt-get install -y python3 python3-pip
 
       - name: Get minimum cmake version
-        uses: lukka/get-cmake@v3.24.3
+        uses: lukka/get-cmake@v3.29.3
         with:
-          cmakeVersion: 3.22.6
+          cmakeVersion: 3.24
 
       - name: Install compiler
         id: install_cc
@@ -58,27 +51,33 @@ jobs:
         uses: rui314/setup-mold@v1
 
       - name: Configure conan
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/configure_conan@main
+        with:
+          conan-version: 2.3.1
+
+      - name: add conan user
         run: |
-          pip3 install "conan==1.60.1"
-          conan profile new --detect default
-          conan profile update settings.compiler.libcxx=libstdc++11 default
+          conan remote add -f dice-group https://conan.dice-research.org/artifactory/api/conan/tentris
 
       - name: Cache conan data
         id: cache-conan
-        uses: actions/cache@v3
+        uses: actions/cache@v4.0.2
         with:
-          path: ~/.conan/data
+          path: ~/.conan2/p
           key: ${{ matrix.config.os }}-${{ matrix.config.cxx }}-conan
 
       - name: Check out sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4.1.6
+
+      - name: Get dependency provider
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/add_conan_provider@main
 
       - name: Configure CMake
         env:
           CC: ${{ steps.install_cc.outputs.cc }}
           CXX: ${{ steps.install_cc.outputs.cxx }}
           CXXFLAGS: ${{ matrix.config.cxx-flags }}
-        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=conan_provider.cmake
 
       - name: Build
         working-directory: build_dir
