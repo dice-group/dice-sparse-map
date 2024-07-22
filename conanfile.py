@@ -14,9 +14,16 @@ class Recipe(ConanFile):
     package_type = "header-library"
     generators = "CMakeDeps", "CMakeToolchain"
     no_copy_source = True
+    options = {
+        "with_test_deps": [True, False],
+    }
+    default_options = {
+        "with_test_deps": False,
+    }
 
     def requirements(self):
-        self.test_requires("boost/1.83.0")
+        if self.options.with_test_deps:
+            self.test_requires("boost/1.83.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
