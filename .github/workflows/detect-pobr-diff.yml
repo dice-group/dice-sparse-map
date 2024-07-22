@@ -16,7 +16,10 @@ jobs:
       conan-version: 2.3.1
       base-branch: ${{ github.base_ref }}
       search-path: >
-        include/dice/sparse-map
+        include/dice/sparse-map/sparse_growth_policy.hpp
+        include/dice/sparse-map/sparse_hash.hpp
+        include/dice/sparse-map/sparse_map.hpp
+        include/dice/sparse-map/sparse_set.hpp
       abi-version-header: include/dice/sparse-map/version.hpp
       abi-version-const: dice::sparse_map::pobr_version
     secrets:
