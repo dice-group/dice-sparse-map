@@ -8,6 +8,12 @@ boilerplate_init()
 
 option(BUILD_TESTING "Build tests" OFF)
 
+if (PROJECT_IS_TOP_LEVEL)
+    if (BUILD_TESTING)
+        set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=&:with_test_deps=True")
+    endif ()
+endif ()
+
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
