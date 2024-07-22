@@ -27,8 +27,6 @@ if(MSVC)
 endif()
 
 if (PROJECT_IS_TOP_LEVEL)
-
-
     if (BUILD_TESTING)
         message("Tests are configured to be build.")
         include(CTest)
