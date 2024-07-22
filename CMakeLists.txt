@@ -27,13 +27,15 @@ if(MSVC)
 endif()
 
 if (PROJECT_IS_TOP_LEVEL)
-    set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=boost/*:header_only=True")
+
 
     if (BUILD_TESTING)
         message("Tests are configured to be build.")
         include(CTest)
         enable_testing()
         add_subdirectory(tests)
+    else ()
+        set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=boost/*:header_only=True")
     endif ()
 
     include(cmake/install_interface_library.cmake)
