@@ -40,7 +40,6 @@
 #include <vector>
 
 #include "dice/sparse-map/sparse_growth_policy.hpp"
-#include "dice/sparse-map/version.hpp"
 
 #ifdef __INTEL_COMPILER
 #include <immintrin.h>  // For _popcnt32 and _popcnt64
