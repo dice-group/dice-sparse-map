@@ -39,6 +39,8 @@ if (PROJECT_IS_TOP_LEVEL)
         enable_testing()
         add_subdirectory(tests)
     else ()
+        # in top-level builds without tests we only need boost headers but not libraries
+        # so avoid building the unecessesarily
         set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=boost/*:header_only=True")
     endif ()
 
