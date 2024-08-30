@@ -11,9 +11,7 @@ class Recipe(ConanFile):
     topics = "c++20", "hash-map", "data-structures", "header-only", "hash-table"
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
-    package_type = "header-library"
     generators = "CMakeDeps", "CMakeToolchain"
-    no_copy_source = True
     options = {
         "with_test_deps": [True, False],
     }
