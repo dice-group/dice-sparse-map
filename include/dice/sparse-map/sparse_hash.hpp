@@ -1619,7 +1619,7 @@ class sparse_hash : private Allocator,
   void swap(sparse_hash &other) {
     using std::swap;
 
-    if (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
+    if constexpr (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
       swap(static_cast<Allocator &>(*this), static_cast<Allocator &>(other));
     } else {
       tsl_sh_assert(static_cast<Allocator &>(*this) ==
