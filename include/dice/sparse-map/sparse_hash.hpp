@@ -762,10 +762,16 @@ class sparse_array {
   static void destroy_and_deallocate_values(
       allocator_type &alloc, pointer values, size_type nb_values,
       size_type capacity_values) noexcept {
+    if (capacity_values == 0) {
+      tsl_sh_assert(nb_values == 0);
+      // nothing to deallocate
+      // alloc.deallocate(nullptr, 0) is invalid
+      return;
+    }
+
     for (size_type i = 0; i < nb_values; i++) {
       destroy_value(alloc, values + i);
     }
-
     alloc.deallocate(values, capacity_values);
   }
 
