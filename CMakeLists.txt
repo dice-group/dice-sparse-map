@@ -16,6 +16,16 @@ if (PROJECT_IS_TOP_LEVEL)
     endif ()
 endif ()
 
+set(style_files
+        .clang-format
+        .clang-tidy
+)
+foreach(style_file ${style_files})
+    file(DOWNLOAD "https://raw.githubusercontent.com/dice-group/tentris-cpp-coding-guidelines/main/${style_file}"
+            "${CMAKE_SOURCE_DIR}/${style_file}"
+            TLS_VERIFY ON)
+endforeach()
+
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})

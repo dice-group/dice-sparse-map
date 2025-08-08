@@ -8,17 +8,18 @@
 #include <boost/interprocess/offset_ptr.hpp>
 
 /** A custom allocator that simply wraps all pointers into boost offset ptr.
-* It is used to check whether the implementation can handle Allocators using fancy pointers.
-* @tparam T Typical Allocator parameter.
-*/
+ * It is used to check whether the implementation can handle Allocators using fancy pointers.
+ * @tparam T Typical Allocator parameter.
+ */
 template<typename T>
 struct OffsetAllocator {
     using value_type = T;
-    template <typename P> using offset_ptr = boost::interprocess::offset_ptr<P>;
+    template<typename P>
+    using offset_ptr = boost::interprocess::offset_ptr<P>;
     using pointer = offset_ptr<value_type>;
-    using const_pointer = offset_ptr<const value_type>;
+    using const_pointer = offset_ptr<value_type const>;
     using void_pointer = offset_ptr<void>;
-    using const_void_pointer = offset_ptr<const void>;
+    using const_void_pointer = offset_ptr<void const>;
     using difference_type = typename offset_ptr<value_type>::difference_type;
 
     OffsetAllocator() noexcept = default;
@@ -27,10 +28,11 @@ struct OffsetAllocator {
     OffsetAllocator &operator=(OffsetAllocator const &) noexcept = default;
     OffsetAllocator &operator=(OffsetAllocator &&) noexcept = default;
     template<typename V>
-    OffsetAllocator(OffsetAllocator<V>) noexcept {}
+    OffsetAllocator(OffsetAllocator<V>) noexcept {
+    }
 
     pointer allocate(std::size_t n) {
-        return pointer(static_cast<T*>(::operator new(n*sizeof(T))));
+        return pointer(static_cast<T *>(::operator new(n * sizeof(T))));
     }
     void deallocate(pointer p, std::size_t) noexcept {
         ::operator delete(p.get());
@@ -43,4 +45,4 @@ struct OffsetAllocator {
     }
 };
 
-#endif //TSL_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP
+#endif  // TSL_SPARSE_MAP_TESTS_CUSTOMALLOCATOR_HPP

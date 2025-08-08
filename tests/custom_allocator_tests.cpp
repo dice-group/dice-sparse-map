@@ -38,68 +38,75 @@
 
 static std::size_t nb_custom_allocs = 0;
 
-template <typename T>
+template<typename T>
 class custom_allocator {
- public:
-  using value_type = T;
-  using pointer = T*;
-  using const_pointer = const T*;
-  using reference = T&;
-  using const_reference = const T&;
-  using size_type = std::size_t;
-  using difference_type = std::ptrdiff_t;
-  using propagate_on_container_move_assignment = std::true_type;
+public:
+    using value_type = T;
+    using pointer = T *;
+    using const_pointer = T const *;
+    using reference = T &;
+    using const_reference = T const &;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+    using propagate_on_container_move_assignment = std::true_type;
 
-  template <typename U>
-  struct rebind {
-    using other = custom_allocator<U>;
-  };
+    template<typename U>
+    struct rebind {
+        using other = custom_allocator<U>;
+    };
 
-  custom_allocator() = default;
+    custom_allocator() = default;
 
-  template <typename U>
-  custom_allocator(const custom_allocator<U>&) {}
-
-  pointer address(reference x) const noexcept { return &x; }
-
-  const_pointer address(const_reference x) const noexcept { return &x; }
-
-  pointer allocate(size_type n, const void* /*hint*/ = 0) {
-    nb_custom_allocs++;
-
-    pointer ptr = static_cast<pointer>(std::malloc(n * sizeof(T)));
-    if (ptr == nullptr) {
-      throw std::bad_alloc();
+    template<typename U>
+    custom_allocator(custom_allocator<U> const &) {
     }
 
-    return ptr;
-  }
+    pointer address(reference x) const noexcept {
+        return &x;
+    }
 
-  void deallocate(T* p, size_type /*n*/) { std::free(p); }
+    const_pointer address(const_reference x) const noexcept {
+        return &x;
+    }
 
-  size_type max_size() const noexcept {
-    return std::numeric_limits<size_type>::max() / sizeof(value_type);
-  }
+    pointer allocate(size_type n, void const * /*hint*/ = 0) {
+        nb_custom_allocs++;
 
-  template <typename U, typename... Args>
-  void construct(U* p, Args&&... args) {
-    ::new (static_cast<void*>(p)) U(std::forward<Args>(args)...);
-  }
+        pointer ptr = static_cast<pointer>(std::malloc(n * sizeof(T)));
+        if (ptr == nullptr) {
+            throw std::bad_alloc();
+        }
 
-  template <typename U>
-  void destroy(U* p) {
-    p->~U();
-  }
+        return ptr;
+    }
+
+    void deallocate(T *p, size_type /*n*/) {
+        std::free(p);
+    }
+
+    size_type max_size() const noexcept {
+        return std::numeric_limits<size_type>::max() / sizeof(value_type);
+    }
+
+    template<typename U, typename... Args>
+    void construct(U *p, Args &&...args) {
+        ::new (static_cast<void *>(p)) U(std::forward<Args>(args)...);
+    }
+
+    template<typename U>
+    void destroy(U *p) {
+        p->~U();
+    }
 };
 
-template <class T, class U>
-bool operator==(const custom_allocator<T>&, const custom_allocator<U>&) {
-  return true;
+template<class T, class U>
+bool operator==(custom_allocator<T> const &, custom_allocator<U> const &) {
+    return true;
 }
 
-template <class T, class U>
-bool operator!=(const custom_allocator<T>&, const custom_allocator<U>&) {
-  return false;
+template<class T, class U>
+bool operator!=(custom_allocator<T> const &, custom_allocator<U> const &) {
+    return false;
 }
 
 // TODO Avoid overloading new to check number of global new
@@ -116,20 +123,20 @@ bool operator!=(const custom_allocator<T>&, const custom_allocator<U>&) {
 BOOST_AUTO_TEST_SUITE(test_custom_allocator)
 
 BOOST_AUTO_TEST_CASE(test_custom_allocator_1) {
-  //    nb_global_new = 0;
-  nb_custom_allocs = 0;
+    //    nb_global_new = 0;
+    nb_custom_allocs = 0;
 
-  dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
-                  custom_allocator<std::pair<int, int>>>
-      map;
+    dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
+                                 custom_allocator<std::pair<int, int>>>
+            map;
 
-  const int nb_elements = 1000;
-  for (int i = 0; i < nb_elements; i++) {
-    map.insert({i, i * 2});
-  }
+    int const nb_elements = 1000;
+    for (int i = 0; i < nb_elements; i++) {
+        map.insert({i, i * 2});
+    }
 
-  BOOST_CHECK_NE(nb_custom_allocs, 0);
-  //    BOOST_CHECK_EQUAL(nb_global_new, 0);
+    BOOST_CHECK_NE(nb_custom_allocs, 0);
+    //    BOOST_CHECK_EQUAL(nb_global_new, 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
