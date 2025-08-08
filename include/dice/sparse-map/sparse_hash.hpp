@@ -1983,14 +1983,6 @@ namespace dice::sparse_map {
             template<class K, class... Args>
             std::pair<iterator, bool> insert_impl(K const &key,
                                                   Args &&...value_type_args) {
-                if (size() >= m_load_threshold_rehash) {
-                    rehash_impl(GrowthPolicy::next_bucket_count());
-                } else if (size() + m_nb_deleted_buckets >=
-                           m_load_threshold_clear_deleted) {
-                    clear_deleted_buckets();
-                }
-                tsl_sh_assert(!m_sparse_buckets_data.empty());
-
                 /**
                  * We must insert the value in the first empty or deleted bucket we find. If
                  * we first find a deleted bucket, we still have to continue the search
@@ -2005,6 +1997,29 @@ namespace dice::sparse_map {
 
                 std::size_t const hash = hash_key(key);
                 std::size_t ibucket = bucket_for_hash(hash);
+
+                auto confirmed_insert = [&](std::size_t sparse_ibucket, typename sparse_array::size_type index_in_sparse_bucket) {
+                    if (size() >= m_load_threshold_rehash) {
+                        rehash_impl(GrowthPolicy::next_bucket_count());
+                        return insert_impl(key, std::forward<Args>(value_type_args)...);
+                    } else if (size() + m_nb_deleted_buckets >=
+                               m_load_threshold_clear_deleted) {
+                        clear_deleted_buckets();
+                        return insert_impl(key, std::forward<Args>(value_type_args)...);
+                    }
+
+                    if (found_first_deleted_bucket) {
+                        auto it = insert_in_bucket(sparse_ibucket_first_deleted,
+                                                   index_in_sparse_bucket_first_deleted,
+                                                   std::forward<Args>(value_type_args)...);
+                        m_nb_deleted_buckets--;
+
+                        return it;
+                    }
+
+                    return insert_in_bucket(sparse_ibucket, index_in_sparse_bucket,
+                                            std::forward<Args>(value_type_args)...);
+                };
 
                 std::size_t probe = 0;
                 while (true) {
@@ -2030,20 +2045,25 @@ namespace dice::sparse_map {
                                 sparse_ibucket_first_deleted = sparse_ibucket;
                                 index_in_sparse_bucket_first_deleted = index_in_sparse_bucket;
                             }
-                        } else if (found_first_deleted_bucket) {
-                            auto it = insert_in_bucket(sparse_ibucket_first_deleted,
-                                                       index_in_sparse_bucket_first_deleted,
-                                                       std::forward<Args>(value_type_args)...);
-                            m_nb_deleted_buckets--;
-
-                            return it;
                         } else {
-                            return insert_in_bucket(sparse_ibucket, index_in_sparse_bucket,
-                                                    std::forward<Args>(value_type_args)...);
+                            /**
+                             * At this point we are sure that the value does not exist
+                             * in the hash table.
+                             * First check if we satisfy load and delete thresholds, and if not,
+                             * rehash the hash table (and therefore start over). Otherwise, just
+                             * insert the value into the appropriate bucket.
+                             */
+                            return confirmed_insert(sparse_ibucket, index_in_sparse_bucket);
                         }
                     } else {
-                        return insert_in_bucket(sparse_ibucket, index_in_sparse_bucket,
-                                                std::forward<Args>(value_type_args)...);
+                        /**
+                         * At this point we are sure that the value does not exist
+                         * in the hash table.
+                         * First check if we satisfy load and delete thresholds, and if not,
+                         * rehash the hash table (and therefore start over). Otherwise, just
+                         * insert the value into the appropriate bucket.
+                         */
+                        return confirmed_insert(sparse_ibucket, index_in_sparse_bucket);
                     }
 
                     probe++;
