@@ -2209,9 +2209,7 @@ namespace dice::sparse_map {
 
             template<typename K>
             void insert_on_rehash(K &&key_value) {
-                key_type const &key = KeySelect()(key_value);
-
-                std::size_t const hash = hash_key(key);
+                std::size_t const hash = hash_key(KeySelect()(key_value));
                 std::size_t ibucket = bucket_for_hash(hash);
 
                 std::size_t probe = 0;
@@ -2228,7 +2226,7 @@ namespace dice::sparse_map {
                         return;
                     } else {
                         tsl_sh_assert(!compare_keys(
-                                key, KeySelect()(*m_sparse_buckets[sparse_ibucket].value(
+                                KeySelect()(key_value), KeySelect()(*m_sparse_buckets[sparse_ibucket].value(
                                              index_in_sparse_bucket))));
                     }
 
