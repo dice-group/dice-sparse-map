@@ -8,20 +8,20 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - name: linux-x64-clang-15
-            os: ubuntu-22.04
-            cxx: clang++-15
-          - name: linux-x64-clang-16-sanitize
-            os: ubuntu-20.04
-            cxx: clang++-16
+          - name: linux-x64-clang-19
+            os: ubuntu-24.04
+            cxx: clang++-19
+          - name: linux-x64-clang-20-sanitize
+            os: ubuntu-24.04
+            cxx: clang++-20
             cxx-flags: "-fsanitize=address,undefined"
 
-          - name: linux-x64-gcc-12
-            os: ubuntu-22.04
-            cxx: g++-12
-          - name: linux-x64-gcc-13-coverage
-            os: ubuntu-22.04
+          - name: linux-x64-gcc-13
+            os: ubuntu-24.04
             cxx: g++-13
+          - name: linux-x64-gcc-14-coverage
+            os: ubuntu-24.04
+            cxx: g++-14
             cxx-flags: -Werror --coverage
             gcov-tool: gcov-10
 
@@ -37,7 +37,7 @@ jobs:
           sudo apt-get install -y python3 python3-pip
 
       - name: Get minimum cmake version
-        uses: lukka/get-cmake@v3.29.3
+        uses: lukka/get-cmake@v4.0.3
         with:
           cmakeVersion: 3.24
 
@@ -53,7 +53,7 @@ jobs:
       - name: Configure conan
         uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/configure_conan@main
         with:
-          conan-version: 2.3.1
+          conan-version: 2.19.1
 
       - name: add conan user
         run: |
@@ -61,13 +61,13 @@ jobs:
 
       - name: Cache conan data
         id: cache-conan
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v4.2.4
         with:
           path: ~/.conan2/p
           key: ${{ matrix.config.os }}-${{ matrix.config.cxx }}-conan
 
       - name: Check out sources
-        uses: actions/checkout@v4.1.6
+        uses: actions/checkout@v4.2.2
 
       - name: Get dependency provider
         uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/add_conan_provider@main
