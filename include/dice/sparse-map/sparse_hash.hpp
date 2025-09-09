@@ -299,11 +299,13 @@ namespace dice::sparse_map {
                 throw std::runtime_error(error_message);
             }
 
-            bool const is_same_signedness =
-                    (std::is_unsigned<T>::value && std::is_unsigned<U>::value) ||
-                    (std::is_signed<T>::value && std::is_signed<U>::value);
-            if (!is_same_signedness && (ret < T{}) != (value < U{})) {
-                throw std::runtime_error(error_message);
+            static constexpr bool is_same_signedness =
+                    (std::is_unsigned_v<T> && std::is_unsigned_v<U>) ||
+                    (std::is_signed_v<T> && std::is_signed_v<U>);
+            if constexpr (!is_same_signedness) {
+                if ((ret < T{}) != (value < U{})) {
+                    throw std::runtime_error(error_message);
+                }
             }
 
             return ret;
@@ -372,7 +374,7 @@ namespace dice::sparse_map {
             using const_iterator = const_pointer;
 
         private:
-            static size_type const CAPACITY_GROWTH_STEP =
+            static constexpr size_type CAPACITY_GROWTH_STEP =
                     (Sparsity == dice::sparse_map::sh::sparsity::high) ? 2
                     : (Sparsity == dice::sparse_map::sh::sparsity::medium)
                             ? 4
@@ -386,15 +388,15 @@ namespace dice::sparse_map {
              */
 #if SIZE_MAX <= UINT32_MAX
             using bitmap_type = std::uint_least32_t;
-            static std::size_t const BITMAP_NB_BITS = 32;
-            static std::size_t const BUCKET_SHIFT = 5;
+            static constexpr std::size_t BITMAP_NB_BITS = 32;
+            static constexpr std::size_t BUCKET_SHIFT = 5;
 #else
             using bitmap_type = std::uint_least64_t;
-            static std::size_t const BITMAP_NB_BITS = 64;
-            static std::size_t const BUCKET_SHIFT = 6;
+            static constexpr std::size_t BITMAP_NB_BITS = 64;
+            static constexpr std::size_t BUCKET_SHIFT = 6;
 #endif
 
-            static const std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
+            static constexpr std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
 
             static_assert(is_power_of_two(BITMAP_NB_BITS),
                           "BITMAP_NB_BITS must be a power of two.");
@@ -819,7 +821,7 @@ namespace dice::sparse_map {
             }
 
             static size_type popcount(bitmap_type val) noexcept {
-                if (sizeof(bitmap_type) <= sizeof(unsigned int)) {
+                if constexpr (sizeof(bitmap_type) <= sizeof(unsigned int)) {
                     return static_cast<size_type>(
                             dice::sparse_map::detail_popcount::popcount(static_cast<unsigned int>(val)));
                 } else {
@@ -1383,7 +1385,7 @@ namespace dice::sparse_map {
                 if (this != &other) {
                     clear();
 
-                    if (std::allocator_traits<
+                    if constexpr (std::allocator_traits<
                                 Allocator>::propagate_on_container_copy_assignment::value) {
                         Allocator::operator=(other);
                     }
@@ -1392,7 +1394,7 @@ namespace dice::sparse_map {
                     KeyEqual::operator=(other);
                     GrowthPolicy::operator=(other);
 
-                    if (std::allocator_traits<
+                    if constexpr (std::allocator_traits<
                                 Allocator>::propagate_on_container_copy_assignment::value) {
                         m_sparse_buckets_data =
                                 sparse_buckets_container(static_cast<Allocator const &>(other));
@@ -1554,7 +1556,7 @@ namespace dice::sparse_map {
 
             template<class InputIt>
             void insert(InputIt first, InputIt last) {
-                if (std::is_base_of<
+                if constexpr (std::is_base_of<
                             std::forward_iterator_tag,
                             typename std::iterator_traits<InputIt>::iterator_category>::value) {
                     auto const nb_elements_insert = std::distance(first, last);
@@ -1683,7 +1685,7 @@ namespace dice::sparse_map {
             void swap(sparse_hash &other) {
                 using std::swap;
 
-                if (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
+                if constexpr (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
                     swap(static_cast<Allocator &>(*this), static_cast<Allocator &>(other));
                 } else {
                     tsl_sh_assert(static_cast<Allocator &>(*this) ==
@@ -1922,7 +1924,7 @@ namespace dice::sparse_map {
                              nullptr>
             size_type next_bucket(size_type ibucket, size_type iprobe) const {
                 (void) iprobe;
-                if (Probing == dice::sparse_map::sh::probing::linear) {
+                if constexpr (Probing == dice::sparse_map::sh::probing::linear) {
                     return (ibucket + 1) & this->m_mask;
                 } else {
                     tsl_sh_assert(Probing == dice::sparse_map::sh::probing::quadratic);
@@ -1935,7 +1937,7 @@ namespace dice::sparse_map {
                              nullptr>
             size_type next_bucket(size_type ibucket, size_type iprobe) const {
                 (void) iprobe;
-                if (Probing == dice::sparse_map::sh::probing::linear) {
+                if constexpr (Probing == dice::sparse_map::sh::probing::linear) {
                     ibucket++;
                     return (ibucket != bucket_count()) ? ibucket : 0;
                 } else {
@@ -2340,13 +2342,13 @@ namespace dice::sparse_map {
             }
 
         public:
-            static size_type const DEFAULT_INIT_BUCKET_COUNT = 0;
+            static constexpr size_type DEFAULT_INIT_BUCKET_COUNT = 0;
             static constexpr float DEFAULT_MAX_LOAD_FACTOR = 0.5f;
 
             /**
              * Protocol version currenlty used for serialization.
              */
-            static slz_size_type const SERIALIZATION_PROTOCOL_VERSION = 1;
+            static constexpr slz_size_type SERIALIZATION_PROTOCOL_VERSION = 1;
 
             using sparse_array_ptr = typename std::allocator_traits<allocator_type>::template rebind_traits<sparse_array>::pointer;
             /**
