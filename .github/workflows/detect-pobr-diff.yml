@@ -8,12 +8,14 @@ concurrency:
 
 jobs:
   detect-pobr-diff:
-    uses: dice-group/cpp-conan-release-reusable-workflow/.github/workflows/abi-diff.yml@main
+    uses: dice-group/cpp-conan-release-reusable-workflow/.github/workflows/abi-diff.yml@v1.0.3
     with:
       os: ubuntu-24.04
-      compiler: clang-19
+      setup_tools: true
+      cc: clang-19
+      cxx: clang++-19
       cmake-version: 3.24.0
-      conan-version: 2.19.1
+      conan-version: 2.21.0
       base-branch: ${{ github.base_ref }}
       search-path: >
         include/dice/sparse-map/sparse_growth_policy.hpp
