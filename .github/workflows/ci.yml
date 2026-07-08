@@ -9,18 +9,18 @@ jobs:
       matrix:
         config:
           - name: linux-x64-clang-15
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             cxx: clang++-15
           - name: linux-x64-clang-16-sanitize
-            os: ubuntu-20.04
+            os: ubuntu-24.04
             cxx: clang++-16
             cxx-flags: "-fsanitize=address,undefined"
 
           - name: linux-x64-gcc-12
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             cxx: g++-12
           - name: linux-x64-gcc-13-coverage
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             cxx: g++-13
             cxx-flags: -Werror --coverage
             gcov-tool: gcov-10
