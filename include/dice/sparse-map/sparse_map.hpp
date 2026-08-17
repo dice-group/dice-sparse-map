@@ -389,7 +389,7 @@ namespace dice::sparse_map {
          * comparable to `Key`.
          */
         template<class K>
-        requires (dice::sparse_map::detail_sparse_hash::has_is_transparent<KeyEqual>)
+        requires (detail_sparse_hash::has_is_transparent<KeyEqual>)
         size_type erase(K const &key) {
             return m_ht.erase(key);
         }
@@ -403,7 +403,7 @@ namespace dice::sparse_map {
          * the hash.
          */
         template<class K>
-        requires (dice::sparse_map::detail_sparse_hash::has_is_transparent<KeyEqual>)
+        requires (detail_sparse_hash::has_is_transparent<KeyEqual>)
         size_type erase(K const &key, std::size_t precalculated_hash) {
             return m_ht.erase(key, precalculated_hash);
         }
