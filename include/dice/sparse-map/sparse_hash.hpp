@@ -25,6 +25,7 @@
 #define DICE_SPARSE_MAP_SPARSE_HASH_HPP
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <climits>
 #include <cmath>
