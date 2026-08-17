@@ -41,30 +41,10 @@
 
 #include "dice/sparse-map/sparse_growth_policy.hpp"
 
-#ifdef __INTEL_COMPILER
-#include <immintrin.h>  // For _popcnt32 and _popcnt64
-#endif
-
-#ifdef _MSC_VER
-#include <intrin.h>  // For __cpuid, __popcnt and __popcnt64
-#endif
-
 #ifdef TSL_DEBUG
 #define tsl_sh_assert(expr) assert(expr)
 #else
 #define tsl_sh_assert(expr) (static_cast<void>(0))
-#endif
-
-/**
- * Marks a member as potentially overlapping, so an empty member costs no space.
- * MSVC only honours its own spelling of the attribute.
- */
-#if defined(_MSC_VER) && !defined(__clang__)
-#define DICE_SPARSE_MAP_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
-#elif defined(__has_cpp_attribute) && __has_cpp_attribute(no_unique_address)
-#define DICE_SPARSE_MAP_NO_UNIQUE_ADDRESS [[no_unique_address]]
-#else
-#define DICE_SPARSE_MAP_NO_UNIQUE_ADDRESS
 #endif
 
 namespace dice::sparse_map {
@@ -87,122 +67,6 @@ namespace dice::sparse_map {
         };
     }  // namespace sh
 
-    namespace detail_popcount {
-        /**
-         * Define the popcount(ll) methods and pick-up the best depending on the
-         * compiler.
-         */
-
-        // From Wikipedia: https://en.wikipedia.org/wiki/Hamming_weight
-        inline int fallback_popcountll(unsigned long long int x) {
-            static_assert(
-                    sizeof(unsigned long long int) == sizeof(std::uint64_t),
-                    "sizeof(unsigned long long int) must be equal to sizeof(std::uint64_t). "
-                    "Open a feature request if you need support for a platform where it "
-                    "isn't the case.");
-
-            std::uint64_t const m1 = 0x5555555555555555ull;
-            std::uint64_t const m2 = 0x3333333333333333ull;
-            std::uint64_t const m4 = 0x0f0f0f0f0f0f0f0full;
-            std::uint64_t const h01 = 0x0101010101010101ull;
-
-            x -= (x >> 1ull) & m1;
-            x = (x & m2) + ((x >> 2ull) & m2);
-            x = (x + (x >> 4ull)) & m4;
-            return static_cast<int>((x * h01) >> (64ull - 8ull));
-        }
-
-        inline int fallback_popcount(unsigned int x) {
-            static_assert(sizeof(unsigned int) == sizeof(std::uint32_t) ||
-                                  sizeof(unsigned int) == sizeof(std::uint64_t),
-                          "sizeof(unsigned int) must be equal to sizeof(std::uint32_t) "
-                          "or sizeof(std::uint64_t). "
-                          "Open a feature request if you need support for a platform "
-                          "where it isn't the case.");
-
-            if (sizeof(unsigned int) == sizeof(std::uint32_t)) {
-                std::uint32_t const m1 = 0x55555555;
-                std::uint32_t const m2 = 0x33333333;
-                std::uint32_t const m4 = 0x0f0f0f0f;
-                std::uint32_t const h01 = 0x01010101;
-
-                x -= (x >> 1) & m1;
-                x = (x & m2) + ((x >> 2) & m2);
-                x = (x + (x >> 4)) & m4;
-                return static_cast<int>((x * h01) >> (32 - 8));
-            } else {
-                return fallback_popcountll(x);
-            }
-        }
-
-#if defined(__clang__) || defined(__GNUC__)
-        inline int popcountll(unsigned long long int value) {
-            return __builtin_popcountll(value);
-        }
-
-        inline int popcount(unsigned int value) {
-            return __builtin_popcount(value);
-        }
-
-#elif defined(_MSC_VER)
-        /**
-         * We need to check for popcount support at runtime on Windows with __cpuid
-         * See https://msdn.microsoft.com/en-us/library/bb385231.aspx
-         */
-        inline bool has_popcount_support() {
-            int cpu_infos[4];
-            __cpuid(cpu_infos, 1);
-            return (cpu_infos[2] & (1 << 23)) != 0;
-        }
-
-        inline int popcountll(unsigned long long int value) {
-#ifdef _WIN64
-            static_assert(
-                    sizeof(unsigned long long int) == sizeof(std::int64_t),
-                    "sizeof(unsigned long long int) must be equal to sizeof(std::int64_t). ");
-
-            static bool const has_popcount = has_popcount_support();
-            return has_popcount
-                           ? static_cast<int>(__popcnt64(static_cast<std::int64_t>(value)))
-                           : fallback_popcountll(value);
-#else
-            return fallback_popcountll(value);
-#endif
-        }
-
-        inline int popcount(unsigned int value) {
-            static_assert(sizeof(unsigned int) == sizeof(std::int32_t),
-                          "sizeof(unsigned int) must be equal to sizeof(std::int32_t). ");
-
-            static bool const has_popcount = has_popcount_support();
-            return has_popcount
-                           ? static_cast<int>(__popcnt(static_cast<std::int32_t>(value)))
-                           : fallback_popcount(value);
-        }
-
-#elif defined(__INTEL_COMPILER)
-        inline int popcountll(unsigned long long int value) {
-            static_assert(sizeof(unsigned long long int) == sizeof(__int64), "");
-            return _popcnt64(static_cast<__int64>(value));
-        }
-
-        inline int popcount(unsigned int value) {
-            return _popcnt32(static_cast<int>(value));
-        }
-
-#else
-        inline int popcountll(unsigned long long int x) {
-            return fallback_popcountll(x);
-        }
-
-        inline int popcount(unsigned int x) {
-            return fallback_popcount(x);
-        }
-
-#endif
-    }  // namespace detail_popcount
-
-
     /* Replacement for const_cast in sparse_array.
      * Can be overloaded for specific fancy pointers
      * (see: include/dice/boost_offset_pointer.h).
@@ -218,62 +82,10 @@ namespace dice::sparse_map {
     };
 
     namespace detail_sparse_hash {
-        /* to_address can convert any raw or fancy pointer into a raw pointer.
-         * It is needed for the allocator construct and destroy calls.
-         * This specific implementation is based on boost 1.71.0.
-         */
-#if __cplusplus >= 201400L  // with 14-features
         template<typename T>
-        T *to_address(T *v) noexcept {
-            return v;
-        }
-
-        namespace fancy_ptr_detail {
-            template<typename T>
-            inline T *ptr_address(T *v, int) noexcept {
-                return v;
-            }
-
-            template<typename T>
-            inline auto ptr_address(T const &v, int) noexcept
-                    -> decltype(std::pointer_traits<T>::to_address(v)) {
-                return std::pointer_traits<T>::to_address(v);
-            }
-            template<typename T>
-            inline auto ptr_address(T const &v, long) noexcept {
-                return fancy_ptr_detail::ptr_address(v.operator->(), 0);
-            }
-        }  // namespace fancy_ptr_detail
-
-        template<typename T>
-        inline auto to_address(T const &v) noexcept {
-            return fancy_ptr_detail::ptr_address(v, 0);
-        }
-#else  // without 14-features
-        template<typename T>
-        inline T *to_address(T *v) noexcept {
-            return v;
-        }
-
-        template<typename T>
-        inline typename std::pointer_traits<T>::element_type *to_address(T const &v) noexcept {
-            return detail_sparse_hash::to_address(v.operator->());
-        }
-#endif
-
-
-        template<typename T>
-        struct make_void {
-            using type = void;
+        concept has_is_transparent = requires {
+            typename T::is_transparent;
         };
-
-        template<typename T, typename = void>
-        struct has_is_transparent : std::false_type {};
-
-        template<typename T>
-        struct has_is_transparent<T,
-                                  typename make_void<typename T::is_transparent>::type>
-            : std::true_type {};
 
         template<typename U>
         struct is_power_of_two_policy : std::false_type {};
@@ -335,13 +147,7 @@ namespace dice::sparse_map {
 
         template<class T, class Deserializer>
         static T deserialize_value(Deserializer &deserializer) {
-            // MSVC < 2017 is not conformant, circumvent the problem by removing the
-            // template keyword
-#if defined(_MSC_VER) && _MSC_VER < 1910
-            return deserializer.Deserializer::operator()<T>();
-#else
             return deserializer.Deserializer::template operator()<T>();
-#endif
         }
 
         /**
@@ -809,11 +615,11 @@ namespace dice::sparse_map {
             static void construct_value(allocator_type &alloc, pointer value,
                                         Args &&...value_args) {
                 std::allocator_traits<allocator_type>::construct(
-                        alloc, detail_sparse_hash::to_address(value), std::forward<Args>(value_args)...);
+                        alloc, std::to_address(value), std::forward<Args>(value_args)...);
             }
 
             static void destroy_value(allocator_type &alloc, pointer value) noexcept {
-                std::allocator_traits<allocator_type>::destroy(alloc, detail_sparse_hash::to_address(value));
+                std::allocator_traits<allocator_type>::destroy(alloc, std::to_address(value));
             }
 
             static void destroy_and_deallocate_values(
@@ -834,10 +640,9 @@ namespace dice::sparse_map {
 
             static size_type popcount(bitmap_type val) noexcept {
                 if constexpr (sizeof(bitmap_type) <= sizeof(unsigned int)) {
-                    return static_cast<size_type>(
-                            dice::sparse_map::detail_popcount::popcount(static_cast<unsigned int>(val)));
+                    return static_cast<size_type>(std::popcount(static_cast<unsigned int>(val)));
                 } else {
-                    return static_cast<size_type>(dice::sparse_map::detail_popcount::popcountll(val));
+                    return static_cast<size_type>(std::popcount(val));
                 }
             }
 
@@ -2371,16 +2176,16 @@ namespace dice::sparse_map {
             }
 
         private:
-            DICE_SPARSE_MAP_NO_UNIQUE_ADDRESS Allocator m_alloc;
-            DICE_SPARSE_MAP_NO_UNIQUE_ADDRESS Hash m_hash;
-            DICE_SPARSE_MAP_NO_UNIQUE_ADDRESS KeyEqual m_key_equal;
+            [[no_unique_address]] Allocator m_alloc;
+            [[no_unique_address]] Hash m_hash;
+            [[no_unique_address]] KeyEqual m_key_equal;
 
             /**
              * Declared before m_bucket_count. Its constructor takes the bucket count by
              * reference and rounds it up to the count the policy can serve, and
              * m_bucket_count is initialized from that rounded value.
              */
-            DICE_SPARSE_MAP_NO_UNIQUE_ADDRESS GrowthPolicy m_growth_policy;
+            [[no_unique_address]] GrowthPolicy m_growth_policy;
 
             sparse_buckets_container m_sparse_buckets_data;
 
