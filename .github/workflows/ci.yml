@@ -8,20 +8,20 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - name: linux-x64-clang-15
-            os: ubuntu-22.04
-            cxx: clang++-15
-          - name: linux-x64-clang-16-sanitize
-            os: ubuntu-20.04
-            cxx: clang++-16
+          - name: linux-x64-clang-19
+            os: ubuntu-24.04
+            cxx: clang++-19
+          - name: linux-x64-clang-20-sanitize
+            os: ubuntu-24.04
+            cxx: clang++-20
             cxx-flags: "-fsanitize=address,undefined"
 
-          - name: linux-x64-gcc-12
-            os: ubuntu-22.04
-            cxx: g++-12
-          - name: linux-x64-gcc-13-coverage
-            os: ubuntu-22.04
+          - name: linux-x64-gcc-13
+            os: ubuntu-24.04
             cxx: g++-13
+          - name: linux-x64-gcc-14-coverage
+            os: ubuntu-24.04
+            cxx: g++-14
             cxx-flags: -Werror --coverage
             gcov-tool: gcov-10
 
@@ -30,14 +30,14 @@ jobs:
     steps:
       # setup env
       - name: Add repos for for gcc-13 and clang-16
-        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/setup_apt@main
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/setup_apt@v2.0.5
 
       - name: Install tools
         run: |
           sudo apt-get install -y python3 python3-pip
 
       - name: Get minimum cmake version
-        uses: lukka/get-cmake@v3.29.3
+        uses: lukka/get-cmake@v4.4.2
         with:
           cmakeVersion: 3.24
 
@@ -51,9 +51,9 @@ jobs:
         uses: rui314/setup-mold@v1
 
       - name: Configure conan
-        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/configure_conan@main
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/configure_conan@v2.0.5
         with:
-          conan-version: 2.3.1
+          conan-version: 2.31.2
 
       - name: add conan user
         run: |
@@ -61,16 +61,16 @@ jobs:
 
       - name: Cache conan data
         id: cache-conan
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.conan2/p
           key: ${{ matrix.config.os }}-${{ matrix.config.cxx }}-conan
 
       - name: Check out sources
-        uses: actions/checkout@v4.1.6
+        uses: actions/checkout@v7
 
       - name: Get dependency provider
-        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/add_conan_provider@main
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/add_conan_provider@v2.0.5
 
       - name: Configure CMake
         env:

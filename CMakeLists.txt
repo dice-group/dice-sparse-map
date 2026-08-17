@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 project(dice-sparse-map
-        VERSION 0.2.11
+        VERSION 0.3.0
         DESCRIPTION "C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers.")
-set(POBR_VERSION 1)  # Persisted Object Binary Representation Version
+set(POBR_VERSION 2)  # Persisted Object Binary Representation Version
 
 include(cmake/boilerplate_init.cmake)
 boilerplate_init()
@@ -15,6 +15,16 @@ if (PROJECT_IS_TOP_LEVEL)
         set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=&:with_test_deps=True")
     endif ()
 endif ()
+
+set(style_files
+        .clang-format
+        .clang-tidy
+)
+foreach(style_file ${style_files})
+    file(DOWNLOAD "https://raw.githubusercontent.com/dice-group/tentris-cpp-coding-guidelines/main/${style_file}"
+            "${CMAKE_SOURCE_DIR}/${style_file}"
+            TLS_VERIFY ON)
+endforeach()
 
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
