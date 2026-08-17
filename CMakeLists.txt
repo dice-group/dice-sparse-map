@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(dice-sparse-map
         VERSION 0.2.11
         DESCRIPTION "C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers.")
-set(POBR_VERSION 1)  # Persisted Object Binary Representation Version
+set(POBR_VERSION 2)  # Persisted Object Binary Representation Version
 
 include(cmake/boilerplate_init.cmake)
 boilerplate_init()
