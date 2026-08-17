@@ -93,6 +93,14 @@ using test_types = boost::mpl::list<
                                      dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
 
 /**
+ * layout
+ */
+BOOST_AUTO_TEST_CASE_TEMPLATE(test_standard_layout, HMap, test_types) {
+    static_assert(std::is_standard_layout_v<HMap>);
+    BOOST_CHECK(std::is_standard_layout_v<HMap>);
+}
+
+/**
  * insert
  */
 BOOST_AUTO_TEST_CASE_TEMPLATE(test_insert, HMap, test_types) {

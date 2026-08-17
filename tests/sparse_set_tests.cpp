@@ -31,6 +31,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include "utils.h"
@@ -56,6 +57,11 @@ using test_types =
                                                       std::equal_to<move_only_test>,
                                                       std::allocator<move_only_test>,
                                                       dice::sparse_map::sh::mod_growth_policy<>>>;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(test_standard_layout, HSet, test_types) {
+    static_assert(std::is_standard_layout_v<HSet>);
+    BOOST_CHECK(std::is_standard_layout_v<HSet>);
+}
 
 BOOST_AUTO_TEST_CASE_TEMPLATE(test_insert, HSet, test_types) {
     // insert x values, insert them again, check values
