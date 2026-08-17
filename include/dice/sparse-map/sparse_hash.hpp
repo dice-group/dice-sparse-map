@@ -199,21 +199,9 @@ namespace dice::sparse_map {
                             ? 4
                             : 8;  // (Sparsity == dice::sh::sparsity::low)
 
-            /**
-             * Bitmap size configuration.
-             * Use 32 bits for the bitmap on 32-bits or less environnement as popcount on
-             * 64 bits numbers is slow on these environnement. Use 64 bits bitmap
-             * otherwise.
-             */
-#if SIZE_MAX <= UINT32_MAX
-            using bitmap_type = std::uint_least32_t;
-            static constexpr std::size_t BITMAP_NB_BITS = 32;
-            static constexpr std::size_t BUCKET_SHIFT = 5;
-#else
             using bitmap_type = std::uint_least64_t;
             static constexpr std::size_t BITMAP_NB_BITS = 64;
             static constexpr std::size_t BUCKET_SHIFT = 6;
-#endif
 
             static constexpr std::size_t BUCKET_MASK = BITMAP_NB_BITS - 1;
 
@@ -640,11 +628,7 @@ namespace dice::sparse_map {
             }
 
             static size_type popcount(bitmap_type val) noexcept {
-                if constexpr (sizeof(bitmap_type) <= sizeof(unsigned int)) {
-                    return static_cast<size_type>(std::popcount(static_cast<unsigned int>(val)));
-                } else {
-                    return static_cast<size_type>(std::popcount(val));
-                }
+                return static_cast<size_type>(std::popcount(val));
             }
 
             size_type index_to_offset(size_type index) const noexcept {
