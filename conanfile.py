@@ -22,7 +22,7 @@ class Recipe(ConanFile):
 
     def requirements(self):
         if self.options.with_test_deps:
-            self.test_requires("boost/1.83.0")
+            self.test_requires("boost/1.91.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
