@@ -145,8 +145,7 @@ namespace dice::sparse_map::tests {
 
     private:
         data_t data_{};
-        std::string records_ =
-                "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
+        std::string records_ = "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
     };
 
 }  // namespace dice::sparse_map::tests
