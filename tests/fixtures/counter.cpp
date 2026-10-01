@@ -185,7 +185,13 @@ namespace dice::sparse_map::tests {
         if (data_.dtor + static_dtor != data_.ctor + static_default_ctor + data_.copy_ctor + data_.default_ctor + data_.move_ctor) {
             std::fprintf(stderr,
                          "ERROR at ~counter(): %zu dtor + %zu static dtor != %zu ctor + %zu static default ctor + %zu copy ctor + %zu default ctor + %zu move ctor\n",
-                         data_.dtor, static_dtor, data_.ctor, static_default_ctor, data_.copy_ctor, data_.default_ctor, data_.move_ctor);
+                         data_.dtor,
+                         static_dtor,
+                         data_.ctor,
+                         static_default_ctor,
+                         data_.copy_ctor,
+                         data_.default_ctor,
+                         data_.move_ctor);
             std::abort();
         }
     }
