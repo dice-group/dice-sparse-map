@@ -11,7 +11,6 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 /**
  * A container that is stored in a metall datastore must be standard layout. These tests check
@@ -34,7 +33,6 @@ namespace {
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<entry_t>,
-                              sh::power_of_two_growth_policy<2>,
                               sh::exception_safety::basic,
                               Sparsity>;
 
@@ -43,7 +41,6 @@ namespace {
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<std::uint64_t>,
-                              sh::power_of_two_growth_policy<2>,
                               sh::exception_safety::basic,
                               Sparsity>;
 
@@ -119,8 +116,7 @@ TEST_CASE_TEMPLATE("sparse_map and sparse_set with a stateless allocator are sta
     CHECK(std::is_standard_layout_v<container_t>);
 }
 
-// not standard layout yet: `sparse_hash` keeps its buckets in a `std::vector`, which is not standard layout with a stateful allocator in libstdc++
-TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are standard layout" * doctest::should_fail(),
+TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are standard layout",
                    container_t,
                    map_of<metall_allocator, high>,
                    map_of<metall_allocator, medium>,
@@ -129,6 +125,5 @@ TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are stan
                    set_of<metall_allocator, medium>,
                    set_of<metall_allocator, low>) {
     MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
-    MESSAGE("std::vector with the metall allocator is standard layout: " << std::is_standard_layout_v<std::vector<entry_t, metall_allocator<entry_t>>>);
     CHECK(std::is_standard_layout_v<container_t>);
 }

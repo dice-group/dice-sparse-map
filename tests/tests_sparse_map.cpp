@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <ios>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -54,21 +55,18 @@ TEST_SUITE("test_sparse_map") {
         dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>>,
         dice::sparse_map::sparse_map<self_reference_member_test, self_reference_member_test, mod_hash<9>>,
 
-        // Others GrowthPolicy
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<4>>,
-        dice::sparse_map::sparse_pg_map<move_only_test, move_only_test, mod_hash<9>>,
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::mod_growth_policy<>>,
-
-        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<4>>,
-        dice::sparse_map::sparse_pg_map<copy_only_test, copy_only_test, mod_hash<9>>,
-        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::mod_growth_policy<>>,
+        // Other sparsity levels and the strong exception guarantee for move-only and copy-only types
+        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>,
+        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::exception_safety::strong>,
 
         // Strong exception guarantee
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::strong>,
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::strong>,
 
         // Others sparsity
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
 
     /**
      * layout
@@ -356,7 +354,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK_EQ(map.size(), 790);
         CHECK_EQ(std::distance(map.begin(), map.end()), 790);
 
-        for (auto &val : map) {
+        for (auto const &val : map) {
             CHECK_EQ(map.count(val.first), 1);
         }
     }
@@ -476,8 +474,8 @@ TEST_SUITE("test_sparse_map") {
         CHECK(map.mutable_iterator(it_const) == it_mutable);
         CHECK_EQ(map.size(), 100);
 
-        it_mutable.value() = -100;
-        CHECK_EQ(it_const.value(), -100);
+        it_mutable->second = -100;
+        CHECK_EQ(it_const->second, -100);
     }
 
     /**
@@ -603,7 +601,7 @@ TEST_SUITE("test_sparse_map") {
     }
 
     /**
-     * iterator.value()
+     * iterator->second
      */
     TEST_CASE("test_modify_value_through_iterator") {
         // insert x values, modify value of even keys, check values
@@ -612,12 +610,12 @@ TEST_SUITE("test_sparse_map") {
             nb_values);
 
         for (auto it = map.begin(); it != map.end(); it++) {
-            if (it.key() % 2 == 0) {
-                it.value() = -1;
+            if (it->first % 2 == 0) {
+                it->second = -1;
             }
         }
 
-        for (auto &val : map) {
+        for (auto const &val : map) {
             if (val.first % 2 == 0) {
                 CHECK_EQ(val.second, -1);
             } else {
@@ -631,28 +629,11 @@ TEST_SUITE("test_sparse_map") {
      */
     TEST_CASE("test_extreme_bucket_count_value_construction") {
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
-                std::numeric_limits<std::size_t>::max())),
+            (dice::sparse_map::sparse_map<int, int>(std::numeric_limits<std::size_t>::max())),
             std::length_error);
 
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
-                std::numeric_limits<std::size_t>::max() / 2 + 1)),
-            std::length_error);
-
-        CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::prime_growth_policy>(
-                std::numeric_limits<std::size_t>::max())),
-            std::length_error);
-
-        CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::prime_growth_policy>(
-                std::numeric_limits<std::size_t>::max() / 2)),
-            std::length_error);
-
-        CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::mod_growth_policy<>>(
-                std::numeric_limits<std::size_t>::max())),
+            (dice::sparse_map::sparse_map<int, int>(std::numeric_limits<std::size_t>::max() / 2 + 1)),
             std::length_error);
     }
 
@@ -1050,6 +1031,201 @@ TEST_SUITE("test_sparse_map") {
         for (auto const &val : map) {
             CHECK(map_deserialized.find(val.first) != map_deserialized.end());
         }
+    }
+
+    /**
+     * A stream in the format of `serialize` with version 2, max load factor 0.5 and one group.
+     */
+    std::string one_group_stream(std::uint64_t bucket_count,
+                                 std::uint64_t nb_sparse_buckets,
+                                 std::uint64_t nb_elements,
+                                 std::uint64_t nb_deleted_buckets,
+                                 std::uint64_t group_size,
+                                 std::uint64_t bitmap_vals,
+                                 std::uint64_t bitmap_deleted_vals,
+                                 std::vector<std::pair<std::uint64_t, std::uint64_t>> const &values) {
+        serializer serial;
+        serial(std::uint64_t{2});
+        serial(bucket_count);
+        serial(nb_sparse_buckets);
+        serial(nb_elements);
+        serial(nb_deleted_buckets);
+        serial(0.5f);
+        if (nb_sparse_buckets > 0) {
+            serial(group_size);
+            serial(bitmap_vals);
+            serial(bitmap_deleted_vals);
+            for (auto const &value : values) {
+                serial(value);
+            }
+        }
+        return serial.str();
+    }
+
+    TEST_CASE("hash compatible deserialization rejects groups whose size and bitmaps do not fit together") {
+        using map_t = dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t>;
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> const one_value{{7, 70}};
+
+        SUBCASE("a valid stream") {
+            deserializer dserial(one_group_stream(64, 1, 1, 1, 1, std::uint64_t{1} << 3, std::uint64_t{1} << 5, one_value));
+            auto const map = map_t::deserialize(dserial, true);
+            CHECK(map.size() == 1);
+            CHECK(std::distance(map.begin(), map.end()) == 1);
+        }
+        SUBCASE("more occupied buckets than values") {
+            deserializer dserial(one_group_stream(64, 1, 1, 0, 1, ~std::uint64_t{0}, 0, one_value));
+            CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::runtime_error);
+        }
+        SUBCASE("a bucket that is occupied and deleted") {
+            deserializer dserial(one_group_stream(64, 1, 1, 1, 1, std::uint64_t{1} << 3, std::uint64_t{1} << 3, one_value));
+            CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::runtime_error);
+        }
+        SUBCASE("an occupied bucket beyond the bucket count") {
+            deserializer dserial(one_group_stream(2, 1, 1, 0, 1, std::uint64_t{1} << 5, 0, one_value));
+            CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::runtime_error);
+        }
+        SUBCASE("a deleted bucket beyond the bucket count") {
+            deserializer dserial(one_group_stream(2, 1, 1, 1, 1, 1, std::uint64_t{1} << 5, one_value));
+            CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::runtime_error);
+        }
+        SUBCASE("a header with fewer elements than the groups") {
+            deserializer dserial(one_group_stream(64, 1, 0, 0, 1, std::uint64_t{1} << 3, 0, one_value));
+            CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::runtime_error);
+        }
+        SUBCASE("a header with other deleted buckets than the groups") {
+            deserializer dserial(one_group_stream(64, 1, 1, 0, 1, std::uint64_t{1} << 3, std::uint64_t{1} << 5, one_value));
+            CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::runtime_error);
+        }
+        SUBCASE("a header with elements but without groups") {
+            deserializer dserial(one_group_stream(0, 0, 5, 0, 0, 0, 0, {}));
+            CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::runtime_error);
+        }
+    }
+
+    /**
+     * Allocator that refuses allocations above 64 MiB.
+     */
+    template<typename T>
+    struct small_allocations_only {
+        using value_type = T;
+
+        small_allocations_only() noexcept = default;
+
+        template<typename U>
+        small_allocations_only(small_allocations_only<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        }
+
+        T *allocate(std::size_t n) {
+            if (n > (std::size_t{64} << 20) / sizeof(T)) {
+                throw std::length_error("allocation above 64 MiB");
+            }
+            return std::allocator<T>{}.allocate(n);
+        }
+
+        void deallocate(T *p, std::size_t n) noexcept {
+            std::allocator<T>{}.deallocate(p, n);
+        }
+
+        friend bool operator==(small_allocations_only const & /*lhs*/, small_allocations_only const & /*rhs*/) noexcept {
+            return true;
+        }
+    };
+
+    TEST_CASE("hash compatible deserialization of a map whose max load factor was lowered below its load") {
+        dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t> map;
+        for (std::uint64_t i = 0; i < 100; ++i) {
+            map.insert({i, i * 10});
+        }
+        map.max_load_factor(0.1f);
+        REQUIRE(map.load_factor() > map.max_load_factor());
+
+        serializer serial;
+        map.serialize(serial);
+        deserializer dserial(serial.str());
+        auto map_deserialized = decltype(map)::deserialize(dserial, true);
+        CHECK(map_deserialized == map);
+        CHECK(map_deserialized.max_load_factor() == map.max_load_factor());
+        CHECK(map_deserialized.bucket_count() == map.bucket_count());
+
+        // the next insertion grows the table
+        map_deserialized.insert({1000, 1});
+        CHECK(map_deserialized.load_factor() <= map_deserialized.max_load_factor());
+        CHECK(map_deserialized.size() == 101);
+    }
+
+    TEST_CASE("deserialization rejects a max load factor that is not a positive fraction") {
+        using map_t = dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t>;
+        for (float const max_load_factor : {0.0f, -0.5f, 1.5f, std::numeric_limits<float>::quiet_NaN()}) {
+            CAPTURE(max_load_factor);
+            serializer serial;
+            serial(std::uint64_t{2});
+            serial(std::uint64_t{64});
+            serial(std::uint64_t{1});
+            serial(std::uint64_t{1});
+            serial(std::uint64_t{0});
+            serial(max_load_factor);
+            serial(std::uint64_t{1});
+            serial(std::uint64_t{1} << 3);
+            serial(std::uint64_t{0});
+            serial(std::pair<std::uint64_t, std::uint64_t>{7, 70});
+            for (bool const hash_compatible : {true, false}) {
+                deserializer dserial(serial.str());
+                CHECK_THROWS_AS(map_t::deserialize(dserial, hash_compatible), std::runtime_error);
+            }
+        }
+    }
+
+    TEST_CASE("deserialization without hash compatibility rejects a group with more than 64 values") {
+        using map_t = dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t>;
+        serializer serial;
+        serial(std::uint64_t{2});
+        serial(std::uint64_t{128});
+        serial(std::uint64_t{2});
+        serial(std::uint64_t{65});
+        serial(std::uint64_t{0});
+        serial(0.5f);
+        serial(std::uint64_t{65});
+        serial(~std::uint64_t{0});
+        serial(std::uint64_t{0});
+        for (std::uint64_t i = 0; i < 65; ++i) {
+            serial(std::pair<std::uint64_t, std::uint64_t>{i, i});
+        }
+        serial(std::uint64_t{0});
+        serial(std::uint64_t{0});
+        serial(std::uint64_t{0});
+        deserializer dserial(serial.str());
+        CHECK_THROWS_AS(map_t::deserialize(dserial, false), std::runtime_error);
+    }
+
+    TEST_CASE("hash compatible deserialization does not allocate the groups of a header that the stream does not hold") {
+        using map_t = dice::sparse_map::sparse_map<std::uint64_t,
+                                                   std::uint64_t,
+                                                   std::hash<std::uint64_t>,
+                                                   std::equal_to<std::uint64_t>,
+                                                   small_allocations_only<std::pair<std::uint64_t, std::uint64_t>>>;
+        // 2^40 buckets in 2^34 groups, the stream ends after the header
+        serializer serial;
+        serial(std::uint64_t{2});
+        serial(std::uint64_t{1} << 40);
+        serial(std::uint64_t{1} << 34);
+        serial(std::uint64_t{0});
+        serial(std::uint64_t{0});
+        serial(0.5f);
+        deserializer dserial(serial.str());
+        CHECK_THROWS_AS(map_t::deserialize(dserial, true), std::ios_base::failure);
+    }
+
+    TEST_CASE("deserialization does not reserve memory for more elements than it reads") {
+        using map_t = dice::sparse_map::sparse_map<std::uint64_t,
+                                                   std::uint64_t,
+                                                   std::hash<std::uint64_t>,
+                                                   std::equal_to<std::uint64_t>,
+                                                   small_allocations_only<std::pair<std::uint64_t, std::uint64_t>>>;
+        // the header claims 2^33 elements, the stream holds one
+        deserializer dserial(one_group_stream(64, 1, std::uint64_t{1} << 33, 0, 1, std::uint64_t{1} << 3, 0, {{7, 70}}));
+        auto const map = map_t::deserialize(dserial, false);
+        CHECK(map.size() == 1);
+        CHECK(map.at(7) == 70);
     }
 
     /**

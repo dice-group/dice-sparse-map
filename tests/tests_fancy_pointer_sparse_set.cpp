@@ -2,7 +2,6 @@
  * @brief Checks for fancy pointer support in the sparse_hash implementation for single values (sets).
  */
 
-#include <dice/sparse-map/boost_offset_pointer.hpp>
 #include <dice/sparse-map/sparse_hash.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
 
@@ -22,34 +21,19 @@ using dice::sparse_map::tests::offset_ptr_allocator;
  * The template parameter now also holds the value_type.
  */
 namespace details {
-    template<typename Key>
-    struct key_select {
-        using key_type = Key;
-        key_type const &operator()(Key const &key) const noexcept {
-            return key;
-        }
-        key_type &operator()(Key &key) noexcept {
-            return key;
-        }
-    };
-
     template<typename T, typename Alloc>
     using sparse_set = dice::sparse_map::detail_sparse_hash::sparse_hash<
-        T,
-        key_select<T>,
-        void,
+        dice::sparse_map::detail_sparse_hash::set_policy<T>,
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::sparse_map::sh::power_of_two_growth_policy<2>,
         dice::sparse_map::sh::exception_safety::basic,
-        dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::probing::quadratic>;
+        dice::sparse_map::sh::sparsity::medium>;
 
     template<typename T>
     typename T::set_type default_construct_set() {
         using value_type = typename T::value_type;
-        return typename T::set_type(T::set_type::DEFAULT_INIT_BUCKET_COUNT, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::DEFAULT_MAX_LOAD_FACTOR);
+        return typename T::set_type(T::set_type::default_init_bucket_count, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::default_max_load_factor);
     }
 
     /** checks if all values of the set are in the initializer_list and then if the lengths are equal.

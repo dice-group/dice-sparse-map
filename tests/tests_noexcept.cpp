@@ -140,22 +140,18 @@ TEST_CASE_TEMPLATE("move assignment is noexcept when the allocator is always equ
     CHECK(std::is_nothrow_move_assignable_v<container_t>);
 }
 
-// fails today: `sparse_hash::operator=(sparse_hash &&)` is `noexcept` without a condition, and it
-// move assigns the hash, which can throw
-TEST_CASE_TEMPLATE("move assignment is not noexcept when the hash can throw on a move assignment" * doctest::should_fail(), container_t, throwing_map, throwing_set) {
+// move assignment also move assigns the hash, which can throw
+TEST_CASE_TEMPLATE("move assignment is not noexcept when the hash can throw on a move assignment", container_t, throwing_map, throwing_set) {
     CHECK_FALSE(std::is_nothrow_move_assignable_v<container_t>);
 }
 
-// fails today: `sparse_hash::operator=(sparse_hash &&)` is `noexcept` without a condition, but with
-// unequal allocators that do not propagate it moves the elements one by one into new memory, which
-// allocates
-TEST_CASE_TEMPLATE("move assignment is not noexcept when the allocator is not always equal" * doctest::should_fail(), container_t, unequal_map, unequal_set) {
+// with unequal allocators that do not propagate, move assignment moves the elements one by one into
+// new memory, which allocates
+TEST_CASE_TEMPLATE("move assignment is not noexcept when the allocator is not always equal", container_t, unequal_map, unequal_set) {
     CHECK_FALSE(std::is_nothrow_move_assignable_v<container_t>);
 }
 
-// fails today: `sparse_map::swap`, `sparse_set::swap`, the free `swap` functions and
-// `sparse_hash::swap` have no `noexcept`
-TEST_CASE_TEMPLATE("swap is noexcept when the allocator is always equal and the functors cannot throw" * doctest::should_fail(), container_t, plain_map, plain_set) {
+TEST_CASE_TEMPLATE("swap is noexcept when the allocator is always equal and the functors cannot throw", container_t, plain_map, plain_set) {
     CHECK(noexcept(std::declval<container_t &>().swap(std::declval<container_t &>())));
     CHECK(std::is_nothrow_swappable_v<container_t>);
 }
