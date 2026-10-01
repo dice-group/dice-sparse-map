@@ -21,26 +21,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#define BOOST_TEST_DYN_LINK
-
 #include <dice/sparse-map/sparse_map.hpp>
 
-#include <boost/test/unit_test.hpp>
+#include <doctest/doctest.h>
+
 #include <cstddef>
 #include <cstdlib>
 #include <functional>
 #include <limits>
-#include <stdexcept>
+#include <new>
 #include <type_traits>
 #include <utility>
-
-#include "utils.h"
 
 static std::size_t nb_custom_allocs = 0;
 
 template<typename T>
-class custom_allocator {
-public:
+struct custom_allocator {
     using value_type = T;
     using pointer = T *;
     using const_pointer = T const *;
@@ -69,7 +65,7 @@ public:
         return &x;
     }
 
-    pointer allocate(size_type n, void const * /*hint*/ = 0) {
+    pointer allocate(size_type n, void const * /*hint*/ = nullptr) {
         nb_custom_allocs++;
 
         pointer ptr = static_cast<pointer>(std::malloc(n * sizeof(T)));
@@ -99,12 +95,12 @@ public:
     }
 };
 
-template<class T, class U>
+template<typename T, typename U>
 bool operator==(custom_allocator<T> const &, custom_allocator<U> const &) {
     return true;
 }
 
-template<class T, class U>
+template<typename T, typename U>
 bool operator!=(custom_allocator<T> const &, custom_allocator<U> const &) {
     return false;
 }
@@ -120,23 +116,20 @@ bool operator!=(custom_allocator<T> const &, custom_allocator<U> const &) {
 //     std::free(ptr);
 // }
 
-BOOST_AUTO_TEST_SUITE(test_custom_allocator)
+TEST_SUITE("test_custom_allocator") {
 
-BOOST_AUTO_TEST_CASE(test_custom_allocator_1) {
-    //    nb_global_new = 0;
-    nb_custom_allocs = 0;
+    TEST_CASE("test_custom_allocator_1") {
+        //    nb_global_new = 0;
+        nb_custom_allocs = 0;
 
-    dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>,
-                                 custom_allocator<std::pair<int, int>>>
-            map;
+        dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, custom_allocator<std::pair<int, int>>> map;
 
-    int const nb_elements = 1000;
-    for (int i = 0; i < nb_elements; i++) {
-        map.insert({i, i * 2});
+        int const nb_elements = 1000;
+        for (int i = 0; i < nb_elements; i++) {
+            map.insert({i, i * 2});
+        }
+
+        CHECK_NE(nb_custom_allocs, 0);
+        //    CHECK_EQ(nb_global_new, 0);
     }
-
-    BOOST_CHECK_NE(nb_custom_allocs, 0);
-    //    BOOST_CHECK_EQUAL(nb_global_new, 0);
 }
-
-BOOST_AUTO_TEST_SUITE_END()
