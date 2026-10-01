@@ -8,7 +8,7 @@ from conan.tools.files import rmdir, copy, load
 
 class Recipe(ConanFile):
     url = "https://github.com/dice-group/dice-sparse-map"
-    topics = "c++20", "hash-map", "data-structures", "header-only", "hash-table"
+    topics = "c++23", "hash-map", "data-structures", "header-only", "hash-table"
     license = "MIT"
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
@@ -18,11 +18,16 @@ class Recipe(ConanFile):
     }
     default_options = {
         "with_test_deps": False,
+        "boost/*:header_only": True,
     }
 
     def requirements(self):
         if self.options.with_test_deps:
-            self.test_requires("boost/1.83.0")
+            self.test_requires("boost/1.91.0")
+            self.test_requires("doctest/2.4.12")
+            self.test_requires("nanobench/4.3.11")
+            self.test_requires("metall/0.35")
+            self.test_requires("unordered_dense/5.2.0")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:

@@ -9,11 +9,14 @@ boilerplate_init()
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.hpp.in ${CMAKE_CURRENT_SOURCE_DIR}/include/dice/sparse-map/version.hpp)
 
 option(BUILD_TESTING "Build tests" OFF)
+option(BUILD_BENCHMARKS "Build benchmarks" OFF)
 
 if (PROJECT_IS_TOP_LEVEL)
-    if (BUILD_TESTING)
+    if (BUILD_TESTING OR BUILD_BENCHMARKS)
         set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=&:with_test_deps=True")
     endif ()
+    # only boost headers are needed, never the compiled libraries
+    set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=boost/*:header_only=True")
 endif ()
 
 set(style_files
@@ -48,10 +51,11 @@ if (PROJECT_IS_TOP_LEVEL)
         include(CTest)
         enable_testing()
         add_subdirectory(tests)
-    else ()
-        # in top-level builds without tests we only need boost headers but not libraries
-        # so avoid building the unecessesarily
-        set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=boost/*:header_only=True")
+    endif ()
+
+    if (BUILD_BENCHMARKS)
+        message("Benchmarks are configured to be build.")
+        add_subdirectory(benchmarks)
     endif ()
 
     include(cmake/install_interface_library.cmake)
