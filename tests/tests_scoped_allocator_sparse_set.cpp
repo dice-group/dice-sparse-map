@@ -26,7 +26,6 @@ namespace details {
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::unordered_sparse::exception_safety::basic,
         dice::unordered_sparse::sparsity::medium>;
 }  // namespace details
 

@@ -54,18 +54,15 @@ TEST_SUITE("test_sparse_map") {
         dice::sparse_map<copy_only_test, copy_only_test, mod_hash<9>>,
         dice::sparse_map<self_reference_member_test, self_reference_member_test, mod_hash<9>>,
 
-        // Other sparsity levels and the strong exception guarantee for move-only and copy-only types
-        dice::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity::high>,
-        dice::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity::low>,
-        dice::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity::high>,
-        dice::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::unordered_sparse::exception_safety::strong>,
+        // Other sparsity levels for move-only and copy-only types
+        dice::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::unordered_sparse::sparsity::high>,
+        dice::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::unordered_sparse::sparsity::low>,
+        dice::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::unordered_sparse::sparsity::high>,
 
-        // Strong exception guarantee
-        dice::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::unordered_sparse::exception_safety::strong>,
 
         // Others sparsity
-        dice::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity::high>,
-        dice::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity::low>>;
+        dice::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::unordered_sparse::sparsity::high>,
+        dice::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::unordered_sparse::sparsity::low>>;
 
     /**
      * layout

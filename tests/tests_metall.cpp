@@ -50,7 +50,6 @@ namespace {
                                       std::hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
-                                      exception_safety::basic,
                                       Sparsity>;
 
     template<sparsity Sparsity>
@@ -58,7 +57,6 @@ namespace {
                                       std::hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::uint64_t>,
-                                      exception_safety::basic,
                                       Sparsity>;
 
     /// number of elements a container holds after it was filled, and again after it was changed

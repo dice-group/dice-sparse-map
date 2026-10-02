@@ -33,7 +33,6 @@ namespace {
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<entry_t>,
-                              exception_safety::basic,
                               Sparsity>;
 
     template<template<typename> typename AllocatorOf, sparsity Sparsity>
@@ -41,7 +40,6 @@ namespace {
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<std::uint64_t>,
-                              exception_safety::basic,
                               Sparsity>;
 
     template<template<typename> typename AllocatorOf, sparsity Sparsity>
