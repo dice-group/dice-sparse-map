@@ -350,7 +350,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK_EQ(map.size(), 790);
         CHECK_EQ(std::distance(map.begin(), map.end()), 790);
 
-        for (auto &val : map) {
+        for (auto const &val : map) {
             CHECK_EQ(map.count(val.first), 1);
         }
     }
@@ -470,8 +470,8 @@ TEST_SUITE("test_sparse_map") {
         CHECK(map.mutable_iterator(it_const) == it_mutable);
         CHECK_EQ(map.size(), 100);
 
-        it_mutable.value() = -100;
-        CHECK_EQ(it_const.value(), -100);
+        it_mutable->second = -100;
+        CHECK_EQ(it_const->second, -100);
     }
 
     /**
@@ -597,7 +597,7 @@ TEST_SUITE("test_sparse_map") {
     }
 
     /**
-     * iterator.value()
+     * iterator->second
      */
     TEST_CASE("test_modify_value_through_iterator") {
         // insert x values, modify value of even keys, check values
@@ -606,12 +606,12 @@ TEST_SUITE("test_sparse_map") {
             nb_values);
 
         for (auto it = map.begin(); it != map.end(); it++) {
-            if (it.key() % 2 == 0) {
-                it.value() = -1;
+            if (it->first % 2 == 0) {
+                it->second = -1;
             }
         }
 
-        for (auto &val : map) {
+        for (auto const &val : map) {
             if (val.first % 2 == 0) {
                 CHECK_EQ(val.second, -1);
             } else {
