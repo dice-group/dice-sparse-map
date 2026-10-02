@@ -1359,8 +1359,12 @@ namespace dice::sparse_map {
                 return nb_elements_;
             }
 
+            /**
+             * @return the number of elements that `max_bucket_count()` buckets hold at the current maximum load factor,
+             * or less if the allocator cannot provide as many elements
+             */
             [[nodiscard]] constexpr size_type max_size() const noexcept {
-                return std::min<size_type>(slot_allocator_traits::max_size(alloc_), max_bucket_count());
+                return std::min<size_type>(slot_allocator_traits::max_size(alloc_), rehash_threshold(max_bucket_count()));
             }
 
             /*
