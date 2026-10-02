@@ -412,7 +412,7 @@ namespace {
             REQUIRE(same_contents(map, reference, counts));
             REQUIRE(same_contents(side, side_reference, counts));
         }
-        CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_default_ctor + counts.copy_ctor() + counts.move_ctor());
+        CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor());
     }
 
     template<typename Set, std::size_t num_ranges>
@@ -477,7 +477,7 @@ namespace {
             REQUIRE(same_contents(set, reference, counts));
             REQUIRE(same_contents(side, side_reference, counts));
         }
-        CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_default_ctor + counts.copy_ctor() + counts.move_ctor());
+        CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor());
     }
 
 }  // namespace

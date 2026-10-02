@@ -20,22 +20,9 @@ using dice::unordered_sparse::tests::offset_ptr_allocator;
  * The template parameter now also holds the value_type.
  */
 namespace details {
-    template<typename Key>
-    struct key_select {
-        using key_type = Key;
-        key_type const &operator()(Key const &key) const noexcept {
-            return key;
-        }
-        key_type &operator()(Key &key) noexcept {
-            return key;
-        }
-    };
-
     template<typename T, typename Alloc>
     using sparse_set = dice::unordered_sparse::detail::sparse_hash<
-        T,
-        key_select<T>,
-        void,
+        dice::unordered_sparse::detail::set_policy<T>,
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
@@ -44,7 +31,7 @@ namespace details {
     template<typename T>
     typename T::set_type default_construct_set() {
         using value_type = typename T::value_type;
-        return typename T::set_type(T::set_type::DEFAULT_INIT_BUCKET_COUNT, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::DEFAULT_MAX_LOAD_FACTOR);
+        return typename T::set_type(T::set_type::default_init_bucket_count, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::default_max_load_factor);
     }
 
     /** checks if all values of the set are in the initializer_list and then if the lengths are equal.

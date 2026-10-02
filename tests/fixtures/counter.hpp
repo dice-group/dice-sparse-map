@@ -49,7 +49,7 @@ namespace dice::unordered_sparse::tests {
         /**
          * An element type that reports every operation to a `counter`.
          * A default constructed `obj` has no counter, its construction and destruction go to
-         * `counter::static_default_ctor` and `counter::static_dtor`.
+         * `counter::static_ctor` and `counter::static_dtor`.
          */
         struct obj {
             obj();
@@ -140,8 +140,9 @@ namespace dice::unordered_sparse::tests {
 
         friend std::ostream &operator<<(std::ostream &os, counter const &c);
 
-        static std::size_t static_default_ctor;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-        static std::size_t static_dtor;          // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        /// constructions of objects without a counter: default constructed, or copied or moved from such an object
+        static std::size_t static_ctor;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        static std::size_t static_dtor;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     private:
         data_t data_{};

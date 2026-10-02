@@ -26,8 +26,8 @@ namespace dice::unordered_sparse::tests {
         }
     }  // namespace
 
-    std::size_t counter::static_default_ctor = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-    std::size_t counter::static_dtor = 0;          // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    std::size_t counter::static_ctor = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    std::size_t counter::static_dtor = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     bool counter::obj::is_alive() const {
         return this == alive_;
@@ -38,7 +38,7 @@ namespace dice::unordered_sparse::tests {
           counts_(nullptr),
           alive_(this) {
         ++num_alive();
-        ++static_default_ctor;
+        ++static_ctor;
     }
 
     counter::obj::obj(std::size_t const &data, counter &counts)
@@ -59,6 +59,8 @@ namespace dice::unordered_sparse::tests {
         ++num_alive();
         if (counts_ != nullptr) {
             ++counts_->data_.copy_ctor;
+        } else {
+            ++static_ctor;
         }
     }
 
@@ -72,6 +74,8 @@ namespace dice::unordered_sparse::tests {
         ++num_alive();
         if (counts_ != nullptr) {
             ++counts_->data_.move_ctor;
+        } else {
+            ++static_ctor;
         }
     }
 
@@ -173,7 +177,7 @@ namespace dice::unordered_sparse::tests {
     }
 
     counter::counter() {
-        static_default_ctor = 0;
+        static_ctor = 0;
         static_dtor = 0;
     }
 
@@ -182,13 +186,13 @@ namespace dice::unordered_sparse::tests {
             std::fprintf(stderr, "ERROR at ~counter(): %zu objects still alive\n", num_alive());
             std::abort();
         }
-        if (data_.dtor + static_dtor != data_.ctor + static_default_ctor + data_.copy_ctor + data_.default_ctor + data_.move_ctor) {
+        if (data_.dtor + static_dtor != data_.ctor + static_ctor + data_.copy_ctor + data_.default_ctor + data_.move_ctor) {
             std::fprintf(stderr,
                          "ERROR at ~counter(): %zu dtor + %zu static dtor != %zu ctor + %zu static default ctor + %zu copy ctor + %zu default ctor + %zu move ctor\n",
                          data_.dtor,
                          static_dtor,
                          data_.ctor,
-                         static_default_ctor,
+                         static_ctor,
                          data_.copy_ctor,
                          data_.default_ctor,
                          data_.move_ctor);
@@ -201,7 +205,7 @@ namespace dice::unordered_sparse::tests {
     }
 
     std::size_t counter::total() const {
-        return data_.ctor + static_default_ctor + data_.copy_ctor + (data_.dtor + static_dtor) + data_.equals
+        return data_.ctor + static_ctor + data_.copy_ctor + (data_.dtor + static_dtor) + data_.equals
                + data_.less + data_.assign + data_.swaps + data_.get + data_.const_get + data_.hash
                + data_.move_ctor + data_.move_assign;
     }
@@ -209,7 +213,7 @@ namespace dice::unordered_sparse::tests {
     void counter::operator()(std::string_view title) {
         records_ += std::format("{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}|{:9}| {}\n",
                                 data_.ctor,
-                                static_default_ctor,
+                                static_ctor,
                                 data_.copy_ctor,
                                 data_.dtor + static_dtor,
                                 data_.assign,

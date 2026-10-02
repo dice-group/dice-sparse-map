@@ -28,22 +28,31 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
-#include <dice/unordered_sparse/detail/boost_offset_pointer.hpp>
 #include <dice/unordered_sparse/detail/sparse_hash.hpp>
 
 namespace dice::unordered_sparse {
 
     /**
-     * Implementation of a sparse hash map using open-addressing with quadratic
-     * probing. The goal on the hash map is to be the most memory efficient
-     * possible, even at low load factor, while keeping reasonable performances.
+     * A hash map with open addressing and quadratic probing that uses as little memory as possible, also at a
+     * low load factor, and keeps good performance.
      *
-     * The number of buckets is a power of two, and a hash picks its bucket with a
-     * mask. The hash of a hash function that is not avalanching is mixed with one
-     * multiplication first, see `hash_is_avalanching`.
+     * The buckets are grouped by 64. A group stores only its occupied buckets, densely, and a bitmap tells which
+     * buckets are occupied. The bucket count is 0 or a power of two and doubles when the table grows. The hash
+     * picks the bucket with a mask. A hash function that is not marked as avalanching (see
+     * `hash_is_avalanching`) is mixed first.
+     *
+     * The interface follows `std::unordered_map`, with these differences:
+     *  - The iterators return `std::pair<Key, T> const &`, so the mapped value cannot be changed through `*it`
+     *    or `it->second`. `it.value()` is a mutable reference to the mapped value, `it.key()` the key.
+     *  - The iterators are forward iterators.
+     *  - There is no bucket interface beyond `bucket_count`, and no node handles.
+     *  - `emplace` constructs the element first and inserts it if its key is not in the map.
+     *  - Heterogeneous lookup and erasure are enabled by `KeyEqual::is_transparent` alone.
+     *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
      *
      * If an insertion throws, the map holds the same elements as before, except in one case where it is empty. It
      * comes from a rehash, which an insertion, `rehash` or `reserve` can do. `reserve` avoids rehashes. How a rehash
@@ -54,65 +63,37 @@ namespace dice::unordered_sparse {
      * - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and
      *   the new buckets are in memory at the same time. An exception leaves the map unchanged.
      *
-     * `Sparsity` defines how much the hash set will compromise between insertion
-     * speed and memory usage. A high sparsity means less memory usage but longer
-     * insertion times, and vice-versa for low sparsity. The default
-     * `dice::unordered_sparse::sparsity::medium` sparsity offers a good compromise. It doesn't
-     * change the lookup speed.
+     * `sparsity` trades insertion speed for memory. A group grows its storage by 2 (`unordered_sparse::sparsity::high`),
+     * 4 (`unordered_sparse::sparsity::medium`, default) or 8 (`unordered_sparse::sparsity::low`) elements at a time. High sparsity means
+     * less memory and slower insertions. The lookup speed does not depend on it.
      *
-     * `Key` and `T` must be nothrow move constructible and/or copy constructible.
+     * `Key` and `T` must be nothrow move constructible and/or copy constructible. The behaviour is undefined if
+     * the destructor of `Key` or `T` throws.
      *
-     * If the destructor of `Key` or `T` throws an exception, the behaviour of the
-     * class is undefined.
-     *
-     * Iterators invalidation:
-     *  - clear, operator=, reserve, rehash: always invalidate the iterators.
-     *  - insert, emplace, emplace_hint, operator[]: if there is an effective
-     * insert, invalidate the iterators.
-     *  - erase: always invalidate the iterators.
+     * Iterator invalidation:
+     *  - `clear`, `operator=`, `reserve`, `rehash`: always invalidate the iterators.
+     *  - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate the
+     *    iterators if an element is inserted.
+     *  - `erase`: always invalidates the iterators. Use the returned iterator.
      */
-    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
-    class sparse_map {
+    template<typename Key,
+             typename T,
+             typename Hash = std::hash<Key>,
+             typename KeyEqual = std::equal_to<Key>,
+             typename Allocator = std::allocator<std::pair<Key, T>>,
+             unordered_sparse::sparsity sparsity = unordered_sparse::sparsity::medium>
+    struct sparse_map {
     private:
-        class KeySelect {
-        public:
-            using key_type = Key;
+        using ht = detail::sparse_hash<detail::map_policy<Key, T>, Hash, KeyEqual, Allocator, sparsity>;
 
-            key_type const &operator()(
-                std::pair<Key, T> const &key_value) const noexcept {
-                return key_value.first;
-            }
+        template<typename, typename, typename, typename, typename, unordered_sparse::sparsity>
+        friend struct sparse_map;
 
-            key_type &operator()(std::pair<Key, T> &key_value) noexcept {
-                return key_value.first;
-            }
-        };
-
-        class ValueSelect {
-        public:
-            using value_type = T;
-
-            value_type const &operator()(
-                std::pair<Key, T> const &key_value) const noexcept {
-                return key_value.second;
-            }
-
-            value_type &operator()(std::pair<Key, T> &key_value) noexcept {
-                return key_value.second;
-            }
-        };
-
-        using ht = detail::sparse_hash<
-            std::pair<Key, T>,
-            KeySelect,
-            ValueSelect,
-            Hash,
-            KeyEqual,
-            Allocator,
-            Sparsity>;
+        /// heterogeneous lookup and erasure are enabled by `KeyEqual::is_transparent`
+        static constexpr bool is_transparent = detail::IsTransparent<KeyEqual>;
 
     public:
-        using key_type = typename ht::key_type;
+        using key_type = Key;
         using mapped_type = T;
         using value_type = typename ht::value_type;
         using size_type = typename ht::size_type;
@@ -127,16 +108,24 @@ namespace dice::unordered_sparse {
         using iterator = typename ht::iterator;
         using const_iterator = typename ht::const_iterator;
 
+    private:
+        /// a key type for the heterogeneous overloads: transparent, and not an iterator
+        template<typename K>
+        static constexpr bool heterogeneous_key = is_transparent && detail::NotIterator<K, iterator, const_iterator>;
+
     public:
         /*
          * Constructors
          */
         sparse_map()
-            : sparse_map(ht::DEFAULT_INIT_BUCKET_COUNT) {
+            : sparse_map(ht::default_init_bucket_count) {
         }
 
-        explicit sparse_map(size_type bucket_count, Hash const &hash = Hash(), KeyEqual const &equal = KeyEqual(), Allocator const &alloc = Allocator())
-            : ht_(bucket_count, hash, equal, alloc, ht::DEFAULT_MAX_LOAD_FACTOR) {
+        explicit sparse_map(size_type bucket_count,
+                            Hash const &hash = Hash(),
+                            KeyEqual const &equal = KeyEqual(),
+                            Allocator const &alloc = Allocator())
+            : ht_(bucket_count, hash, equal, alloc, ht::default_max_load_factor) {
         }
 
         sparse_map(size_type bucket_count, Allocator const &alloc)
@@ -148,27 +137,37 @@ namespace dice::unordered_sparse {
         }
 
         explicit sparse_map(Allocator const &alloc)
-            : sparse_map(ht::DEFAULT_INIT_BUCKET_COUNT, alloc) {
+            : sparse_map(ht::default_init_bucket_count, alloc) {
         }
 
-        template<class InputIt>
-        sparse_map(InputIt first, InputIt last, size_type bucket_count = ht::DEFAULT_INIT_BUCKET_COUNT, Hash const &hash = Hash(), KeyEqual const &equal = KeyEqual(), Allocator const &alloc = Allocator())
+        template<detail::LegacyInputIterator InputIt>
+        sparse_map(InputIt first,
+                   InputIt last,
+                   size_type bucket_count = ht::default_init_bucket_count,
+                   Hash const &hash = Hash(),
+                   KeyEqual const &equal = KeyEqual(),
+                   Allocator const &alloc = Allocator())
             : sparse_map(bucket_count, hash, equal, alloc) {
             insert(first, last);
         }
 
-        template<class InputIt>
+        template<detail::LegacyInputIterator InputIt>
         sparse_map(InputIt first, InputIt last, size_type bucket_count, Allocator const &alloc)
             : sparse_map(first, last, bucket_count, Hash(), KeyEqual(), alloc) {
         }
 
-        template<class InputIt>
+        template<detail::LegacyInputIterator InputIt>
         sparse_map(InputIt first, InputIt last, size_type bucket_count, Hash const &hash, Allocator const &alloc)
             : sparse_map(first, last, bucket_count, hash, KeyEqual(), alloc) {
         }
 
+        template<detail::LegacyInputIterator InputIt>
+        sparse_map(InputIt first, InputIt last, Allocator const &alloc)
+            : sparse_map(first, last, ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {
+        }
+
         sparse_map(std::initializer_list<value_type> init,
-                   size_type bucket_count = ht::DEFAULT_INIT_BUCKET_COUNT,
+                   size_type bucket_count = ht::default_init_bucket_count,
                    Hash const &hash = Hash(),
                    KeyEqual const &equal = KeyEqual(),
                    Allocator const &alloc = Allocator())
@@ -183,52 +182,69 @@ namespace dice::unordered_sparse {
             : sparse_map(init.begin(), init.end(), bucket_count, hash, KeyEqual(), alloc) {
         }
 
+        sparse_map(std::initializer_list<value_type> init, Allocator const &alloc)
+            : sparse_map(init.begin(), init.end(), ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {
+        }
+
+        sparse_map(sparse_map const &other) = default;
+        sparse_map(sparse_map &&other) = default;
+
+        ~sparse_map() = default;
+
+        sparse_map &operator=(sparse_map const &other) = default;
+        sparse_map &operator=(sparse_map &&other) = default;
+
         sparse_map &operator=(std::initializer_list<value_type> ilist) {
             ht_.clear();
-
             ht_.reserve(ilist.size());
             ht_.insert(ilist.begin(), ilist.end());
 
             return *this;
         }
 
-        allocator_type get_allocator() const {
+        [[nodiscard]] allocator_type get_allocator() const noexcept {
             return ht_.get_allocator();
         }
 
         /*
          * Iterators
          */
-        iterator begin() noexcept {
+        [[nodiscard]] iterator begin() noexcept {
             return ht_.begin();
         }
-        const_iterator begin() const noexcept {
+
+        [[nodiscard]] const_iterator begin() const noexcept {
             return ht_.begin();
         }
-        const_iterator cbegin() const noexcept {
+
+        [[nodiscard]] const_iterator cbegin() const noexcept {
             return ht_.cbegin();
         }
 
-        iterator end() noexcept {
+        [[nodiscard]] iterator end() noexcept {
             return ht_.end();
         }
-        const_iterator end() const noexcept {
+
+        [[nodiscard]] const_iterator end() const noexcept {
             return ht_.end();
         }
-        const_iterator cend() const noexcept {
+
+        [[nodiscard]] const_iterator cend() const noexcept {
             return ht_.cend();
         }
 
         /*
          * Capacity
          */
-        bool empty() const noexcept {
+        [[nodiscard]] bool empty() const noexcept {
             return ht_.empty();
         }
-        size_type size() const noexcept {
+
+        [[nodiscard]] size_type size() const noexcept {
             return ht_.size();
         }
-        size_type max_size() const noexcept {
+
+        [[nodiscard]] size_type max_size() const noexcept {
             return ht_.max_size();
         }
 
@@ -243,29 +259,31 @@ namespace dice::unordered_sparse {
             return ht_.insert(value);
         }
 
-        template<class P, typename std::enable_if<std::is_constructible<value_type, P &&>::value>::type * = nullptr>
-        std::pair<iterator, bool> insert(P &&value) {
-            return ht_.emplace(std::forward<P>(value));
-        }
-
         std::pair<iterator, bool> insert(value_type &&value) {
             return ht_.insert(std::move(value));
+        }
+
+        template<typename P>
+        requires std::is_constructible_v<value_type, P &&>
+        std::pair<iterator, bool> insert(P &&value) {
+            return ht_.emplace(std::forward<P>(value));
         }
 
         iterator insert(const_iterator hint, value_type const &value) {
             return ht_.insert_hint(hint, value);
         }
 
-        template<class P, typename std::enable_if<std::is_constructible<value_type, P &&>::value>::type * = nullptr>
-        iterator insert(const_iterator hint, P &&value) {
-            return ht_.emplace_hint(hint, std::forward<P>(value));
-        }
-
         iterator insert(const_iterator hint, value_type &&value) {
             return ht_.insert_hint(hint, std::move(value));
         }
 
-        template<class InputIt>
+        template<typename P>
+        requires std::is_constructible_v<value_type, P &&>
+        iterator insert(const_iterator hint, P &&value) {
+            return ht_.emplace_hint(hint, std::forward<P>(value));
+        }
+
+        template<detail::LegacyInputIterator InputIt>
         void insert(InputIt first, InputIt last) {
             ht_.insert(first, last);
         }
@@ -274,66 +292,59 @@ namespace dice::unordered_sparse {
             ht_.insert(ilist.begin(), ilist.end());
         }
 
-        template<class M>
+        template<typename M>
         std::pair<iterator, bool> insert_or_assign(key_type const &k, M &&obj) {
             return ht_.insert_or_assign(k, std::forward<M>(obj));
         }
 
-        template<class M>
+        template<typename M>
         std::pair<iterator, bool> insert_or_assign(key_type &&k, M &&obj) {
             return ht_.insert_or_assign(std::move(k), std::forward<M>(obj));
         }
 
-        template<class M>
+        template<typename M>
         iterator insert_or_assign(const_iterator hint, key_type const &k, M &&obj) {
-            return ht_.insert_or_assign(hint, k, std::forward<M>(obj));
+            return ht_.insert_or_assign_hint(hint, k, std::forward<M>(obj));
         }
 
-        template<class M>
+        template<typename M>
         iterator insert_or_assign(const_iterator hint, key_type &&k, M &&obj) {
-            return ht_.insert_or_assign(hint, std::move(k), std::forward<M>(obj));
+            return ht_.insert_or_assign_hint(hint, std::move(k), std::forward<M>(obj));
         }
 
         /**
-         * Due to the way elements are stored, emplace will need to move or copy the
-         * key-value once. The method is equivalent to
-         * `insert(value_type(std::forward<Args>(args)...));`.
-         *
-         * Mainly here for compatibility with the `std::unordered_map` interface.
+         * Constructs a `value_type` from `args`, and inserts it if its key is not in the map yet. Like
+         * `insert(value_type(std::forward<Args>(args)...))`.
          */
-        template<class... Args>
+        template<typename... Args>
         std::pair<iterator, bool> emplace(Args &&...args) {
             return ht_.emplace(std::forward<Args>(args)...);
         }
 
         /**
-         * Due to the way elements are stored, emplace_hint will need to move or copy
-         * the key-value once. The method is equivalent to `insert(hint,
-         * value_type(std::forward<Args>(args)...));`.
-         *
-         * Mainly here for compatibility with the `std::unordered_map` interface.
+         * Like `insert(hint, value_type(std::forward<Args>(args)...))`.
          */
-        template<class... Args>
+        template<typename... Args>
         iterator emplace_hint(const_iterator hint, Args &&...args) {
             return ht_.emplace_hint(hint, std::forward<Args>(args)...);
         }
 
-        template<class... Args>
+        template<typename... Args>
         std::pair<iterator, bool> try_emplace(key_type const &k, Args &&...args) {
             return ht_.try_emplace(k, std::forward<Args>(args)...);
         }
 
-        template<class... Args>
+        template<typename... Args>
         std::pair<iterator, bool> try_emplace(key_type &&k, Args &&...args) {
             return ht_.try_emplace(std::move(k), std::forward<Args>(args)...);
         }
 
-        template<class... Args>
+        template<typename... Args>
         iterator try_emplace(const_iterator hint, key_type const &k, Args &&...args) {
             return ht_.try_emplace_hint(hint, k, std::forward<Args>(args)...);
         }
 
-        template<class... Args>
+        template<typename... Args>
         iterator try_emplace(const_iterator hint, key_type &&k, Args &&...args) {
             return ht_.try_emplace_hint(hint, std::move(k), std::forward<Args>(args)...);
         }
@@ -341,382 +352,287 @@ namespace dice::unordered_sparse {
         iterator erase(iterator pos) {
             return ht_.erase(pos);
         }
+
         iterator erase(const_iterator pos) {
             return ht_.erase(pos);
         }
+
         iterator erase(const_iterator first, const_iterator last) {
             return ht_.erase(first, last);
         }
+
         size_type erase(key_type const &key) {
             return ht_.erase(key);
         }
 
         /**
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
+         * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
+         * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
         size_type erase(key_type const &key, std::size_t precalculated_hash) {
             return ht_.erase(key, precalculated_hash);
         }
 
         /**
-         * This overload only participates in the overload resolution if the typedef
-         * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
+         * Heterogeneous `erase` (C++23). Only if `KeyEqual::is_transparent` exists. `K` must be hashable and
          * comparable to `Key`.
          */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        size_type erase(K const &key) {
+        template<typename K>
+        requires heterogeneous_key<K>
+        size_type erase(K &&key) {
             return ht_.erase(key);
         }
 
         /**
-         * @copydoc erase(const K& key)
+         * @copydoc erase(K &&key)
          *
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
+         * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`.
          */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        size_type erase(K const &key, std::size_t precalculated_hash) {
+        template<typename K>
+        requires heterogeneous_key<K>
+        size_type erase(K &&key, std::size_t precalculated_hash) {
             return ht_.erase(key, precalculated_hash);
         }
 
-        void swap(sparse_map &other) {
+        void swap(sparse_map &other) noexcept(noexcept(std::declval<ht &>().swap(std::declval<ht &>()))) {
             other.ht_.swap(ht_);
         }
 
         /*
          * Lookup
          */
-        T &at(Key const &key) {
+
+        /**
+         * @throws std::out_of_range if there is no element with the key `key`
+         */
+        T &at(key_type const &key) {
             return ht_.at(key);
         }
 
         /**
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
+         * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
+         * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        T &at(Key const &key, std::size_t precalculated_hash) {
+        T &at(key_type const &key, std::size_t precalculated_hash) {
             return ht_.at(key, precalculated_hash);
         }
 
-        T const &at(Key const &key) const {
+        T const &at(key_type const &key) const {
             return ht_.at(key);
         }
 
         /**
-         * @copydoc at(const Key& key, std::size_t precalculated_hash)
+         * @copydoc at(key_type const &key, std::size_t precalculated_hash)
          */
-        T const &at(Key const &key, std::size_t precalculated_hash) const {
+        T const &at(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.at(key, precalculated_hash);
         }
 
         /**
-         * This overload only participates in the overload resolution if the typedef
-         * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
-         * comparable to `Key`.
+         * Heterogeneous `at`. Only if `KeyEqual::is_transparent` exists. `K` must be hashable and comparable to
+         * `Key`.
          */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
+        template<typename K>
+        requires is_transparent
         T &at(K const &key) {
             return ht_.at(key);
         }
 
-        /**
-         * @copydoc at(const K& key)
-         *
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
+        template<typename K>
+        requires is_transparent
         T &at(K const &key, std::size_t precalculated_hash) {
             return ht_.at(key, precalculated_hash);
         }
 
-        /**
-         * @copydoc at(const K& key)
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
+        template<typename K>
+        requires is_transparent
         T const &at(K const &key) const {
             return ht_.at(key);
         }
 
-        /**
-         * @copydoc at(const K& key, std::size_t precalculated_hash)
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
+        template<typename K>
+        requires is_transparent
         T const &at(K const &key, std::size_t precalculated_hash) const {
             return ht_.at(key, precalculated_hash);
         }
 
-        T &operator[](Key const &key) {
+        T &operator[](key_type const &key) {
             return ht_[key];
         }
-        T &operator[](Key &&key) {
+
+        T &operator[](key_type &&key) {
             return ht_[std::move(key)];
         }
 
-        size_type count(Key const &key) const {
+        [[nodiscard]] size_type count(key_type const &key) const {
             return ht_.count(key);
         }
 
         /**
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
+         * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
+         * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        size_type count(Key const &key, std::size_t precalculated_hash) const {
+        [[nodiscard]] size_type count(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.count(key, precalculated_hash);
         }
 
-        /**
-         * This overload only participates in the overload resolution if the typedef
-         * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
-         * comparable to `Key`.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        size_type count(K const &key) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] size_type count(K const &key) const {
             return ht_.count(key);
         }
 
-        /**
-         * @copydoc count(const K& key) const
-         *
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        size_type count(K const &key, std::size_t precalculated_hash) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] size_type count(K const &key, std::size_t precalculated_hash) const {
             return ht_.count(key, precalculated_hash);
         }
 
-        iterator find(Key const &key) {
+        [[nodiscard]] iterator find(key_type const &key) {
             return ht_.find(key);
         }
 
         /**
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
+         * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
+         * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        iterator find(Key const &key, std::size_t precalculated_hash) {
+        [[nodiscard]] iterator find(key_type const &key, std::size_t precalculated_hash) {
             return ht_.find(key, precalculated_hash);
         }
 
-        const_iterator find(Key const &key) const {
+        [[nodiscard]] const_iterator find(key_type const &key) const {
             return ht_.find(key);
         }
 
-        /**
-         * @copydoc find(const Key& key, std::size_t precalculated_hash)
-         */
-        const_iterator find(Key const &key, std::size_t precalculated_hash) const {
+        [[nodiscard]] const_iterator find(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.find(key, precalculated_hash);
         }
 
-        /**
-         * This overload only participates in the overload resolution if the typedef
-         * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
-         * comparable to `Key`.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        iterator find(K const &key) {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] iterator find(K const &key) {
             return ht_.find(key);
         }
 
-        /**
-         * @copydoc find(const K& key)
-         *
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        iterator find(K const &key, std::size_t precalculated_hash) {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] iterator find(K const &key, std::size_t precalculated_hash) {
             return ht_.find(key, precalculated_hash);
         }
 
-        /**
-         * @copydoc find(const K& key)
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        const_iterator find(K const &key) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] const_iterator find(K const &key) const {
             return ht_.find(key);
         }
 
-        /**
-         * @copydoc find(const K& key)
-         *
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        const_iterator find(K const &key, std::size_t precalculated_hash) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] const_iterator find(K const &key, std::size_t precalculated_hash) const {
             return ht_.find(key, precalculated_hash);
         }
 
-        bool contains(Key const &key) const {
+        [[nodiscard]] bool contains(key_type const &key) const {
             return ht_.contains(key);
         }
 
         /**
-         * Use the hash value 'precalculated_hash' instead of hashing the key. The
-         * hash value should be the same as hash_function()(key). Useful to speed-up
-         * the lookup if you already have the hash.
+         * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
+         * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        bool contains(Key const &key, std::size_t precalculated_hash) const {
+        [[nodiscard]] bool contains(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.contains(key, precalculated_hash);
         }
 
-        /**
-         * This overload only participates in the overload resolution if the typedef
-         * KeyEqual::is_transparent exists. If so, K must be hashable and comparable
-         * to Key.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        bool contains(K const &key) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] bool contains(K const &key) const {
             return ht_.contains(key);
         }
 
-        /**
-         * @copydoc contains(const K& key) const
-         *
-         * Use the hash value 'precalculated_hash' instead of hashing the key. The
-         * hash value should be the same as hash_function()(key). Useful to speed-up
-         * the lookup if you already have the hash.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        bool contains(K const &key, std::size_t precalculated_hash) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] bool contains(K const &key, std::size_t precalculated_hash) const {
             return ht_.contains(key, precalculated_hash);
         }
 
-        std::pair<iterator, iterator> equal_range(Key const &key) {
+        [[nodiscard]] std::pair<iterator, iterator> equal_range(key_type const &key) {
             return ht_.equal_range(key);
         }
 
         /**
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
+         * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
+         * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        std::pair<iterator, iterator> equal_range(Key const &key,
-                                                  std::size_t precalculated_hash) {
+        [[nodiscard]] std::pair<iterator, iterator> equal_range(key_type const &key, std::size_t precalculated_hash) {
             return ht_.equal_range(key, precalculated_hash);
         }
 
-        std::pair<const_iterator, const_iterator> equal_range(Key const &key) const {
+        [[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(key_type const &key) const {
             return ht_.equal_range(key);
         }
 
-        /**
-         * @copydoc equal_range(const Key& key, std::size_t precalculated_hash)
-         */
-        std::pair<const_iterator, const_iterator> equal_range(
-            Key const &key,
-            std::size_t precalculated_hash) const {
+        [[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.equal_range(key, precalculated_hash);
         }
 
-        /**
-         * This overload only participates in the overload resolution if the typedef
-         * `KeyEqual::is_transparent` exists. If so, `K` must be hashable and
-         * comparable to `Key`.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        std::pair<iterator, iterator> equal_range(K const &key) {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] std::pair<iterator, iterator> equal_range(K const &key) {
             return ht_.equal_range(key);
         }
 
-        /**
-         * @copydoc equal_range(const K& key)
-         *
-         * Use the hash value `precalculated_hash` instead of hashing the key. The
-         * hash value should be the same as `hash_function()(key)`, otherwise the
-         * behaviour is undefined. Useful to speed-up the lookup if you already have
-         * the hash.
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        std::pair<iterator, iterator> equal_range(K const &key,
-                                                  std::size_t precalculated_hash) {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] std::pair<iterator, iterator> equal_range(K const &key, std::size_t precalculated_hash) {
             return ht_.equal_range(key, precalculated_hash);
         }
 
-        /**
-         * @copydoc equal_range(const K& key)
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        std::pair<const_iterator, const_iterator> equal_range(K const &key) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(K const &key) const {
             return ht_.equal_range(key);
         }
 
-        /**
-         * @copydoc equal_range(const K& key, std::size_t precalculated_hash)
-         */
-        template<class K>
-        requires (detail::has_is_transparent<KeyEqual>)
-        std::pair<const_iterator, const_iterator> equal_range(
-            K const &key,
-            std::size_t precalculated_hash) const {
+        template<typename K>
+        requires is_transparent
+        [[nodiscard]] std::pair<const_iterator, const_iterator> equal_range(K const &key, std::size_t precalculated_hash) const {
             return ht_.equal_range(key, precalculated_hash);
         }
 
         /*
          * Bucket interface
          */
-        size_type bucket_count() const {
+        [[nodiscard]] size_type bucket_count() const noexcept {
             return ht_.bucket_count();
         }
-        size_type max_bucket_count() const {
+
+        [[nodiscard]] size_type max_bucket_count() const noexcept {
             return ht_.max_bucket_count();
         }
 
         /*
-         *  Hash policy
+         * Hash policy
          */
-        float load_factor() const {
+        [[nodiscard]] float load_factor() const noexcept {
             return ht_.load_factor();
         }
-        float max_load_factor() const {
+
+        [[nodiscard]] float max_load_factor() const noexcept {
             return ht_.max_load_factor();
         }
-        void max_load_factor(float ml) {
+
+        /**
+         * Sets the maximum load factor. It is clamped to [0.1, 0.8].
+         */
+        void max_load_factor(float ml) noexcept {
             ht_.max_load_factor(ml);
         }
 
         void rehash(size_type count) {
             ht_.rehash(count);
         }
+
         void reserve(size_type count) {
             ht_.reserve(count);
         }
@@ -724,10 +640,11 @@ namespace dice::unordered_sparse {
         /*
          * Observers
          */
-        hasher hash_function() const {
+        [[nodiscard]] hasher hash_function() const {
             return ht_.hash_function();
         }
-        key_equal key_eq() const {
+
+        [[nodiscard]] key_equal key_eq() const {
             return ht_.key_eq();
         }
 
@@ -736,9 +653,9 @@ namespace dice::unordered_sparse {
          */
 
         /**
-         * Convert a `const_iterator` to an `iterator`.
+         * Converts a `const_iterator` into an `iterator`.
          */
-        iterator mutable_iterator(const_iterator pos) {
+        [[nodiscard]] iterator mutable_iterator(const_iterator pos) noexcept {
             return ht_.mutable_iterator(pos);
         }
 
@@ -747,9 +664,9 @@ namespace dice::unordered_sparse {
                 return false;
             }
 
-            for (auto const &element_lhs : lhs) {
-                auto const it_element_rhs = rhs.find(element_lhs.first);
-                if (it_element_rhs == rhs.cend() || element_lhs.second != it_element_rhs->second) {
+            for (auto const &[key, value] : lhs) {
+                auto const it_rhs = rhs.find(key);
+                if (it_rhs == rhs.cend() || !(value == it_rhs->second)) {
                     return false;
                 }
             }
@@ -757,11 +674,7 @@ namespace dice::unordered_sparse {
             return true;
         }
 
-        friend bool operator!=(sparse_map const &lhs, sparse_map const &rhs) {
-            return !operator==(lhs, rhs);
-        }
-
-        friend void swap(sparse_map &lhs, sparse_map &rhs) {
+        friend void swap(sparse_map &lhs, sparse_map &rhs) noexcept(noexcept(lhs.swap(rhs))) {
             lhs.swap(rhs);
         }
 
