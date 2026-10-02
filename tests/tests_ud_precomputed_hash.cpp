@@ -16,7 +16,7 @@
 // a lookup. sparse_map's lookups take a precalculated hash: the value of `hash_function()(key)`. The lookups with a
 // precalculated hash use it instead of hashing the key.
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 using namespace std::literals;
 
 namespace {
@@ -41,7 +41,7 @@ namespace {
         }
     };
 
-    using hash_counting_map = dice::sparse_map::sparse_map<std::string, int, hash_call_counter>;
+    using hash_counting_map = dice::sparse_map<std::string, int, hash_call_counter>;
 
     struct transparent_hash {
         using is_transparent = void;
@@ -51,7 +51,7 @@ namespace {
         }
     };
 
-    using transparent_map = dice::sparse_map::sparse_map<std::string, int, transparent_hash, std::equal_to<>>;
+    using transparent_map = dice::sparse_map<std::string, int, transparent_hash, std::equal_to<>>;
 
 }  // namespace
 
@@ -163,9 +163,9 @@ TEST_CASE_MAP("precomputed_lookups_work_on_a_const_table", std::string, int) {
 // The hash belongs to the hasher, not to the table it was taken from. A map, a set and a map with another mapped type
 // that hash the key the same way all take the same one.
 TEST_CASE("a_hash_carries_over_to_every_table_with_the_same_hasher") {
-    auto map = dice::sparse_map::sparse_map<std::string, int>();
-    auto set = dice::sparse_map::sparse_set<std::string>();
-    auto other = dice::sparse_map::sparse_map<std::string, long>();
+    auto map = dice::sparse_map<std::string, int>();
+    auto set = dice::sparse_set<std::string>();
+    auto other = dice::sparse_map<std::string, long>();
 
     auto const key = long_key("shared");
     map[key] = 1;
@@ -263,8 +263,8 @@ namespace {
 }  // namespace
 
 TEST_CASE("precomputed_lookups_work_with_weak_and_narrow_hashes") {
-    auto weak = dice::sparse_map::sparse_map<int, int, weak_hash, std::equal_to<int>>();
-    auto narrow = dice::sparse_map::sparse_map<int, int, narrow_hash, std::equal_to<int>>();
+    auto weak = dice::sparse_map<int, int, weak_hash, std::equal_to<int>>();
+    auto narrow = dice::sparse_map<int, int, narrow_hash, std::equal_to<int>>();
 
     for (int i = 0; i < 1000; ++i) {
         weak[i] = i;

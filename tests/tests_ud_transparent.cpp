@@ -13,7 +13,7 @@
 #include <typeinfo>
 #include <utility>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 using namespace std::literals;
 
 // sparse_map has heterogeneous overloads of find, count, contains, equal_range, at and erase. They take part in

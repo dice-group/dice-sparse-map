@@ -3,13 +3,13 @@
 
 The sparse-map library is a C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers. It uses open-addressing with sparse quadratic probing. The goal of the library is to be the most memory efficient possible, even at low load factor, while keeping reasonable performances. You can find an [article](https://smerity.com/articles/2015/google_sparsehash.html) of Stephen Merity which explains the idea behind `google::sparse_hash_map` and this project.
 
-Four classes are provided: `dice::sparse_map::sparse_map`, `dice::sparse_map::sparse_set`, `dice::sparse_map::sparse_pg_map` and `dice::sparse_map::sparse_pg_set`. The first two are faster and use a power of two growth policy, the last two use a prime growth policy instead and are able to cope better with a poor hash function. Use the prime version if there is a chance of repeating patterns in the lower bits of your hash (e.g. you are storing pointers with an identity hash function). See [GrowthPolicy](#growth-policy) for details.
+Four classes are provided: `dice::sparse_map`, `dice::sparse_set`, `dice::unordered_sparse::sparse_pg_map` and `dice::unordered_sparse::sparse_pg_set`. The first two are faster and use a power of two growth policy, the last two use a prime growth policy instead and are able to cope better with a poor hash function. Use the prime version if there is a chance of repeating patterns in the lower bits of your hash (e.g. you are storing pointers with an identity hash function). See [GrowthPolicy](#growth-policy) for details.
 
-A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be found [here](https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html). The benchmark, in its additional tests page, notably includes `google::sparse_hash_map` and `spp::sparse_hash_map` to which `dice::sparse_map::sparse_map` is an alternative. This page also gives some advices on which hash table structure you should try for your use case (useful if you are a bit lost with the multiple hash tables implementations in the `tsl` namespace).
+A **benchmark** of `dice::sparse_map` against other hash maps may be found [here](https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html). The benchmark, in its additional tests page, notably includes `google::sparse_hash_map` and `spp::sparse_hash_map` to which `dice::sparse_map` is an alternative. This page also gives some advices on which hash table structure you should try for your use case (useful if you are a bit lost with the multiple hash tables implementations in the `tsl` namespace).
 
 ### Key features
 
-- Header-only library, just add the [include](include/) directory to your include path and you are ready to go. If you use CMake, you can also use the `dice::sparse_map::sparse_map` exported target from the [CMakeLists.txt](CMakeLists.txt).
+- Header-only library, just add the [include](include/) directory to your include path and you are ready to go. If you use CMake, you can also use the `dice-sparse-map::dice-sparse-map` target from the [CMakeLists.txt](CMakeLists.txt).
 - Memory efficient while keeping good lookup speed, see the [benchmark](https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html) for some numbers.
 - Support for heterogeneous lookups allowing the usage of `find` with a type different than `Key` (e.g. if you have a map that uses `std::unique_ptr<foo>` as key, you can use a `foo*` or a `std::uintptr_t` as key parameter to `find` without constructing a `std::unique_ptr<foo>`, see [example](#heterogeneous-lookups)).
 - No need to reserve any sentinel value from the keys.
@@ -20,14 +20,14 @@ A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be
 
 ### Differences compared to `std::unordered_map`
 
-`dice::sparse_map::sparse_map` tries to have an interface similar to `std::unordered_map`, but some differences exist.
+`dice::sparse_map` tries to have an interface similar to `std::unordered_map`, but some differences exist.
 
 - **By default only the basic exception safety is guaranteed** which mean that, in case of exception, all resources used by the hash map will be freed (no memory leaks) but the hash map may end-up in an undefined state (undefined here means that some elements may be missing). This can ONLY happen on rehash (either on insert or if `rehash` is called explicitly) and will occur if the `Allocator` can't allocate memory (`std::bad_alloc`) or if the copy constructor (when a nothrow move constructor is not available) throws and exception. This can be avoided by calling `reserve` beforehand. It is the same guarantee that the one provided by `google::sparse_hash_map` and `spp::sparse_hash_map` which don't provide the strong exception guarantee. For more information and if you need the strong exception guarantee, check the `ExceptionSafety` template parameter (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sparse__map.html#details) for details).
 - Iterator invalidation doesn't behave in the same way, any operation modifying the hash table invalidate them (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sparse__map.html#details) for details).
 - References and pointers to keys or values in the map are invalidated in the same way as iterators to these keys-values.
 - For iterators, `operator*()` and `operator->()` return a reference and a pointer to `const std::pair<Key, T>` instead of `std::pair<const Key, T>` making the value `T` not modifiable. To modify the value you have to call the `value()` method of the iterator to get a mutable reference. Example:
 ```c++
-dice::sparse_map::sparse_map<int, int> map = {{1, 1}, {2, 1}, {3, 1}};
+dice::sparse_map<int, int> map = {{1, 1}, {2, 1}, {3, 1}};
 for(auto it = map.begin(); it != map.end(); ++it) {
     //it->second = 2; // Illegal
     it.value() = 2; // Ok
@@ -36,7 +36,7 @@ for(auto it = map.begin(); it != map.end(); ++it) {
 - Move-only types must have a nothrow move constructor.
 - No support for some buckets related methods (like `bucket_size`, `bucket`, ...).
 
-These differences also apply between `std::unordered_set` and `dice::sparse_map::sparse_set`.
+These differences also apply between `std::unordered_set` and `dice::sparse_set`.
 
 Thread-safety guarantees are the same as `std::unordered_map/set` (i.e. possible to have multiple readers with no writer).
 
@@ -56,9 +56,9 @@ Make sure that your key `Key` and potential value `T` have a `noexcept` move con
 
 The library supports multiple growth policies through the `GrowthPolicy` template parameter. Three policies are provided by the library but you can easily implement your own if needed.
 
-* **[dice::sparse_map::sh::power_of_two_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1power__of__two__growth__policy.html)** Default policy used by `dice::sparse_map::sparse_map/set`. This policy keeps the size of the bucket array of the hash table to a power of two. This constraint allows the policy to avoid the usage of the slow modulo operation to map a hash to a bucket, instead of <code>hash % 2<sup>n</sup></code>, it uses <code>hash & (2<sup>n</sup> - 1)</code> (see [fast modulo](https://en.wikipedia.org/wiki/Modulo_operation#Performance_issues)). Fast but this may cause a lot of collisions with a poor hash function as the modulo with a power of two only masks the most significant bits in the end.
-* **[dice::sparse_map::sh::prime_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html)** Default policy used by `dice::sparse_map::sparse_pg_map/set`. The policy keeps the size of the bucket array of the hash table to a prime number. When mapping a hash to a bucket, using a prime number as modulo will result in a better distribution of the hash across the buckets even with a poor hash function. To allow the compiler to optimize the modulo operation, the policy use a lookup table with constant primes modulos (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html#details) for details). Slower than `dice::sparse_map::sh::power_of_two_growth_policy` but more secure.
-* **[dice::sparse_map::sh::mod_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1mod__growth__policy.html)** The policy grows the map by a customizable growth factor passed in parameter. It then just use the modulo operator to map a hash to a bucket. Slower but more flexible.
+* **[dice::unordered_sparse::power_of_two_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1power__of__two__growth__policy.html)** Default policy used by `dice::sparse_map/set`. This policy keeps the size of the bucket array of the hash table to a power of two. This constraint allows the policy to avoid the usage of the slow modulo operation to map a hash to a bucket, instead of <code>hash % 2<sup>n</sup></code>, it uses <code>hash & (2<sup>n</sup> - 1)</code> (see [fast modulo](https://en.wikipedia.org/wiki/Modulo_operation#Performance_issues)). Fast but this may cause a lot of collisions with a poor hash function as the modulo with a power of two only masks the most significant bits in the end.
+* **[dice::unordered_sparse::prime_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html)** Default policy used by `dice::unordered_sparse::sparse_pg_map/set`. The policy keeps the size of the bucket array of the hash table to a prime number. When mapping a hash to a bucket, using a prime number as modulo will result in a better distribution of the hash across the buckets even with a poor hash function. To allow the compiler to optimize the modulo operation, the policy use a lookup table with constant primes modulos (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html#details) for details). Slower than `dice::unordered_sparse::power_of_two_growth_policy` but more secure.
+* **[dice::unordered_sparse::mod_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1mod__growth__policy.html)** The policy grows the map by a customizable growth factor passed in parameter. It then just use the modulo operator to map a hash to a bucket. Slower but more flexible.
 
 
 To implement your own policy, you have to implement the following interface.
@@ -91,14 +91,14 @@ struct custom_policy {
 
 To use sparse-map, just add the [include](include/) directory to your include path. It is a **header-only** library.
 
-If you use CMake, you can also use the `dice::sparse_map::sparse_map` exported target from the [CMakeLists.txt](CMakeLists.txt) with `target_link_libraries`. 
+If you use CMake, you can also use the `dice-sparse-map::dice-sparse-map` target from the [CMakeLists.txt](CMakeLists.txt) with `target_link_libraries`. 
 ```cmake
 # Example where the sparse-map project is stored in a third-party directory
 add_subdirectory(third-party/sparse-map)
-target_link_libraries(your_target PRIVATE dice::sparse_map)  
+target_link_libraries(your_target PRIVATE dice-sparse-map::dice-sparse-map)  
 ```
 
-If the project has been installed through `make install`, you can also use `find_package(tsl-sparse-map REQUIRED)` instead of `add_subdirectory`.
+If the project has been installed through `make install`, you can also use `find_package(dice-sparse-map REQUIRED)` instead of `add_subdirectory`.
 
 The code should work with any C++17 standard-compliant compiler.
 
@@ -126,11 +126,10 @@ All methods are not documented yet, but they replicate the behaviour of the ones
 #include <cstdint>
 #include <iostream>
 #include <string>
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 int main() {
-    dice::sparse_map::sparse_map<std::string, int> map = {{"a", 1}, {"b", 2}};
+    dice::sparse_map<std::string, int> map = {{"a", 1}, {"b", 2}};
     map["c"] = 3;
     map["d"] = 4;
     
@@ -161,7 +160,7 @@ int main() {
     
     
     
-    dice::sparse_map::sparse_set<int> set;
+    dice::sparse_set<int> set;
     set.insert({1, 9, 0});
     set.insert({2, -1, 9});
     
@@ -176,7 +175,7 @@ int main() {
 
 Heterogeneous overloads allow the usage of other types than `Key` for lookup and erase operations as long as the used types are hashable and comparable to `Key`.
 
-To activate the heterogeneous overloads in `dice::sparse_map::sparse_map/set`, the qualified-id `KeyEqual::is_transparent` must be valid. It works the same way as for [`std::map::find`](http://en.cppreference.com/w/cpp/container/map/find). You can either use [`std::equal_to<>`](http://en.cppreference.com/w/cpp/utility/functional/equal_to_void) or define your own function object.
+To activate the heterogeneous overloads in `dice::sparse_map/set`, the qualified-id `KeyEqual::is_transparent` must be valid. It works the same way as for [`std::map::find`](http://en.cppreference.com/w/cpp/container/map/find). You can either use [`std::equal_to<>`](http://en.cppreference.com/w/cpp/utility/functional/equal_to_void) or define your own function object.
 
 Both `KeyEqual` and `Hash` will need to be able to deal with the different types.
 
@@ -184,7 +183,7 @@ Both `KeyEqual` and `Hash` will need to be able to deal with the different types
 #include <functional>
 #include <iostream>
 #include <string>
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/unordered_sparse.hpp>
 
 
 struct employee {
@@ -239,7 +238,7 @@ struct hash_employee {
 
 int main() {
     // Use std::equal_to<> which will automatically deduce and forward the parameters
-    dice::sparse_map::sparse_map<employee, int, hash_employee, std::equal_to<>> map; 
+    dice::sparse_map<employee, int, hash_employee, std::equal_to<>> map; 
     map.insert({employee(1, "John Doe"), 2001});
     map.insert({employee(2, "Jane Doe"), 2002});
     map.insert({employee(3, "John Smith"), 2003});
@@ -255,7 +254,7 @@ int main() {
 
 
     // Use a custom KeyEqual which has an is_transparent member type
-    dice::sparse_map::sparse_map<employee, int, hash_employee, equal_employee> map2;
+    dice::sparse_map<employee, int, hash_employee, equal_employee> map2;
     map2.insert({employee(4, "Johnny Doe"), 2004});
 
     // 2004
@@ -295,7 +294,7 @@ More details regarding the `serialize` and `deserialize` methods can be found in
 #include <cstdint>
 #include <fstream>
 #include <type_traits>
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/unordered_sparse.hpp>
 
 
 class serializer {
@@ -353,7 +352,7 @@ private:
 
 
 int main() {
-    const dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{1, -1}, {2, -2}, {3, -3}, {4, -4}};
+    const dice::sparse_map<std::int64_t, std::int64_t> map = {{1, -1}, {2, -2}, {3, -3}, {4, -4}};
     
     
     const char* file_name = "sparse_map.data";
@@ -364,7 +363,7 @@ int main() {
     
     {
         deserializer dserial(file_name);
-        auto map_deserialized = dice::sparse_map::sparse_map<std::int64_t, std::int64_t>::deserialize(dserial);
+        auto map_deserialized = dice::sparse_map<std::int64_t, std::int64_t>::deserialize(dserial);
         
         assert(map == map_deserialized);
     }
@@ -379,7 +378,7 @@ int main() {
          */
         const bool hash_compatible = true;
         auto map_deserialized = 
-            dice::sparse_map::sparse_map<std::int64_t, std::int64_t>::deserialize(dserial, hash_compatible);
+            dice::sparse_map<std::int64_t, std::int64_t>::deserialize(dserial, hash_compatible);
         
         assert(map == map_deserialized);
     }
@@ -402,31 +401,31 @@ The following example uses Boost Serialization with the Boost zlib compression s
 #include <cassert>
 #include <cstdint>
 #include <fstream>
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/unordered_sparse.hpp>
 
 
 namespace boost { namespace serialization {
     template<class Archive, class Key, class T>
-    void serialize(Archive & ar, dice::sparse_map::sparse_map<Key, T>& map, const unsigned int version) {
+    void serialize(Archive & ar, dice::sparse_map<Key, T>& map, const unsigned int version) {
         split_free(ar, map, version); 
     }
 
     template<class Archive, class Key, class T>
-    void save(Archive & ar, const dice::sparse_map::sparse_map<Key, T>& map, const unsigned int /*version*/) {
+    void save(Archive & ar, const dice::sparse_map<Key, T>& map, const unsigned int /*version*/) {
         auto serializer = [&ar](const auto& v) { ar & v; };
         map.serialize(serializer);
     }
 
     template<class Archive, class Key, class T>
-    void load(Archive & ar, dice::sparse_map::sparse_map<Key, T>& map, const unsigned int /*version*/) {
+    void load(Archive & ar, dice::sparse_map<Key, T>& map, const unsigned int /*version*/) {
         auto deserializer = [&ar]<typename U>() { U u; ar & u; return u; };
-        map = dice::sparse_map::sparse_map<Key, T>::deserialize(deserializer);
+        map = dice::sparse_map<Key, T>::deserialize(deserializer);
     }
 }}
 
 
 int main() {
-    dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map = {{1, -1}, {2, -2}, {3, -3}, {4, -4}};
+    dice::sparse_map<std::int64_t, std::int64_t> map = {{1, -1}, {2, -2}, {3, -3}, {4, -4}};
     
     
     const char* file_name = "sparse_map.data";
@@ -455,7 +454,7 @@ int main() {
         
         boost::archive::binary_iarchive ia(fi);
      
-        dice::sparse_map::sparse_map<std::int64_t, std::int64_t> map_deserialized;   
+        dice::sparse_map<std::int64_t, std::int64_t> map_deserialized;   
         ia >> map_deserialized;
         
         assert(map == map_deserialized);

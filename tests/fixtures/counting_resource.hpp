@@ -1,10 +1,10 @@
-#ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTING_RESOURCE_HPP
-#define DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTING_RESOURCE_HPP
+#ifndef DICE_UNORDERED_SPARSE_TESTS_FIXTURES_COUNTING_RESOURCE_HPP
+#define DICE_UNORDERED_SPARSE_TESTS_FIXTURES_COUNTING_RESOURCE_HPP
 
 #include <cstddef>
 #include <memory_resource>
 
-namespace dice::sparse_map::tests {
+namespace dice::unordered_sparse::tests {
 
     /**
      * Memory resource that counts the requests it gets and passes them on to
@@ -61,6 +61,6 @@ namespace dice::sparse_map::tests {
         std::size_t empty_requests_ = 0;
     };
 
-}  // namespace dice::sparse_map::tests
+}  // namespace dice::unordered_sparse::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTING_RESOURCE_HPP
+#endif  // DICE_UNORDERED_SPARSE_TESTS_FIXTURES_COUNTING_RESOURCE_HPP

@@ -6,7 +6,7 @@ set(POBR_VERSION 2)  # Persisted Object Binary Representation Version
 
 include(cmake/boilerplate_init.cmake)
 boilerplate_init()
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.hpp.in ${CMAKE_CURRENT_SOURCE_DIR}/include/dice/sparse-map/version.hpp)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.hpp.in ${CMAKE_CURRENT_SOURCE_DIR}/include/dice/unordered_sparse/version.hpp)
 
 option(BUILD_TESTING "Build tests" OFF)
 option(BUILD_BENCHMARKS "Build benchmarks" OFF)
@@ -30,7 +30,7 @@ foreach(style_file ${style_files})
 endforeach()
 
 add_library(${PROJECT_NAME} INTERFACE)
-# Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
+# Use dice-sparse-map::dice-sparse-map as target, more consistent with other libraries conventions (Boost, Qt, ...)
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}

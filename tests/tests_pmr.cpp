@@ -1,7 +1,6 @@
 #include "fixtures/counting_resource.hpp"
 
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -21,8 +20,8 @@
  * Partly ported from the pmr tests of ankerl::unordered_dense (MIT license).
  */
 namespace {
-    using namespace dice::sparse_map;
-    using dice::sparse_map::tests::counting_resource;
+    using namespace dice::unordered_sparse;
+    using dice::unordered_sparse::tests::counting_resource;
 
     using pmr_value = std::pair<std::pmr::string, std::pmr::vector<int>>;
     using pmr_map = sparse_map<std::pmr::string, std::pmr::vector<int>, std::hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<pmr_value>>;

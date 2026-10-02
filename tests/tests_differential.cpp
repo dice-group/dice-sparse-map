@@ -26,7 +26,7 @@
  * Partly ported from the API fuzz test of ankerl::unordered_dense (MIT license).
  */
 namespace {
-    using namespace dice::sparse_map::tests;
+    using namespace dice::unordered_sparse::tests;
 
     /// splitmix64, a small random generator that gives the same numbers on every platform
     struct random_source {

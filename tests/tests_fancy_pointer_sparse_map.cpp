@@ -2,8 +2,7 @@
  * @brief Checks for fancy pointer support in the sparse_hash implementation for pair values (maps).
  */
 
-#include <dice/sparse-map/sparse_hash.hpp>
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include "fixtures/offset_ptr_allocator.hpp"
 
@@ -17,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-using dice::sparse_map::tests::offset_ptr_allocator;
+using dice::unordered_sparse::tests::offset_ptr_allocator;
 
 /* Tests are analogous to the tests in tests_fancy_pointer_sparse_array.cpp.
  * The template parameter now also holds the value_type.
@@ -46,17 +45,17 @@ namespace details {
     };
 
     template<typename Key, typename T, typename Alloc>
-    using sparse_map = dice::sparse_map::detail_sparse_hash::sparse_hash<
+    using sparse_map = dice::unordered_sparse::detail::sparse_hash<
         std::pair<Key, T>,
         key_select<Key, T>,
         value_select<Key, T>,
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::sparse_map::sh::power_of_two_growth_policy<2>,
-        dice::sparse_map::sh::exception_safety::basic,
-        dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::probing::quadratic>;
+        dice::unordered_sparse::power_of_two_growth_policy<2>,
+        dice::unordered_sparse::exception_safety::basic,
+        dice::unordered_sparse::sparsity::medium,
+        dice::unordered_sparse::probing::quadratic>;
 
     template<typename T>
     typename T::map_type default_construct_map() {
@@ -203,7 +202,7 @@ TEST_SUITE("fancy_pointers/sparse_hash_map_tests") {
     }
 
     TEST_CASE("full_map") {
-        dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, offset_ptr_allocator<std::pair<int, int>>> map;
+        dice::sparse_map<int, int, std::hash<int>, std::equal_to<int>, offset_ptr_allocator<std::pair<int, int>>> map;
         std::vector<std::pair<int, int>> data = {
             {0, 1},
             {2, 3},

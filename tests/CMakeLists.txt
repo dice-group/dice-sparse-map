@@ -28,7 +28,7 @@ foreach (test_source IN LISTS test_sources)
             Metall::Metall
     )
     # keep the internal assertions active in every build type
-    target_compile_definitions(${test_name} PRIVATE TSL_DEBUG)
+    target_compile_definitions(${test_name} PRIVATE DICE_UNORDERED_SPARSE_DEBUG)
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         target_compile_options(${test_name} PRIVATE -UNDEBUG -Wall -Wextra -Wold-style-cast)
     elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")

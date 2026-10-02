@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 
 // iterators_conversion
 //

@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <new>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 
 TEST_CASE("counter counts constructions and destructions") {
     auto counts = counter{};

@@ -1,7 +1,6 @@
 #include "fixtures/checksum.hpp"
 
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -39,29 +38,29 @@
  * blocked, so that it is mapped at another address and a raw pointer into the old mapping fails.
  */
 namespace {
-    using namespace dice::sparse_map;
-    namespace checksum = dice::sparse_map::tests::checksum;
+    using namespace dice::unordered_sparse;
+    namespace checksum = dice::unordered_sparse::tests::checksum;
 
     template<typename T>
     using metall_allocator = metall::manager::allocator_type<T>;
 
-    template<sh::sparsity Sparsity>
+    template<sparsity Sparsity>
     using persistent_map = sparse_map<std::uint64_t,
                                       std::uint64_t,
                                       std::hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
-                                      sh::power_of_two_growth_policy<2>,
-                                      sh::exception_safety::basic,
+                                      power_of_two_growth_policy<2>,
+                                      exception_safety::basic,
                                       Sparsity>;
 
-    template<sh::sparsity Sparsity>
+    template<sparsity Sparsity>
     using persistent_set = sparse_set<std::uint64_t,
                                       std::hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::uint64_t>,
-                                      sh::power_of_two_growth_policy<2>,
-                                      sh::exception_safety::basic,
+                                      power_of_two_growth_policy<2>,
+                                      exception_safety::basic,
                                       Sparsity>;
 
     /// number of elements a container holds after it was filled, and again after it was changed
@@ -312,7 +311,7 @@ namespace {
     }
 
     /// the mapped type of the maps of maps below
-    using inner_map = persistent_map<sh::sparsity::medium>;
+    using inner_map = persistent_map<sparsity::medium>;
 
     /// The outer map passes its allocator to every inner map it constructs (uses-allocator construction).
     using scoped_outer_map = sparse_map<std::uint64_t,
@@ -439,21 +438,21 @@ namespace {
 
 }  // namespace
 
-TYPE_TO_STRING_AS("sparse_map<metall, high>", persistent_map<sh::sparsity::high>);
-TYPE_TO_STRING_AS("sparse_map<metall, medium>", persistent_map<sh::sparsity::medium>);
-TYPE_TO_STRING_AS("sparse_map<metall, low>", persistent_map<sh::sparsity::low>);
-TYPE_TO_STRING_AS("sparse_set<metall, high>", persistent_set<sh::sparsity::high>);
-TYPE_TO_STRING_AS("sparse_set<metall, medium>", persistent_set<sh::sparsity::medium>);
-TYPE_TO_STRING_AS("sparse_set<metall, low>", persistent_set<sh::sparsity::low>);
+TYPE_TO_STRING_AS("sparse_map<metall, high>", persistent_map<sparsity::high>);
+TYPE_TO_STRING_AS("sparse_map<metall, medium>", persistent_map<sparsity::medium>);
+TYPE_TO_STRING_AS("sparse_map<metall, low>", persistent_map<sparsity::low>);
+TYPE_TO_STRING_AS("sparse_set<metall, high>", persistent_set<sparsity::high>);
+TYPE_TO_STRING_AS("sparse_set<metall, medium>", persistent_set<sparsity::medium>);
+TYPE_TO_STRING_AS("sparse_set<metall, low>", persistent_set<sparsity::low>);
 
 TEST_CASE_TEMPLATE("a container in a metall datastore survives closing and opening",
                    container_t,
-                   persistent_map<sh::sparsity::high>,
-                   persistent_map<sh::sparsity::medium>,
-                   persistent_map<sh::sparsity::low>,
-                   persistent_set<sh::sparsity::high>,
-                   persistent_set<sh::sparsity::medium>,
-                   persistent_set<sh::sparsity::low>) {
+                   persistent_map<sparsity::high>,
+                   persistent_map<sparsity::medium>,
+                   persistent_map<sparsity::low>,
+                   persistent_set<sparsity::high>,
+                   persistent_set<sparsity::medium>,
+                   persistent_set<sparsity::low>) {
     check_round_trip<container_t>(doctest::toString<container_t>().c_str());
 }
 

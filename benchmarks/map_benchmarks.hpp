@@ -1,5 +1,5 @@
-#ifndef DICE_SPARSE_MAP_BENCHMARKS_MAP_BENCHMARKS_HPP
-#define DICE_SPARSE_MAP_BENCHMARKS_MAP_BENCHMARKS_HPP
+#ifndef DICE_UNORDERED_SPARSE_BENCHMARKS_MAP_BENCHMARKS_HPP
+#define DICE_UNORDERED_SPARSE_BENCHMARKS_MAP_BENCHMARKS_HPP
 
 #include "common.hpp"
 #include "workloads.hpp"
@@ -20,7 +20,7 @@
  *
  * Ported from ankerl::unordered_dense (test/bench/quick_overall_map.cpp, MIT license).
  */
-namespace dice::sparse_map::bench {
+namespace dice::unordered_sparse::bench {
 
     /**
      * The sizes of the scored workloads and the checksums for them, as upstream has them.
@@ -160,6 +160,6 @@ namespace dice::sparse_map::bench {
         });
     }
 
-}  // namespace dice::sparse_map::bench
+}  // namespace dice::unordered_sparse::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_MAP_BENCHMARKS_HPP
+#endif  // DICE_UNORDERED_SPARSE_BENCHMARKS_MAP_BENCHMARKS_HPP

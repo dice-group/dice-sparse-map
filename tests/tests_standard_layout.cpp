@@ -1,7 +1,6 @@
 #include "fixtures/offset_ptr_allocator.hpp"
 
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 #include <metall/metall.hpp>
@@ -20,39 +19,39 @@
  * three sparsity levels.
  */
 namespace {
-    using namespace dice::sparse_map;
-    using dice::sparse_map::tests::offset_ptr_allocator;
+    using namespace dice::unordered_sparse;
+    using dice::unordered_sparse::tests::offset_ptr_allocator;
 
     using entry_t = std::pair<std::uint64_t, std::uint64_t>;
 
     template<typename T>
     using metall_allocator = metall::manager::allocator_type<T>;
 
-    template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
+    template<template<typename> typename AllocatorOf, sparsity Sparsity>
     using map_of = sparse_map<std::uint64_t,
                               std::uint64_t,
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<entry_t>,
-                              sh::power_of_two_growth_policy<2>,
-                              sh::exception_safety::basic,
+                              power_of_two_growth_policy<2>,
+                              exception_safety::basic,
                               Sparsity>;
 
-    template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
+    template<template<typename> typename AllocatorOf, sparsity Sparsity>
     using set_of = sparse_set<std::uint64_t,
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<std::uint64_t>,
-                              sh::power_of_two_growth_policy<2>,
-                              sh::exception_safety::basic,
+                              power_of_two_growth_policy<2>,
+                              exception_safety::basic,
                               Sparsity>;
 
-    template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using array_of = detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity>;
+    template<template<typename> typename AllocatorOf, sparsity Sparsity>
+    using array_of = detail::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity>;
 
-    constexpr auto high = sh::sparsity::high;
-    constexpr auto medium = sh::sparsity::medium;
-    constexpr auto low = sh::sparsity::low;
+    constexpr auto high = sparsity::high;
+    constexpr auto medium = sparsity::medium;
+    constexpr auto low = sparsity::low;
 
 }  // namespace
 

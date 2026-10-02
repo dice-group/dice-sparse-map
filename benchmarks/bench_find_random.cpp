@@ -10,7 +10,7 @@
 #include <iostream>
 #include <string_view>
 
-using namespace dice::sparse_map::bench;
+using namespace dice::unordered_sparse::bench;
 
 /*
  * Random finds with a success rate of 0%, 25%, 50%, 75% and 100% in a map that grows while it is

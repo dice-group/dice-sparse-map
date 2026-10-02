@@ -10,7 +10,7 @@
 #include <iostream>
 #include <string_view>
 
-using namespace dice::sparse_map::bench;
+using namespace dice::unordered_sparse::bench;
 
 /*
  * The set versions of build, find_50 and churn for `uint64_t` keys.

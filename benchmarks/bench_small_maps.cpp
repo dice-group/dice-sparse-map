@@ -15,8 +15,8 @@
 #include <string_view>
 #include <vector>
 
-using namespace dice::sparse_map::bench;
-namespace sh = dice::sparse_map::sh;
+using namespace dice::unordered_sparse::bench;
+using dice::unordered_sparse::sparsity;
 
 /*
  * Many small maps, the pattern of the edge maps of a hypertrie in tentris: every node holds one
@@ -204,9 +204,9 @@ TEST_CASE("small_maps") {
     with_sizes<small_maps_full, small_maps_quick>([]<typename Sizes>() {
         small_maps_input const input(Sizes::num_maps);
         print_header(input.num_maps(), input.keys.size());
-        small_maps<sparse_family<sh::sparsity::high, tracking_allocator>>("sparse_map high", input, Sizes::rounds);
-        small_maps<sparse_family<sh::sparsity::medium, tracking_allocator>>("sparse_map medium", input, Sizes::rounds);
-        small_maps<sparse_family<sh::sparsity::low, tracking_allocator>>("sparse_map low", input, Sizes::rounds);
+        small_maps<sparse_family<sparsity::high, tracking_allocator>>("sparse_map high", input, Sizes::rounds);
+        small_maps<sparse_family<sparsity::medium, tracking_allocator>>("sparse_map medium", input, Sizes::rounds);
+        small_maps<sparse_family<sparsity::low, tracking_allocator>>("sparse_map low", input, Sizes::rounds);
         small_maps<unordered_dense_family<tracking_allocator>>("unordered_dense", input, Sizes::rounds);
         small_maps<std_family<tracking_allocator>>("std::unordered_map", input, Sizes::rounds);
         std::cout << "\nheap B/map and allocs/map count what the maps allocate through their allocator, without the\n"

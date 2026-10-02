@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 
 // The random part runs with a new seed every time. The seed is printed when a check fails, and
 // `ankerl::nanobench::Rng(x, y)` repeats the run.

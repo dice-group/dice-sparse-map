@@ -17,12 +17,12 @@
 #include <utility>
 #include <vector>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 using namespace std::literals;
 
 namespace {
 
-    namespace sh = dice::sparse_map::sh;
+    namespace sh = dice::unordered_sparse;
 
     /**
      * True if `Container` grows with `sh::prime_growth_policy`. Its bucket counts are primes from a fixed table,
@@ -32,10 +32,10 @@ namespace {
     struct uses_prime_growth : std::false_type {};
 
     template<typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator, sh::exception_safety exception_safety_level, sh::sparsity sparsity_level>
-    struct uses_prime_growth<dice::sparse_map::sparse_map<Key, T, Hash, KeyEqual, Allocator, sh::prime_growth_policy, exception_safety_level, sparsity_level>> : std::true_type {};
+    struct uses_prime_growth<dice::sparse_map<Key, T, Hash, KeyEqual, Allocator, sh::prime_growth_policy, exception_safety_level, sparsity_level>> : std::true_type {};
 
     template<typename Key, typename Hash, typename KeyEqual, typename Allocator, sh::exception_safety exception_safety_level, sh::sparsity sparsity_level>
-    struct uses_prime_growth<dice::sparse_map::sparse_set<Key, Hash, KeyEqual, Allocator, sh::prime_growth_policy, exception_safety_level, sparsity_level>> : std::true_type {};
+    struct uses_prime_growth<dice::sparse_set<Key, Hash, KeyEqual, Allocator, sh::prime_growth_policy, exception_safety_level, sparsity_level>> : std::true_type {};
 
     /**
      * A minimal input iterator over pairs of `counter::obj`. Both members of the pair count up from the start value.
@@ -451,8 +451,8 @@ TEST_CASE_MAP("initializer_list_ctor_hash_alloc", int, char const *) {
 
 namespace {
 
-    using u64_map = dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t>;
-    using int_map = dice::sparse_map::sparse_map<int, int>;
+    using u64_map = dice::sparse_map<std::uint64_t, std::uint64_t>;
+    using int_map = dice::sparse_map<int, int>;
 
     std::uint64_t range_insert_key(std::uint64_t i) {
         return i * UINT64_C(0x9E3779B97F4A7C15);
@@ -544,7 +544,7 @@ TEST_CASE("range_insert_into_a_populated_and_an_empty_map") {
 TEST_CASE("range_insert_from_an_input_iterator") {
     auto text = std::string("7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25");
     auto in = std::istringstream(text);
-    auto set = dice::sparse_map::sparse_set<int>();
+    auto set = dice::sparse_set<int>();
     set.insert(std::istream_iterator<int>(in), std::istream_iterator<int>());
     REQUIRE(set.size() == 19U);
     REQUIRE(set.count(7) == 1U);

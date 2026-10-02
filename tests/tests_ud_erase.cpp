@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 
 namespace {
 

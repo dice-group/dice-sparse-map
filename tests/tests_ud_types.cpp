@@ -19,21 +19,21 @@
 #include <utility>
 #include <vector>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 
 /**
- * Like `TEST_CASE_MAP`, without the configuration with `sh::exception_safety::strong`. That configuration copies every
+ * Like `TEST_CASE_MAP`, without the configuration with `exception_safety::strong`. That configuration copies every
  * element on a rehash, so it does not compile with a mapped type that cannot be copied.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_MAP_MOVE_ONLY(name, ...)                                 \
-    TEST_CASE_TEMPLATE(name,                                               \
-                       map_t,                                              \
-                       ::dice::sparse_map::tests::map_medium<__VA_ARGS__>, \
-                       ::dice::sparse_map::tests::map_high<__VA_ARGS__>,   \
-                       ::dice::sparse_map::tests::map_low<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::map_prime<__VA_ARGS__>,  \
-                       ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
+#define TEST_CASE_MAP_MOVE_ONLY(name, ...)                                       \
+    TEST_CASE_TEMPLATE(name,                                                     \
+                       map_t,                                                    \
+                       ::dice::unordered_sparse::tests::map_medium<__VA_ARGS__>, \
+                       ::dice::unordered_sparse::tests::map_high<__VA_ARGS__>,   \
+                       ::dice::unordered_sparse::tests::map_low<__VA_ARGS__>,    \
+                       ::dice::unordered_sparse::tests::map_prime<__VA_ARGS__>,  \
+                       ::dice::unordered_sparse::tests::map_offset_ptr<__VA_ARGS__>)
 
 // not_copyable
 
@@ -299,7 +299,7 @@ namespace {
         }
     }
 
-    using inner_map = dice::sparse_map::sparse_map<counter::obj, counter::obj>;
+    using inner_map = dice::sparse_map<counter::obj, counter::obj>;
 
 }  // namespace
 

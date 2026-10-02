@@ -1,4 +1,4 @@
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -19,17 +19,17 @@ namespace details {
     };
 
     template<typename T, typename Alloc>
-    using sparse_set = dice::sparse_map::detail_sparse_hash::sparse_hash<
+    using sparse_set = dice::unordered_sparse::detail::sparse_hash<
         T,
         details::key_select<T>,
         void,
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::sparse_map::sh::power_of_two_growth_policy<2>,
-        dice::sparse_map::sh::exception_safety::basic,
-        dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::probing::quadratic>;
+        dice::unordered_sparse::power_of_two_growth_policy<2>,
+        dice::unordered_sparse::exception_safety::basic,
+        dice::unordered_sparse::sparsity::medium,
+        dice::unordered_sparse::probing::quadratic>;
 }  // namespace details
 
 template<typename T>

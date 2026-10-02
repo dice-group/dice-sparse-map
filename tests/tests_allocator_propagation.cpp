@@ -1,7 +1,6 @@
 #include "fixtures/allocators.hpp"
 
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -17,13 +16,13 @@
  * Partly ported from the table allocator tests of ankerl::unordered_dense (MIT license).
  */
 namespace {
-    using namespace dice::sparse_map;
-    using dice::sparse_map::tests::alloc_counts;
-    using dice::sparse_map::tests::id_allocator;
-    using dice::sparse_map::tests::pmr_like_allocator;
-    using dice::sparse_map::tests::pocca_allocator;
-    using dice::sparse_map::tests::pocma_allocator;
-    using dice::sparse_map::tests::pocs_allocator;
+    using namespace dice::unordered_sparse;
+    using dice::unordered_sparse::tests::alloc_counts;
+    using dice::unordered_sparse::tests::id_allocator;
+    using dice::unordered_sparse::tests::pmr_like_allocator;
+    using dice::unordered_sparse::tests::pocca_allocator;
+    using dice::unordered_sparse::tests::pocma_allocator;
+    using dice::unordered_sparse::tests::pocs_allocator;
 
     /// propagates on nothing, and a copy of the container gets a copy of the allocator
     template<typename T>

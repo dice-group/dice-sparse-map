@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <string>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 
 // load_factor
 //

@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <string>
 
-using namespace dice::sparse_map::bench;
+using namespace dice::unordered_sparse::bench;
 
 /*
  * A relatively quick benchmark that gives one number for how good a map is: the geometric mean
