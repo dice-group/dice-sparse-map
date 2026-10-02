@@ -132,6 +132,13 @@ namespace dice::sparse_map {
         concept NotIterator = !std::is_convertible_v<K, Iterator> && !std::is_convertible_v<K, ConstIterator>;
 
         /**
+         * A type with the tuple protocol and two elements, like `std::pair`.
+         */
+        template<typename P>
+        concept PairLike = requires { std::tuple_size<std::remove_cvref_t<P>>::value; }
+                           && std::tuple_size<std::remove_cvref_t<P>>::value == 2;
+
+        /**
          * What the constructors and `insert(first, last)` take as an input iterator: a copyable type that can be
          * dereferenced and incremented. Looser than `std::input_iterator`, so that iterators without
          * `std::iterator_traits` work, too.
@@ -198,8 +205,97 @@ namespace dice::sparse_map {
         };
 
         /**
-         * Element access of `sparse_hash` for a map. The elements are stored as `std::pair<Key, T>`. The iterators
-         * return `std::pair<Key, T> const &`; the mapped value is mutable through `iterator::value()`.
+         * `u` as it is, or as a const lvalue if `T` cannot be constructed from it. A type with a deleted move
+         * constructor is then copied, as `std::pair` does.
+         */
+        template<typename T, typename U>
+        [[nodiscard]] decltype(auto) forward_or_copy(U &&u) noexcept {
+            if constexpr (std::is_constructible_v<T, U &&>) {
+                return std::forward<U>(u);
+            } else {
+                return std::as_const(u);
+            }
+        }
+
+        /**
+         * Storage of one element of a `sparse_map`.
+         *
+         * It is standard layout when `Key` and `T` are, unlike `std::pair`, whose layout the standard does not
+         * define. It supports uses-allocator construction: with a scoped or a polymorphic allocator, the key and
+         * the mapped value get the allocator as they would in a `std::pair`.
+         */
+        template<typename Key, typename T>
+        struct map_slot {
+            Key key;
+            T value;
+
+            template<typename... KeyArgs, typename... ValueArgs>
+            map_slot(std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
+                : key(std::make_from_tuple<Key>(std::move(key_args))),
+                  value(std::make_from_tuple<T>(std::move(value_args))) {
+            }
+
+            /**
+             * Constructs the slot from the two elements of a pair-like object, e.g. a `std::pair`.
+             */
+            template<PairLike P>
+            explicit map_slot(P &&pair)
+                : key(forward_or_copy<Key>(std::get<0>(std::forward<P>(pair)))),
+                  value(forward_or_copy<T>(std::get<1>(std::forward<P>(pair)))) {
+            }
+
+            map_slot(map_slot const &) = default;
+            map_slot(map_slot &&) = default;
+            map_slot &operator=(map_slot const &) = default;
+            map_slot &operator=(map_slot &&) = default;
+            ~map_slot() = default;
+
+            template<typename Alloc, typename... KeyArgs, typename... ValueArgs>
+            map_slot(std::allocator_arg_t, Alloc const &alloc, std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
+                : key(std::apply([&alloc](auto &&...args) {
+                      return std::make_obj_using_allocator<Key>(alloc, std::forward<decltype(args)>(args)...);
+                  },
+                                 std::move(key_args))),
+                  value(std::apply([&alloc](auto &&...args) {
+                      return std::make_obj_using_allocator<T>(alloc, std::forward<decltype(args)>(args)...);
+                  },
+                                   std::move(value_args))) {
+            }
+
+            template<typename Alloc, PairLike P>
+            map_slot(std::allocator_arg_t, Alloc const &alloc, P &&pair)
+                : key(std::make_obj_using_allocator<Key>(alloc, std::get<0>(std::forward<P>(pair)))),
+                  value(std::make_obj_using_allocator<T>(alloc, std::get<1>(std::forward<P>(pair)))) {
+            }
+
+            template<typename Alloc>
+            map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot const &other)
+                : key(std::make_obj_using_allocator<Key>(alloc, other.key)),
+                  value(std::make_obj_using_allocator<T>(alloc, other.value)) {
+            }
+
+            template<typename Alloc>
+            map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot &&other)
+                : key(std::make_obj_using_allocator<Key>(alloc, std::move(other.key))),
+                  value(std::make_obj_using_allocator<T>(alloc, std::move(other.value))) {
+            }
+        };
+
+        /**
+         * Proxy that `operator->` of a map iterator returns. It holds the reference that `operator*` returns.
+         */
+        template<typename Reference>
+        struct arrow_proxy {
+            Reference ref;
+
+            [[nodiscard]] Reference const *operator->() const noexcept {
+                return std::addressof(ref);
+            }
+        };
+
+        /**
+         * Element access of `sparse_hash` for a map. The elements are stored as `map_slot<Key, T>`.
+         * The public element type is `std::pair<Key, T>`, the reference type is `std::pair<Key const &, T &>`.
          */
         template<typename Key, typename T>
         struct map_policy {
@@ -208,20 +304,20 @@ namespace dice::sparse_map {
             using key_type = Key;
             using mapped_type = T;
             using value_type = std::pair<Key, T>;
-            using slot_type = value_type;
-            using reference = value_type const &;
-            using const_reference = value_type const &;
+            using slot_type = map_slot<Key, T>;
+            using reference = std::pair<Key const &, T &>;
+            using const_reference = std::pair<Key const &, T const &>;
 
             [[nodiscard]] static Key const &key(slot_type const &slot) noexcept {
-                return slot.first;
+                return slot.key;
             }
 
             [[nodiscard]] static T &mapped(slot_type &slot) noexcept {
-                return slot.second;
+                return slot.value;
             }
 
             [[nodiscard]] static T const &mapped(slot_type const &slot) noexcept {
-                return slot.second;
+                return slot.value;
             }
 
             [[nodiscard]] static Key const &key_of_value(value_type const &value) noexcept {
@@ -870,9 +966,9 @@ namespace dice::sparse_map {
             /**
              * Forward iterator over the elements.
              *
-             * It dereferences to `value_type const &`: a map iterator to `std::pair<Key, T> const &`, a set iterator
-             * to `Key const &`. `key()` returns the key, and for a map `value()` returns the mapped value, which is
-             * mutable through `iterator`.
+             * A map iterator dereferences to `std::pair<Key const &, T &>` (`std::pair<Key const &, T const &>` for
+             * `const_iterator`): the key is const, the mapped value is mutable through `iterator`. `operator->`
+             * returns a proxy, so `it->second` works. A set iterator dereferences to `Key const &`.
              *
              * The iterator holds plain pointers, also with an allocator that uses fancy pointers: the group, the
              * element and the end of the elements of the group. An insertion or an erasure can invalidate it.
@@ -907,11 +1003,15 @@ namespace dice::sparse_map {
 
             public:
                 using iterator_concept = std::forward_iterator_tag;
-                using iterator_category = std::forward_iterator_tag;
+                /**
+                 * A map iterator returns a proxy reference, so it meets only the Cpp17InputIterator requirements.
+                 * It models `std::forward_iterator`.
+                 */
+                using iterator_category = std::conditional_t<Policy::is_map, std::input_iterator_tag, std::forward_iterator_tag>;
                 using value_type = typename sparse_hash::value_type;
                 using difference_type = std::ptrdiff_t;
-                using reference = value_type const &;
-                using pointer = value_type const *;
+                using reference = std::conditional_t<is_const, typename Policy::const_reference, typename Policy::reference>;
+                using pointer = std::conditional_t<Policy::is_map, arrow_proxy<reference>, value_type const *>;
 
                 sparse_iterator() noexcept = default;
 
@@ -927,27 +1027,19 @@ namespace dice::sparse_map {
                 }
 
                 [[nodiscard]] reference operator*() const noexcept {
-                    return *slot_;
+                    if constexpr (Policy::is_map) {
+                        return reference{Policy::key(*slot_), Policy::mapped(*slot_)};
+                    } else {
+                        return *slot_;
+                    }
                 }
 
                 [[nodiscard]] pointer operator->() const noexcept {
-                    return slot_;
-                }
-
-                /**
-                 * @return the key of the element
-                 */
-                [[nodiscard]] key_type const &key() const noexcept {
-                    return Policy::key(*slot_);
-                }
-
-                /**
-                 * @return the mapped value of the element of a map, mutable through `iterator`
-                 */
-                template<bool map = Policy::is_map>
-                requires map
-                [[nodiscard]] auto &value() const noexcept {
-                    return Policy::mapped(*slot_);
+                    if constexpr (Policy::is_map) {
+                        return pointer{**this};
+                    } else {
+                        return slot_;
+                    }
                 }
 
                 sparse_iterator &operator++() noexcept {
@@ -2009,5 +2101,13 @@ namespace dice::sparse_map {
 
     }  // namespace detail_sparse_hash
 }  // namespace dice::sparse_map
+
+/**
+ * A `map_slot` uses an allocator if its key or its mapped value does.
+ */
+template<typename Key, typename T, typename Alloc>
+struct std::uses_allocator<dice::sparse_map::detail_sparse_hash::map_slot<Key, T>, Alloc>
+    : std::bool_constant<std::uses_allocator_v<Key, Alloc> || std::uses_allocator_v<T, Alloc>> {
+};
 
 #endif
