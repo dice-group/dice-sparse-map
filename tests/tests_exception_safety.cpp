@@ -15,6 +15,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 /**
  * What a map holds after an allocation or the hash function failed in the middle of an operation. The allocations
@@ -805,6 +806,65 @@ TEST_CASE("a move assignment to an unequal allocator that throws keeps the value
         kept += (it != source.end() && it->second.value == static_cast<int>(key)) ? 1 : 0;
     }
     CHECK(kept == 100);
+}
+
+namespace {
+    /**
+     * A hash with state. It adds the size of `seed` to the key, and a move leaves `seed` empty, so a moved-from
+     * `move_sensitive_hash` hashes differently.
+     */
+    struct move_sensitive_hash {
+        std::vector<std::size_t> seed = std::vector<std::size_t>(3);
+
+        std::size_t operator()(std::size_t key) const noexcept {
+            return key + seed.size();
+        }
+    };
+
+    using seeded_allocator_t = id_allocator<std::pair<std::size_t, countdown_value>>;
+    using seeded_map_t = sparse_map<std::size_t, countdown_value, move_sensitive_hash, std::equal_to<std::size_t>, seeded_allocator_t>;
+
+    /// number of the keys 0 to 99 that `map` finds with their value
+    std::size_t nb_found_with_value(seeded_map_t const &map) {
+        std::size_t found = 0;
+        for (std::size_t key = 0; key < 100; ++key) {
+            auto const it = map.find(key);
+            found += (it != map.end() && it->second.value == static_cast<int>(key)) ? 1 : 0;
+        }
+        return found;
+    }
+}  // namespace
+
+TEST_CASE("a move assignment to an unequal allocator that throws leaves the source able to find its values") {
+    auto source = seeded_map_t{seeded_allocator_t{1}};
+    for (std::size_t key = 0; key < 100; ++key) {
+        source.try_emplace(key, static_cast<int>(key));
+    }
+    auto target = seeded_map_t{seeded_allocator_t{2}};
+
+    // the 51st move or copy of a value throws, after 50 values reached the target
+    value_transfers_until_throw = 50;
+    CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+    value_transfers_until_throw = -1;
+
+    CHECK(target.empty());
+    CHECK(source.size() == 100);                // NOLINT(bugprone-use-after-move)
+    CHECK(nb_found_with_value(source) == 100);  // NOLINT(bugprone-use-after-move)
+}
+
+TEST_CASE("a move construction with an unequal allocator that throws leaves the source able to find its values") {
+    auto source = seeded_map_t{seeded_allocator_t{1}};
+    for (std::size_t key = 0; key < 100; ++key) {
+        source.try_emplace(key, static_cast<int>(key));
+    }
+
+    // the 51st move or copy of a value throws, after 50 values reached the new map
+    value_transfers_until_throw = 50;
+    CHECK_THROWS_AS((seeded_map_t{std::move(source), seeded_allocator_t{2}}), std::runtime_error);
+    value_transfers_until_throw = -1;
+
+    CHECK(source.size() == 100);                // NOLINT(bugprone-use-after-move)
+    CHECK(nb_found_with_value(source) == 100);  // NOLINT(bugprone-use-after-move)
 }
 
 namespace {
