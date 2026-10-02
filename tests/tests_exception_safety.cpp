@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -179,7 +180,7 @@ namespace {
 
     /// number of `counter::obj` that were constructed and not destroyed yet
     std::size_t alive(counter const &counts) {
-        return counts.ctor() + counts.default_ctor() + counter::static_default_ctor + counts.copy_ctor() + counts.move_ctor()
+        return counts.ctor() + counts.default_ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor()
                - counts.dtor() - counter::static_dtor;
     }
 
@@ -588,10 +589,7 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
     CHECK(live_blocks == 0);
 }
 
-// skipped: when `sparse_hash::operator=(sparse_hash const &)` throws, the target keeps the mask of the
-// source, but only the bucket groups it copied so far, and `sparse_buckets_` still points to the memory
-// of the old bucket vector. `find` then reads freed memory, and `insert` writes there.
-TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map" * doctest::skip(),
+TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map",
                    map_t,
                    moving_map<sparsity::high>,
                    moving_map<sparsity::medium>,
@@ -658,6 +656,19 @@ namespace {
             return std::hash<std::size_t>{}(key);
         }
     };
+
+    /// `map` holds the keys `first` to `first + count - 1`, each mapped to itself, and nothing else
+    template<typename Map>
+    void check_holds(Map const &map, std::size_t first, std::size_t count) {
+        CHECK(map.size() == count);
+        std::size_t found = 0;
+        for (std::size_t key = first; key < first + count; ++key) {
+            auto const it = map.find(key);
+            found += (it != map.end() && it->second == key) ? 1 : 0;
+        }
+        CHECK(found == count);
+        CHECK(static_cast<std::size_t>(std::distance(map.begin(), map.end())) == count);
+    }
 }  // namespace
 
 TEST_CASE("a rehash does not swap the hash function") {
@@ -678,4 +689,120 @@ TEST_CASE("a rehash does not swap the hash function") {
         all_found = all_found && it != map.end() && it->second == std::to_string(key);
     }
     CHECK(all_found);
+}
+
+TEST_CASE("a move assignment whose hash throws leaves both maps usable") {
+    using map_t = sparse_map<std::size_t, std::size_t, fragile_hash>;
+    auto source = map_t{};
+    for (std::size_t key = 0; key < 100; ++key) {
+        source[key] = key;
+    }
+    auto target = map_t{};
+    for (std::size_t key = 1000; key < 1010; ++key) {
+        target[key] = key;
+    }
+
+    hash_moves_throw = true;
+    CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+    hash_moves_throw = false;
+
+    check_holds(target, 0, 0);
+    check_holds(source, 0, 100);  // NOLINT(bugprone-use-after-move)
+    target[5000] = 5000;
+    source[5000] = 5000;  // NOLINT(bugprone-use-after-move)
+    check_holds(target, 5000, 1);
+    CHECK(source.size() == 101);
+}
+
+TEST_CASE("a swap whose hash throws swaps neither the elements nor the allocators") {
+    using allocator_t = pocs_allocator<std::pair<std::size_t, std::size_t>>;
+    using map_t = sparse_map<std::size_t, std::size_t, fragile_hash, std::equal_to<std::size_t>, allocator_t>;
+    auto counts_1 = alloc_counts{};
+    auto counts_2 = alloc_counts{};
+    {
+        auto map_1 = map_t{allocator_t{1, &counts_1}};
+        auto map_2 = map_t{allocator_t{2, &counts_2}};
+        for (std::size_t key = 0; key < 100; ++key) {
+            map_1[key] = key;
+            map_2[key + 1000] = key + 1000;
+        }
+
+        hash_moves_throw = true;
+        CHECK_THROWS_AS(map_1.swap(map_2), std::runtime_error);
+        hash_moves_throw = false;
+
+        CHECK(map_1.get_allocator().id == 1);
+        CHECK(map_2.get_allocator().id == 2);
+        check_holds(map_1, 0, 100);
+        check_holds(map_2, 1000, 100);
+    }
+    // each allocator got back exactly the blocks it handed out
+    CHECK(counts_1.allocations == counts_1.deallocations);
+    CHECK(counts_2.allocations == counts_2.deallocations);
+}
+
+namespace {
+    /// moves and copies of `countdown_value` that are left before one throws, -1 never throws
+    int value_transfers_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * A value whose move constructor can throw. Each move and copy counts `value_transfers_until_throw`
+     * down and throws when it reaches 0. A move sets its source to -1, so a test sees the moved-from values.
+     */
+    struct countdown_value {
+        int value = 0;
+
+        explicit countdown_value(int v) noexcept
+            : value(v) {
+        }
+
+        countdown_value(countdown_value const &other)
+            : value(other.value) {
+            count_down();
+        }
+
+        countdown_value(countdown_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
+            : value(other.value) {
+            count_down();
+            other.value = -1;
+        }
+
+        countdown_value &operator=(countdown_value const &) = default;
+        countdown_value &operator=(countdown_value &&) = default;
+        ~countdown_value() = default;
+
+    private:
+        static void count_down() {
+            if (value_transfers_until_throw >= 0 && 0 == value_transfers_until_throw--) {
+                throw std::runtime_error("countdown_value");
+            }
+        }
+    };
+}  // namespace
+
+TEST_CASE("a move assignment to an unequal allocator that throws keeps the values of the source") {
+    using allocator_t = id_allocator<std::pair<std::size_t, countdown_value>>;
+    using map_t = sparse_map<std::size_t, countdown_value, std::hash<std::size_t>, std::equal_to<std::size_t>, allocator_t>;
+    auto source = map_t{allocator_t{1}};
+    for (std::size_t key = 0; key < 100; ++key) {
+        source.try_emplace(key, static_cast<int>(key));
+    }
+    auto target = map_t{allocator_t{2}};
+    target.try_emplace(1000, 1000);
+    static_assert(!noexcept(target = std::move(source)));
+
+    // the 51st move or copy of a value throws, after 50 values reached the target
+    value_transfers_until_throw = 50;
+    CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+    value_transfers_until_throw = -1;
+
+    CHECK(target.empty());
+    CHECK(target.get_allocator().id == 2);
+    CHECK(source.size() == 100);  // NOLINT(bugprone-use-after-move)
+    std::size_t kept = 0;
+    for (std::size_t key = 0; key < 100; ++key) {
+        auto const it = source.find(key);  // NOLINT(bugprone-use-after-move)
+        kept += (it != source.end() && it->second.value == static_cast<int>(key)) ? 1 : 0;
+    }
+    CHECK(kept == 100);
 }

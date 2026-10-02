@@ -89,7 +89,7 @@ TEST_CASE_MAP("iterators_erase", counter::obj, counter::obj) {
         counts("done");
     }
     counts("destructed");
-    REQUIRE(counts.dtor() == counts.ctor() + counts.static_default_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
+    REQUIRE(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
 }
 
 // What erase() returns. The loop above erases from begin() every time, so it passes just as well if erase() returns

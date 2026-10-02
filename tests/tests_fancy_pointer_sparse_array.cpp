@@ -117,7 +117,8 @@ template<typename T, dice::unordered_sparse::sparsity Sparsity = dice::unordered
 struct custom_alloc {
     using allocator_type = dice::unordered_sparse::tests::offset_ptr_allocator<T>;
     using array_type = dice::unordered_sparse::detail::sparse_array<T, dice::unordered_sparse::tests::offset_ptr_allocator<T>, Sparsity>;
-    using const_iterator_type = boost::interprocess::offset_ptr<T const>;
+    // the iterators of a sparse_array are plain pointers, also with an allocator with fancy pointers
+    using const_iterator_type = T const *;
 };
 
 

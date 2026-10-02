@@ -188,12 +188,7 @@ TEST_CASE_TEMPLATE("copy assignment with propagation takes the allocator of the 
     CHECK(holds(target, 200));
 }
 
-// skipped: `sparse_hash::operator=(sparse_hash const &)` replaces `m_alloc`, but keeps the bucket
-// vector, and with it the old allocator and its memory. It resets the vector by move assigning an
-// empty vector, and `std::vector` does not take the new allocator in a move assignment when
-// `propagate_on_container_move_assignment` is false. A later rehash swaps this vector with one of
-// the new allocator, so both vectors give their memory back to the wrong allocator.
-TEST_CASE_TEMPLATE("after a copy assignment with propagation the target holds no memory of its old allocator" * doctest::skip(), kind_t, map_kind, set_kind) {
+TEST_CASE_TEMPLATE("after a copy assignment with propagation the target holds no memory of its old allocator", kind_t, map_kind, set_kind) {
     using container_t = typename kind_t::template with<pocca_allocator>;
     auto source_counts = alloc_counts{};
     auto target_counts = alloc_counts{};
@@ -259,13 +254,7 @@ TEST_CASE_TEMPLATE("move assignment with equal allocators takes the memory of th
     CHECK(counts.deallocations == counts.allocations);
 }
 
-// skipped: `sparse_hash::operator=(sparse_hash &&)` moves each bucket group with
-// `sparse_array(sparse_array &&, Allocator const &)`, which leaves the source group holding its
-// elements and its memory. `other.m_sparse_buckets_data.clear()` then destroys these groups without
-// `sparse_array::clear(alloc)`: `~sparse_array` asserts, and without the assertion the memory and the
-// moved from elements leak. A target that already has buckets also keeps its old, empty groups in
-// front of the moved ones, so `find` looks in the old groups.
-TEST_CASE_TEMPLATE("move assignment with unequal allocators moves the elements into the memory of the target" * doctest::skip(), kind_t, map_kind, set_kind) {
+TEST_CASE_TEMPLATE("move assignment with unequal allocators moves the elements into the memory of the target", kind_t, map_kind, set_kind) {
     using container_t = typename kind_t::template with<inheriting_allocator>;
     auto source_counts = alloc_counts{};
     auto target_counts = alloc_counts{};

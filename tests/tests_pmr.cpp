@@ -252,123 +252,103 @@ TEST_CASE("swapping two pmr maps with the same resource allocates nothing") {
 }
 
 namespace {
-    /**
-     * Copying a container with `std::pmr::polymorphic_allocator`, and copy and move assigning one, do
-     * not compile yet. `sparse_hash` constructs each bucket group in its bucket vector with the
-     * allocator as an extra argument (`emplace_back(bucket, m_alloc)`), and
-     * `polymorphic_allocator::construct` appends the allocator once more (uses-allocator
-     * construction), which `sparse_array` has no constructor for. The move assignment also assigns
-     * the allocator, and `polymorphic_allocator` has no assignment operator. The tests below hold the
-     * behaviour of `std::unordered_map` and are compiled out and skipped while this is false.
-     */
-    constexpr bool pmr_copy_and_assignment_compile = false;
-
     /// A copy gets the default resource, because `polymorphic_allocator` does not propagate on copy construction.
     template<typename Map>
     void check_copy_construction() {
-        if constexpr (pmr_copy_and_assignment_compile) {
-            auto resource = counting_resource{};
-            auto default_resource = counting_resource{};
-            {
-                auto const guard = default_resource_guard{&default_resource};
-                auto source = Map{&resource};
-                for (int i = 0; i < 100; ++i) {
-                    source[long_key(i)].push_back(i);
-                }
-                auto const copy = source;
-                CHECK(copy.get_allocator().resource() == &default_resource);
-                CHECK(copy == source);
-                CHECK(entries_use(copy, &default_resource));
-                CHECK(entries_use(source, &resource));
+        auto resource = counting_resource{};
+        auto default_resource = counting_resource{};
+        {
+            auto const guard = default_resource_guard{&default_resource};
+            auto source = Map{&resource};
+            for (int i = 0; i < 100; ++i) {
+                source[long_key(i)].push_back(i);
             }
-            CHECK(resource.bytes_in_use() == 0);
-            CHECK(default_resource.bytes_in_use() == 0);
+            auto const copy = source;
+            CHECK(copy.get_allocator().resource() == &default_resource);
+            CHECK(copy == source);
+            CHECK(entries_use(copy, &default_resource));
+            CHECK(entries_use(source, &resource));
         }
+        CHECK(resource.bytes_in_use() == 0);
+        CHECK(default_resource.bytes_in_use() == 0);
     }
 
     /// The target keeps its resource and copies the entries into it.
     template<typename Map>
     void check_copy_assignment() {
-        if constexpr (pmr_copy_and_assignment_compile) {
-            auto resource_1 = counting_resource{};
-            auto resource_2 = counting_resource{};
-            {
-                auto target = Map{&resource_1};
-                target[long_key(1)].push_back(2);
-                auto source = Map{&resource_2};
-                source[long_key(3)].push_back(4);
-                auto const source_allocations = resource_2.allocations();
+        auto resource_1 = counting_resource{};
+        auto resource_2 = counting_resource{};
+        {
+            auto target = Map{&resource_1};
+            target[long_key(1)].push_back(2);
+            auto source = Map{&resource_2};
+            source[long_key(3)].push_back(4);
+            auto const source_allocations = resource_2.allocations();
 
-                target = source;
+            target = source;
 
-                CHECK(target.size() == 1);
-                CHECK(target.contains(long_key(3)));
-                CHECK(target.get_allocator().resource() == &resource_1);
-                CHECK(entries_use(target, &resource_1));
-                CHECK(resource_2.allocations() == source_allocations);
-            }
-            CHECK(resource_1.bytes_in_use() == 0);
-            CHECK(resource_2.bytes_in_use() == 0);
+            CHECK(target.size() == 1);
+            CHECK(target.contains(long_key(3)));
+            CHECK(target.get_allocator().resource() == &resource_1);
+            CHECK(entries_use(target, &resource_1));
+            CHECK(resource_2.allocations() == source_allocations);
         }
+        CHECK(resource_1.bytes_in_use() == 0);
+        CHECK(resource_2.bytes_in_use() == 0);
     }
 
     /// With the same resource the target takes the memory of the source, with another one it moves the entries into its own resource.
     template<typename Map>
     void check_move_assignment() {
-        if constexpr (pmr_copy_and_assignment_compile) {
-            auto resource_1 = counting_resource{};
-            auto resource_2 = counting_resource{};
-            {
-                auto target = Map{&resource_1};
-                target[long_key(0)].push_back(0);
-                auto source = Map{&resource_1};
-                source[long_key(1)].push_back(1);
-                auto const allocations = resource_1.allocations();
+        auto resource_1 = counting_resource{};
+        auto resource_2 = counting_resource{};
+        {
+            auto target = Map{&resource_1};
+            target[long_key(0)].push_back(0);
+            auto source = Map{&resource_1};
+            source[long_key(1)].push_back(1);
+            auto const allocations = resource_1.allocations();
 
-                target = std::move(source);
+            target = std::move(source);
 
-                CHECK(resource_1.allocations() == allocations);
-                CHECK(target.size() == 1);
-                CHECK(target.at(long_key(1)) == std::pmr::vector<int>{1});
-            }
-            {
-                auto target = Map{&resource_1};
-                target[long_key(0)].push_back(0);
-                auto source = Map{&resource_2};
-                for (int i = 0; i < 100; ++i) {
-                    source[long_key(i)].push_back(i);
-                }
-
-                target = std::move(source);
-
-                CHECK(target.get_allocator().resource() == &resource_1);
-                CHECK(target.size() == 100);
-                CHECK(target.at(long_key(42)) == std::pmr::vector<int>{42});
-                CHECK(entries_use(target, &resource_1));
-
-                // the moved from source still works
-                source.clear();  // NOLINT(bugprone-use-after-move)
-                source[long_key(7)].push_back(7);
-                CHECK(source.size() == 1);
-            }
-            CHECK(resource_1.bytes_in_use() == 0);
-            CHECK(resource_2.bytes_in_use() == 0);
+            CHECK(resource_1.allocations() == allocations);
+            CHECK(target.size() == 1);
+            CHECK(target.at(long_key(1)) == std::pmr::vector<int>{1});
         }
+        {
+            auto target = Map{&resource_1};
+            target[long_key(0)].push_back(0);
+            auto source = Map{&resource_2};
+            for (int i = 0; i < 100; ++i) {
+                source[long_key(i)].push_back(i);
+            }
+
+            target = std::move(source);
+
+            CHECK(target.get_allocator().resource() == &resource_1);
+            CHECK(target.size() == 100);
+            CHECK(target.at(long_key(42)) == std::pmr::vector<int>{42});
+            CHECK(entries_use(target, &resource_1));
+
+            // the moved from source still works
+            source.clear();  // NOLINT(bugprone-use-after-move)
+            source[long_key(7)].push_back(7);
+            CHECK(source.size() == 1);
+        }
+        CHECK(resource_1.bytes_in_use() == 0);
+        CHECK(resource_2.bytes_in_use() == 0);
     }
 
 }  // namespace
 
-// skipped while `pmr_copy_and_assignment_compile` is false
-TEST_CASE("a copy of a pmr map uses the default resource" * doctest::skip(!pmr_copy_and_assignment_compile)) {
+TEST_CASE("a copy of a pmr map uses the default resource") {
     check_copy_construction<pmr_map>();
 }
 
-// skipped while `pmr_copy_and_assignment_compile` is false
-TEST_CASE("copy assignment of a pmr map keeps the resource of the target" * doctest::skip(!pmr_copy_and_assignment_compile)) {
+TEST_CASE("copy assignment of a pmr map keeps the resource of the target") {
     check_copy_assignment<pmr_map>();
 }
 
-// skipped while `pmr_copy_and_assignment_compile` is false
-TEST_CASE("move assignment of a pmr map keeps the resource of the target" * doctest::skip(!pmr_copy_and_assignment_compile)) {
+TEST_CASE("move assignment of a pmr map keeps the resource of the target") {
     check_move_assignment<pmr_map>();
 }
