@@ -14,8 +14,7 @@
 
 /**
  * The container configurations that every `TEST_CASE_MAP` and `TEST_CASE_SET` runs against:
- * the three sparsity levels, the prime growth policy, the strong exception guarantee, and an
- * allocator with fancy pointers.
+ * the three sparsity levels, the strong exception guarantee, and an allocator with fancy pointers.
  */
 namespace dice::sparse_map::tests {
 
@@ -27,9 +26,6 @@ namespace dice::sparse_map::tests {
 
     template<typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using map_low = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::power_of_two_growth_policy<2>, sh::exception_safety::basic, sh::sparsity::low>;
-
-    template<typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_prime = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::prime_growth_policy, sh::exception_safety::basic, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using map_strong = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::power_of_two_growth_policy<2>, sh::exception_safety::strong, sh::sparsity::medium>;
@@ -45,9 +41,6 @@ namespace dice::sparse_map::tests {
 
     template<typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using set_low = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::power_of_two_growth_policy<2>, sh::exception_safety::basic, sh::sparsity::low>;
-
-    template<typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_prime = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::prime_growth_policy, sh::exception_safety::basic, sh::sparsity::medium>;
 
     template<typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using set_strong = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::power_of_two_growth_policy<2>, sh::exception_safety::strong, sh::sparsity::medium>;
@@ -69,7 +62,6 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,   \
                        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::map_prime<__VA_ARGS__>,  \
                        ::dice::sparse_map::tests::map_strong<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
 
@@ -84,7 +76,6 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::set_medium<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,   \
                        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::set_prime<__VA_ARGS__>,  \
                        ::dice::sparse_map::tests::set_strong<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__>)
 

@@ -21,28 +21,23 @@ namespace {
     using dice::sparse_map::tests::counting_allocator;
     using dice::sparse_map::tests::num_allocations;
 
-    template<typename GrowthPolicy, sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
-    using counted_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, GrowthPolicy, ExceptionSafety, Sparsity>;
+    template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
+    using counted_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, sh::power_of_two_growth_policy<2>, ExceptionSafety, Sparsity>;
 
-    template<typename GrowthPolicy, sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
-    using counted_set = sparse_set<int, std::hash<int>, std::equal_to<int>, counting_allocator<int>, GrowthPolicy, ExceptionSafety, Sparsity>;
-
-    using power_of_two = sh::power_of_two_growth_policy<2>;
-    using prime = sh::prime_growth_policy;
+    template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
+    using counted_set = sparse_set<int, std::hash<int>, std::equal_to<int>, counting_allocator<int>, sh::power_of_two_growth_policy<2>, ExceptionSafety, Sparsity>;
     constexpr auto basic = sh::exception_safety::basic;
     constexpr auto strong = sh::exception_safety::strong;
 
     /// the configurations of `TEST_CASE_MAP` and `TEST_CASE_SET` with an allocator that counts
-    using counted_containers = std::tuple<counted_map<power_of_two, basic, sh::sparsity::high>,
-                                          counted_map<power_of_two, basic, sh::sparsity::medium>,
-                                          counted_map<power_of_two, basic, sh::sparsity::low>,
-                                          counted_map<prime, basic, sh::sparsity::medium>,
-                                          counted_map<power_of_two, strong, sh::sparsity::medium>,
-                                          counted_set<power_of_two, basic, sh::sparsity::high>,
-                                          counted_set<power_of_two, basic, sh::sparsity::medium>,
-                                          counted_set<power_of_two, basic, sh::sparsity::low>,
-                                          counted_set<prime, basic, sh::sparsity::medium>,
-                                          counted_set<power_of_two, strong, sh::sparsity::medium>>;
+    using counted_containers = std::tuple<counted_map<basic, sh::sparsity::high>,
+                                          counted_map<basic, sh::sparsity::medium>,
+                                          counted_map<basic, sh::sparsity::low>,
+                                          counted_map<strong, sh::sparsity::medium>,
+                                          counted_set<basic, sh::sparsity::high>,
+                                          counted_set<basic, sh::sparsity::medium>,
+                                          counted_set<basic, sh::sparsity::low>,
+                                          counted_set<strong, sh::sparsity::medium>>;
 
     template<typename Container>
     void insert_one(Container &container, int key) {
@@ -55,16 +50,14 @@ namespace {
 
 }  // namespace
 
-TYPE_TO_STRING_AS("map<high>", counted_map<power_of_two, basic, sh::sparsity::high>);
-TYPE_TO_STRING_AS("map<medium>", counted_map<power_of_two, basic, sh::sparsity::medium>);
-TYPE_TO_STRING_AS("map<low>", counted_map<power_of_two, basic, sh::sparsity::low>);
-TYPE_TO_STRING_AS("map<prime>", counted_map<prime, basic, sh::sparsity::medium>);
-TYPE_TO_STRING_AS("map<strong>", counted_map<power_of_two, strong, sh::sparsity::medium>);
-TYPE_TO_STRING_AS("set<high>", counted_set<power_of_two, basic, sh::sparsity::high>);
-TYPE_TO_STRING_AS("set<medium>", counted_set<power_of_two, basic, sh::sparsity::medium>);
-TYPE_TO_STRING_AS("set<low>", counted_set<power_of_two, basic, sh::sparsity::low>);
-TYPE_TO_STRING_AS("set<prime>", counted_set<prime, basic, sh::sparsity::medium>);
-TYPE_TO_STRING_AS("set<strong>", counted_set<power_of_two, strong, sh::sparsity::medium>);
+TYPE_TO_STRING_AS("map<high>", counted_map<basic, sh::sparsity::high>);
+TYPE_TO_STRING_AS("map<medium>", counted_map<basic, sh::sparsity::medium>);
+TYPE_TO_STRING_AS("map<low>", counted_map<basic, sh::sparsity::low>);
+TYPE_TO_STRING_AS("map<strong>", counted_map<strong, sh::sparsity::medium>);
+TYPE_TO_STRING_AS("set<high>", counted_set<basic, sh::sparsity::high>);
+TYPE_TO_STRING_AS("set<medium>", counted_set<basic, sh::sparsity::medium>);
+TYPE_TO_STRING_AS("set<low>", counted_set<basic, sh::sparsity::low>);
+TYPE_TO_STRING_AS("set<strong>", counted_set<strong, sh::sparsity::medium>);
 
 TEST_CASE_TEMPLATE_DEFINE("a default constructed container allocates nothing", container_t, default_construction) {
     auto const before = num_allocations;

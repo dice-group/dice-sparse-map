@@ -32,7 +32,6 @@ using namespace dice::sparse_map::tests;
                        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,   \
                        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::map_prime<__VA_ARGS__>,  \
                        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
 
 // not_copyable

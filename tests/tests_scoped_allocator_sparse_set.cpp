@@ -26,10 +26,8 @@ namespace details {
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::sparse_map::sh::power_of_two_growth_policy<2>,
         dice::sparse_map::sh::exception_safety::basic,
-        dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::probing::quadratic>;
+        dice::sparse_map::sh::sparsity::medium>;
 }  // namespace details
 
 template<typename T>
