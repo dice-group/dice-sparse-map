@@ -15,7 +15,8 @@
  * A container that is stored in a metall datastore must be standard layout. These tests check
  * `sparse_map`, `sparse_set` and their bucket group `sparse_array` with `std::allocator`, with an
  * allocator that hands out `boost::interprocess::offset_ptr`, and with the metall allocator, for the
- * three sparsity levels.
+ * three sparsity levels. A map stores its elements as `map_slot`, which is standard layout if the key
+ * and the mapped type are.
  */
 namespace {
     using namespace dice::unordered_sparse;
@@ -123,6 +124,10 @@ TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are stan
                    set_of<metall_allocator, low>) {
     MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
     CHECK(std::is_standard_layout_v<container_t>);
+}
+
+TEST_CASE("map_slot is standard layout") {
+    CHECK(std::is_standard_layout_v<dice::unordered_sparse::detail::map_slot<std::uint64_t, std::uint64_t>>);
 }
 
 TEST_CASE("sizes") {
