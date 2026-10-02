@@ -1563,9 +1563,20 @@ namespace dice::sparse_map {
                                                              && std::is_nothrow_swappable_v<KeyEqual>) {
                 using std::swap;
 
-                // the functors first: if one of them throws, the storage and the allocators are not swapped
+                // The functors first: if one of them throws, the storage and the allocators are not swapped. If the key
+                // equality throws, the hash functions are swapped back, so that each table finds its elements again. If
+                // that swap throws too, the tables stay inconsistent.
                 swap(hash_, other.hash_);
-                swap(key_equal_, other.key_equal_);
+                if constexpr (std::is_nothrow_swappable_v<KeyEqual>) {
+                    swap(key_equal_, other.key_equal_);
+                } else {
+                    try {
+                        swap(key_equal_, other.key_equal_);
+                    } catch (...) {
+                        swap(hash_, other.hash_);
+                        throw;
+                    }
+                }
 
                 if constexpr (propagate_on_swap) {
                     swap(alloc_, other.alloc_);
