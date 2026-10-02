@@ -1,12 +1,12 @@
-#ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP
-#define DICE_SPARSE_MAP_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP
+#ifndef DICE_UNORDERED_SPARSE_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP
+#define DICE_UNORDERED_SPARSE_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP
 
 #include <boost/interprocess/offset_ptr.hpp>
 
 #include <cstddef>
 #include <new>
 
-namespace dice::sparse_map::tests {
+namespace dice::unordered_sparse::tests {
 
     /**
      * Allocator that hands out `boost::interprocess::offset_ptr` pointers to memory from the global heap.
@@ -44,6 +44,6 @@ namespace dice::sparse_map::tests {
         }
     };
 
-}  // namespace dice::sparse_map::tests
+}  // namespace dice::unordered_sparse::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP
+#endif  // DICE_UNORDERED_SPARSE_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP

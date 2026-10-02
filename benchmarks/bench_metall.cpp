@@ -23,8 +23,8 @@
 #include <system_error>
 #include <utility>
 
-using namespace dice::sparse_map::bench;
-namespace sh = dice::sparse_map::sh;
+using namespace dice::unordered_sparse::bench;
+using dice::unordered_sparse::sparsity;
 
 /*
  * The map benchmarks with fancy pointers. With the metall allocator, the maps live in a metall
@@ -112,11 +112,11 @@ namespace {
         std::forward<F>(f)(metall_source{&*datastore.manager});
     }
 
-    template<sh::sparsity sparsity>
-    using metall_sparse = sparse_family<sparsity, metall::manager::allocator_type>;
+    template<sparsity Sparsity>
+    using metall_sparse = sparse_family<Sparsity, metall::manager::allocator_type>;
 
-    template<sh::sparsity sparsity>
-    using offset_ptr_sparse = sparse_family<sparsity, dice::sparse_map::tests::offset_ptr_allocator>;
+    template<sparsity Sparsity>
+    using offset_ptr_sparse = sparse_family<Sparsity, dice::unordered_sparse::tests::offset_ptr_allocator>;
 
     template<typename Family>
     void quick_overall_metall(std::string_view container) {
@@ -135,49 +135,49 @@ namespace {
 }  // namespace
 
 TEST_CASE("quick_overall metall sparse_map high") {
-    quick_overall_metall<metall_sparse<sh::sparsity::high>>("metall sparse_map high");
+    quick_overall_metall<metall_sparse<sparsity::high>>("metall sparse_map high");
 }
 
 TEST_CASE("quick_overall metall sparse_map medium") {
-    quick_overall_metall<metall_sparse<sh::sparsity::medium>>("metall sparse_map medium");
+    quick_overall_metall<metall_sparse<sparsity::medium>>("metall sparse_map medium");
 }
 
 TEST_CASE("quick_overall metall sparse_map low") {
-    quick_overall_metall<metall_sparse<sh::sparsity::low>>("metall sparse_map low");
+    quick_overall_metall<metall_sparse<sparsity::low>>("metall sparse_map low");
 }
 
 TEST_CASE("quick_overall offset_ptr sparse_map high") {
-    quick_overall<offset_ptr_sparse<sh::sparsity::high>>("offset_ptr sparse_map high");
+    quick_overall<offset_ptr_sparse<sparsity::high>>("offset_ptr sparse_map high");
 }
 
 TEST_CASE("quick_overall offset_ptr sparse_map medium") {
-    quick_overall<offset_ptr_sparse<sh::sparsity::medium>>("offset_ptr sparse_map medium");
+    quick_overall<offset_ptr_sparse<sparsity::medium>>("offset_ptr sparse_map medium");
 }
 
 TEST_CASE("quick_overall offset_ptr sparse_map low") {
-    quick_overall<offset_ptr_sparse<sh::sparsity::low>>("offset_ptr sparse_map low");
+    quick_overall<offset_ptr_sparse<sparsity::low>>("offset_ptr sparse_map low");
 }
 
 TEST_CASE("find_all metall sparse_map high") {
-    find_all_metall<metall_sparse<sh::sparsity::high>>("metall sparse_map high");
+    find_all_metall<metall_sparse<sparsity::high>>("metall sparse_map high");
 }
 
 TEST_CASE("find_all metall sparse_map medium") {
-    find_all_metall<metall_sparse<sh::sparsity::medium>>("metall sparse_map medium");
+    find_all_metall<metall_sparse<sparsity::medium>>("metall sparse_map medium");
 }
 
 TEST_CASE("find_all metall sparse_map low") {
-    find_all_metall<metall_sparse<sh::sparsity::low>>("metall sparse_map low");
+    find_all_metall<metall_sparse<sparsity::low>>("metall sparse_map low");
 }
 
 TEST_CASE("find_all offset_ptr sparse_map high") {
-    find_all_hits_or_misses<offset_ptr_sparse<sh::sparsity::high>>("offset_ptr sparse_map high");
+    find_all_hits_or_misses<offset_ptr_sparse<sparsity::high>>("offset_ptr sparse_map high");
 }
 
 TEST_CASE("find_all offset_ptr sparse_map medium") {
-    find_all_hits_or_misses<offset_ptr_sparse<sh::sparsity::medium>>("offset_ptr sparse_map medium");
+    find_all_hits_or_misses<offset_ptr_sparse<sparsity::medium>>("offset_ptr sparse_map medium");
 }
 
 TEST_CASE("find_all offset_ptr sparse_map low") {
-    find_all_hits_or_misses<offset_ptr_sparse<sh::sparsity::low>>("offset_ptr sparse_map low");
+    find_all_hits_or_misses<offset_ptr_sparse<sparsity::low>>("offset_ptr sparse_map low");
 }

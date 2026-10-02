@@ -18,11 +18,11 @@ jobs:
       cxx: clang++-19
       base-branch: ${{ github.base_ref }}
       search-path: >
-        include/dice/sparse-map/sparse_growth_policy.hpp
-        include/dice/sparse-map/sparse_hash.hpp
-        include/dice/sparse-map/sparse_map.hpp
-        include/dice/sparse-map/sparse_set.hpp
-      abi-version-header: include/dice/sparse-map/version.hpp
-      abi-version-const: dice::sparse_map::pobr_version
+        include/dice/unordered_sparse/detail/sparse_growth_policy.hpp
+        include/dice/unordered_sparse/detail/sparse_hash.hpp
+        include/dice/unordered_sparse/detail/sparse_map.hpp
+        include/dice/unordered_sparse/detail/sparse_set.hpp
+      abi-version-header: include/dice/unordered_sparse/version.hpp
+      abi-version-const: dice::unordered_sparse::pobr_version
     secrets:
       CONAN_CICD_ENDPOINT: ${{ secrets.CONAN_CICD_ENDPOINT }}

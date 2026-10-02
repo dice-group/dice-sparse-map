@@ -21,8 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_UTILS_HPP
-#define DICE_SPARSE_MAP_TESTS_FIXTURES_UTILS_HPP
+#ifndef DICE_UNORDERED_SPARSE_TESTS_FIXTURES_UTILS_HPP
+#define DICE_UNORDERED_SPARSE_TESTS_FIXTURES_UTILS_HPP
 
 #include <boost/numeric/conversion/cast.hpp>
 
@@ -40,7 +40,7 @@
 /**
  * Key and value types, hash functions and helpers for the tests that come from tsl::sparse_map.
  */
-namespace dice::sparse_map::tests {
+namespace dice::unordered_sparse::tests {
 
     /**
      * Hash that returns the value itself.
@@ -235,32 +235,32 @@ namespace dice::sparse_map::tests {
         std::string value_;
     };
 
-}  // namespace dice::sparse_map::tests
+}  // namespace dice::unordered_sparse::tests
 
 namespace std {
     template<>
-    struct hash<dice::sparse_map::tests::self_reference_member_test> {
-        std::size_t operator()(dice::sparse_map::tests::self_reference_member_test const &val) const {
+    struct hash<dice::unordered_sparse::tests::self_reference_member_test> {
+        std::size_t operator()(dice::unordered_sparse::tests::self_reference_member_test const &val) const {
             return std::hash<std::string>()(val.value());
         }
     };
 
     template<>
-    struct hash<dice::sparse_map::tests::move_only_test> {
-        std::size_t operator()(dice::sparse_map::tests::move_only_test const &val) const {
+    struct hash<dice::unordered_sparse::tests::move_only_test> {
+        std::size_t operator()(dice::unordered_sparse::tests::move_only_test const &val) const {
             return std::hash<std::string>()(val.value());
         }
     };
 
     template<>
-    struct hash<dice::sparse_map::tests::copy_only_test> {
-        std::size_t operator()(dice::sparse_map::tests::copy_only_test const &val) const {
+    struct hash<dice::unordered_sparse::tests::copy_only_test> {
+        std::size_t operator()(dice::unordered_sparse::tests::copy_only_test const &val) const {
             return std::hash<std::string>()(val.value());
         }
     };
 }  // namespace std
 
-namespace dice::sparse_map::tests {
+namespace dice::unordered_sparse::tests {
 
     /**
      * Keys and values for the tests. `get_key<T>(i)` and `get_value<T>(i)` return the i-th key and value of type `T`.
@@ -438,6 +438,6 @@ namespace dice::sparse_map::tests {
         std::stringstream istream_;
     };
 
-}  // namespace dice::sparse_map::tests
+}  // namespace dice::unordered_sparse::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_UTILS_HPP
+#endif  // DICE_UNORDERED_SPARSE_TESTS_FIXTURES_UTILS_HPP

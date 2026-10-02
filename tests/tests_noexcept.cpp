@@ -1,7 +1,6 @@
 #include "fixtures/allocators.hpp"
 
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -25,8 +24,8 @@
  * Partly ported from the noexcept tests of ankerl::unordered_dense (MIT license).
  */
 namespace {
-    using namespace dice::sparse_map;
-    using dice::sparse_map::tests::pmr_like_allocator;
+    using namespace dice::unordered_sparse;
+    using dice::unordered_sparse::tests::pmr_like_allocator;
 
     /**
      * Hash whose move, move assignment, swap and call may throw. They throw while `armed` is true.

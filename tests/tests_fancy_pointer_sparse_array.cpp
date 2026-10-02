@@ -2,7 +2,7 @@
  * @brief Checks for fancy pointer support in the sparse_array implementation.
  */
 
-#include <dice/sparse-map/sparse_hash.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include "fixtures/offset_ptr_allocator.hpp"
 
@@ -106,17 +106,17 @@ void const_iterator() {
 /*
  * The types to give the tests as template parameter.
  */
-template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+template<typename T, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
 struct std_alloc {
     using allocator_type = std::allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, std::allocator<T>, Sparsity>;
+    using array_type = dice::unordered_sparse::detail::sparse_array<T, std::allocator<T>, Sparsity>;
     using const_iterator_type = T const *;
 };
 
-template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+template<typename T, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
 struct custom_alloc {
-    using allocator_type = dice::sparse_map::tests::offset_ptr_allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, dice::sparse_map::tests::offset_ptr_allocator<T>, Sparsity>;
+    using allocator_type = dice::unordered_sparse::tests::offset_ptr_allocator<T>;
+    using array_type = dice::unordered_sparse::detail::sparse_array<T, dice::unordered_sparse::tests::offset_ptr_allocator<T>, Sparsity>;
     using const_iterator_type = boost::interprocess::offset_ptr<T const>;
 };
 

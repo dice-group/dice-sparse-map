@@ -1,5 +1,5 @@
-#ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTER_HPP
-#define DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTER_HPP
+#ifndef DICE_UNORDERED_SPARSE_TESTS_FIXTURES_COUNTER_HPP
+#define DICE_UNORDERED_SPARSE_TESTS_FIXTURES_COUNTER_HPP
 
 #include <cstddef>
 #include <cstring>
@@ -9,7 +9,7 @@
 #include <string_view>
 #include <type_traits>
 
-namespace dice::sparse_map::tests {
+namespace dice::unordered_sparse::tests {
 
     /**
      * Counts what a container does with its elements: constructions, copies, moves, destructions,
@@ -148,13 +148,13 @@ namespace dice::sparse_map::tests {
         std::string records_ = "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
     };
 
-}  // namespace dice::sparse_map::tests
+}  // namespace dice::unordered_sparse::tests
 
 template<>
-struct std::hash<dice::sparse_map::tests::counter::obj> {
-    [[nodiscard]] std::size_t operator()(dice::sparse_map::tests::counter::obj const &c) const noexcept {
+struct std::hash<dice::unordered_sparse::tests::counter::obj> {
+    [[nodiscard]] std::size_t operator()(dice::unordered_sparse::tests::counter::obj const &c) const noexcept {
         return std::hash<std::size_t>{}(c.get_for_hash());
     }
 };
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTER_HPP
+#endif  // DICE_UNORDERED_SPARSE_TESTS_FIXTURES_COUNTER_HPP

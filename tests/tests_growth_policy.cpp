@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <dice/sparse-map/sparse_growth_policy.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -33,11 +33,11 @@
 
 TEST_SUITE("test_policy") {
 
-    using test_types = std::tuple<dice::sparse_map::sh::power_of_two_growth_policy<2>,
-                                  dice::sparse_map::sh::power_of_two_growth_policy<4>,
-                                  dice::sparse_map::sh::prime_growth_policy,
-                                  dice::sparse_map::sh::mod_growth_policy<>,
-                                  dice::sparse_map::sh::mod_growth_policy<std::ratio<7, 2>>>;
+    using test_types = std::tuple<dice::unordered_sparse::power_of_two_growth_policy<2>,
+                                  dice::unordered_sparse::power_of_two_growth_policy<4>,
+                                  dice::unordered_sparse::prime_growth_policy,
+                                  dice::unordered_sparse::mod_growth_policy<>,
+                                  dice::unordered_sparse::mod_growth_policy<std::ratio<7, 2>>>;
 
     TEST_CASE_TEMPLATE_DEFINE("test_policy", Policy, test_policy_id) {
         // Call next_bucket_count() on the policy until we reach its

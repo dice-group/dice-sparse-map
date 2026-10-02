@@ -1,5 +1,5 @@
-#ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
-#define DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
+#ifndef DICE_UNORDERED_SPARSE_TESTS_FIXTURES_ALLOCATORS_HPP
+#define DICE_UNORDERED_SPARSE_TESTS_FIXTURES_ALLOCATORS_HPP
 
 #include <cstddef>
 #include <memory>
@@ -11,7 +11,7 @@
  *
  * Ported from the test fixtures of ankerl::unordered_dense (MIT license).
  */
-namespace dice::sparse_map::tests {
+namespace dice::unordered_sparse::tests {
 
     /**
      * Number of allocations that are left before `bombing_allocator` throws `std::bad_alloc`.
@@ -185,6 +185,6 @@ namespace dice::sparse_map::tests {
         }
     };
 
-}  // namespace dice::sparse_map::tests
+}  // namespace dice::unordered_sparse::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
+#endif  // DICE_UNORDERED_SPARSE_TESTS_FIXTURES_ALLOCATORS_HPP

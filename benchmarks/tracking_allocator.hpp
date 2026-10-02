@@ -1,11 +1,11 @@
-#ifndef DICE_SPARSE_MAP_BENCHMARKS_TRACKING_ALLOCATOR_HPP
-#define DICE_SPARSE_MAP_BENCHMARKS_TRACKING_ALLOCATOR_HPP
+#ifndef DICE_UNORDERED_SPARSE_BENCHMARKS_TRACKING_ALLOCATOR_HPP
+#define DICE_UNORDERED_SPARSE_BENCHMARKS_TRACKING_ALLOCATOR_HPP
 
 #include <algorithm>
 #include <cstddef>
 #include <memory>
 
-namespace dice::sparse_map::bench {
+namespace dice::unordered_sparse::bench {
 
     /**
      * What a container requested through a `tracking_allocator`. Bytes are the bytes requested,
@@ -67,6 +67,6 @@ namespace dice::sparse_map::bench {
         return lhs.stats == rhs.stats;
     }
 
-}  // namespace dice::sparse_map::bench
+}  // namespace dice::unordered_sparse::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_TRACKING_ALLOCATOR_HPP
+#endif  // DICE_UNORDERED_SPARSE_BENCHMARKS_TRACKING_ALLOCATOR_HPP

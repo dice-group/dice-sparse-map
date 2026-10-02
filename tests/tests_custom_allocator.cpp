@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -122,7 +122,7 @@ TEST_SUITE("test_custom_allocator") {
         //    nb_global_new = 0;
         nb_custom_allocs = 0;
 
-        dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, custom_allocator<std::pair<int, int>>> map;
+        dice::sparse_map<int, int, std::hash<int>, std::equal_to<int>, custom_allocator<std::pair<int, int>>> map;
 
         int const nb_elements = 1000;
         for (int i = 0; i < nb_elements; i++) {

@@ -12,8 +12,8 @@
 #include <string>
 #include <string_view>
 
-using namespace dice::sparse_map::bench;
-namespace sh = dice::sparse_map::sh;
+using namespace dice::unordered_sparse::bench;
+using dice::unordered_sparse::sparsity;
 
 /*
  * Memory per element. A sparse map exists to save memory, so this table matters as much as the
@@ -78,9 +78,9 @@ namespace {
 
     template<typename Key>
     void measure_all(std::size_t n) {
-        measure<sparse_family<sh::sparsity::high, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map high", n);
-        measure<sparse_family<sh::sparsity::medium, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map medium", n);
-        measure<sparse_family<sh::sparsity::low, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map low", n);
+        measure<sparse_family<sparsity::high, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map high", n);
+        measure<sparse_family<sparsity::medium, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map medium", n);
+        measure<sparse_family<sparsity::low, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map low", n);
         measure<unordered_dense_family<tracking_allocator>::map<Key, std::uint64_t>>("unordered_dense", n);
         measure<std_family<tracking_allocator>::map<Key, std::uint64_t>>("std::unordered_map", n);
     }

@@ -1,5 +1,5 @@
-#ifndef DICE_SPARSE_MAP_BENCHMARKS_WORKLOADS_HPP
-#define DICE_SPARSE_MAP_BENCHMARKS_WORKLOADS_HPP
+#ifndef DICE_UNORDERED_SPARSE_BENCHMARKS_WORKLOADS_HPP
+#define DICE_UNORDERED_SPARSE_BENCHMARKS_WORKLOADS_HPP
 
 #include <nanobench.h>
 
@@ -29,7 +29,7 @@
  * Ported from ankerl::unordered_dense (test/bench/workloads.h, MIT license). The comments keep the
  * reasons upstream gives for the shape of each workload.
  */
-namespace dice::sparse_map::bench {
+namespace dice::unordered_sparse::bench {
 
     /**
      * Makes an empty `Map` with `Map{}`.
@@ -545,6 +545,6 @@ namespace dice::sparse_map::bench {
         return checksum + set.size();
     }
 
-}  // namespace dice::sparse_map::bench
+}  // namespace dice::unordered_sparse::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_WORKLOADS_HPP
+#endif  // DICE_UNORDERED_SPARSE_BENCHMARKS_WORKLOADS_HPP

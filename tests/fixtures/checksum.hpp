@@ -1,5 +1,5 @@
-#ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_CHECKSUM_HPP
-#define DICE_SPARSE_MAP_TESTS_FIXTURES_CHECKSUM_HPP
+#ifndef DICE_UNORDERED_SPARSE_TESTS_FIXTURES_CHECKSUM_HPP
+#define DICE_UNORDERED_SPARSE_TESTS_FIXTURES_CHECKSUM_HPP
 
 #include "fixtures/counter.hpp"
 
@@ -11,7 +11,7 @@
  *
  * Ported from the test fixtures of ankerl::unordered_dense (MIT license).
  */
-namespace dice::sparse_map::tests::checksum {
+namespace dice::unordered_sparse::tests::checksum {
 
     /// final step of MurmurHash3
     [[nodiscard]] inline std::uint64_t mix(std::uint64_t k) noexcept {
@@ -70,6 +70,6 @@ namespace dice::sparse_map::tests::checksum {
         return combine(combined_hash, num_elements);
     }
 
-}  // namespace dice::sparse_map::tests::checksum
+}  // namespace dice::unordered_sparse::tests::checksum
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_CHECKSUM_HPP
+#endif  // DICE_UNORDERED_SPARSE_TESTS_FIXTURES_CHECKSUM_HPP

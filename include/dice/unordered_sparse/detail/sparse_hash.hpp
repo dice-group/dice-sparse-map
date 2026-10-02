@@ -21,8 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef DICE_SPARSE_MAP_SPARSE_HASH_HPP
-#define DICE_SPARSE_MAP_SPARSE_HASH_HPP
+#ifndef DICE_UNORDERED_SPARSE_DETAIL_SPARSE_HASH_HPP
+#define DICE_UNORDERED_SPARSE_DETAIL_SPARSE_HASH_HPP
 
 #include <algorithm>
 #include <bit>
@@ -40,36 +40,34 @@
 #include <utility>
 #include <vector>
 
-#include "dice/sparse-map/sparse_growth_policy.hpp"
+#include <dice/unordered_sparse/detail/sparse_growth_policy.hpp>
 
 /**
- * Internal consistency checks. Enabled when `DICE_SPARSE_MAP_DEBUG` or `TSL_DEBUG` is defined.
+ * Internal consistency checks. Enabled when `DICE_UNORDERED_SPARSE_DEBUG` or `TSL_DEBUG` is defined.
  */
-#if defined(DICE_SPARSE_MAP_DEBUG) || defined(TSL_DEBUG)
-#define DICE_SPARSE_MAP_ASSERT(expr) assert(expr)
+#if defined(DICE_UNORDERED_SPARSE_DEBUG) || defined(TSL_DEBUG)
+#define DICE_UNORDERED_SPARSE_ASSERT(expr) assert(expr)
 #else
-#define DICE_SPARSE_MAP_ASSERT(expr) (static_cast<void>(0))
+#define DICE_UNORDERED_SPARSE_ASSERT(expr) (static_cast<void>(0))
 #endif
 
-namespace dice::sparse_map {
+namespace dice::unordered_sparse {
 
-    namespace sh {
-        enum class probing {
-            linear,
-            quadratic
-        };
+    enum class probing {
+        linear,
+        quadratic
+    };
 
-        enum class exception_safety {
-            basic,
-            strong
-        };
+    enum class exception_safety {
+        basic,
+        strong
+    };
 
-        enum class sparsity {
-            high,
-            medium,
-            low
-        };
-    }  // namespace sh
+    enum class sparsity {
+        high,
+        medium,
+        low
+    };
 
     /* Replacement for const_cast in sparse_array.
      * Can be overloaded for specific fancy pointers
@@ -85,7 +83,7 @@ namespace dice::sparse_map {
         }
     };
 
-    namespace detail_sparse_hash {
+    namespace detail {
         template<typename T>
         concept has_is_transparent = requires {
             typename T::is_transparent;
@@ -95,7 +93,7 @@ namespace dice::sparse_map {
         struct is_power_of_two_policy : std::false_type {};
 
         template<std::size_t GrowthFactor>
-        struct is_power_of_two_policy<dice::sparse_map::sh::power_of_two_growth_policy<GrowthFactor>>
+        struct is_power_of_two_policy<dice::unordered_sparse::power_of_two_growth_policy<GrowthFactor>>
             : std::true_type {};
 
         inline constexpr bool is_power_of_two(std::size_t value) {
@@ -180,7 +178,7 @@ namespace dice::sparse_map {
          *
          * TODO Check to use std::realloc and std::memmove when possible
          */
-        template<typename T, typename Allocator, dice::sparse_map::sh::sparsity Sparsity>
+        template<typename T, typename Allocator, dice::unordered_sparse::sparsity Sparsity>
         class sparse_array {
         public:
             using value_type = T;
@@ -193,10 +191,10 @@ namespace dice::sparse_map {
             using const_iterator = const_pointer;
 
         private:
-            static constexpr size_type CAPACITY_GROWTH_STEP = (Sparsity == dice::sparse_map::sh::sparsity::high) ? 2
-                                                              : (Sparsity == dice::sparse_map::sh::sparsity::medium)
+            static constexpr size_type CAPACITY_GROWTH_STEP = (Sparsity == dice::unordered_sparse::sparsity::high) ? 2
+                                                              : (Sparsity == dice::unordered_sparse::sparsity::medium)
                                                                   ? 4
-                                                                  : 8;  // (Sparsity == dice::sh::sparsity::low)
+                                                                  : 8;  // (Sparsity == dice::unordered_sparse::sparsity::low)
 
             using bitmap_type = std::uint_least64_t;
             static constexpr std::size_t BITMAP_NB_BITS = 64;
@@ -252,7 +250,7 @@ namespace dice::sparse_map {
 
                 return std::max<std::size_t>(
                     1,
-                    sparse_ibucket(dice::sparse_map::detail_sparse_hash::round_up_to_power_of_two(
+                    sparse_ibucket(dice::unordered_sparse::detail::round_up_to_power_of_two(
                         bucket_count)));
             }
 
@@ -291,7 +289,7 @@ namespace dice::sparse_map {
                 if (capacity_ > 0) {
                     auto alloc = const_cast<Allocator &>(const_alloc);
                     values_ = alloc.allocate(capacity_);
-                    DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                    DICE_UNORDERED_SPARSE_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
                 }
             }
 
@@ -303,14 +301,14 @@ namespace dice::sparse_map {
                   nb_elements_(0),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(other.capacity_ >= other.nb_elements_);
                 if (capacity_ == 0) {
                     return;
                 }
 
                 auto alloc = const_cast<Allocator &>(const_alloc);
                 values_ = alloc.allocate(capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                DICE_UNORDERED_SPARSE_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
                 try {
                     for (size_type i = 0; i < other.nb_elements_; i++) {
                         construct_value(alloc, values_ + i, other.values_[i]);
@@ -344,14 +342,14 @@ namespace dice::sparse_map {
                   nb_elements_(0),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(other.capacity_ >= other.nb_elements_);
                 if (capacity_ == 0) {
                     return;
                 }
 
                 auto alloc = const_cast<Allocator &>(const_alloc);
                 values_ = alloc.allocate(capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                DICE_UNORDERED_SPARSE_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
                 try {
                     for (size_type i = 0; i < other.nb_elements_; i++) {
                         construct_value(alloc, values_ + i, std::move(other.values_[i]));
@@ -382,7 +380,7 @@ namespace dice::sparse_map {
             ~sparse_array() noexcept {
                 // The code that manages the sparse_array must have called clear before
                 // destruction. See documentation of sparse_array for more details.
-                DICE_SPARSE_MAP_ASSERT(capacity_ == 0 && nb_elements_ == 0 && values_ == nullptr);
+                DICE_UNORDERED_SPARSE_ASSERT(capacity_ == 0 && nb_elements_ == 0 && values_ == nullptr);
             }
 
             iterator begin() noexcept {
@@ -431,22 +429,22 @@ namespace dice::sparse_map {
             }
 
             bool has_value(size_type index) const noexcept {
-                DICE_SPARSE_MAP_ASSERT(index < BITMAP_NB_BITS);
+                DICE_UNORDERED_SPARSE_ASSERT(index < BITMAP_NB_BITS);
                 return (bitmap_vals_ & (bitmap_type(1) << index)) != 0;
             }
 
             bool has_deleted_value(size_type index) const noexcept {
-                DICE_SPARSE_MAP_ASSERT(index < BITMAP_NB_BITS);
+                DICE_UNORDERED_SPARSE_ASSERT(index < BITMAP_NB_BITS);
                 return (bitmap_deleted_vals_ & (bitmap_type(1) << index)) != 0;
             }
 
             iterator value(size_type index) noexcept {
-                DICE_SPARSE_MAP_ASSERT(has_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
                 return values_ + index_to_offset(index);
             }
 
             const_iterator value(size_type index) const noexcept {
-                DICE_SPARSE_MAP_ASSERT(has_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
                 return values_ + index_to_offset(index);
             }
 
@@ -455,7 +453,7 @@ namespace dice::sparse_map {
              */
             template<typename... Args>
             iterator set(allocator_type &alloc, size_type index, Args &&...value_args) {
-                DICE_SPARSE_MAP_ASSERT(!has_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(!has_value(index));
 
                 size_type const offset = index_to_offset(index);
                 insert_at_offset(alloc, offset, std::forward<Args>(value_args)...);
@@ -465,8 +463,8 @@ namespace dice::sparse_map {
 
                 nb_elements_++;
 
-                DICE_SPARSE_MAP_ASSERT(has_value(index));
-                DICE_SPARSE_MAP_ASSERT(!has_deleted_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(!has_deleted_value(index));
 
                 return values_ + offset;
             }
@@ -478,8 +476,8 @@ namespace dice::sparse_map {
 
             // Return the next value or end if no next value
             iterator erase(allocator_type &alloc, iterator position, size_type index) {
-                DICE_SPARSE_MAP_ASSERT(has_value(index));
-                DICE_SPARSE_MAP_ASSERT(!has_deleted_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(!has_deleted_value(index));
 
                 size_type const offset = static_cast<size_type>(std::distance(begin(), position));
                 erase_at_offset(alloc, offset);
@@ -489,8 +487,8 @@ namespace dice::sparse_map {
 
                 nb_elements_--;
 
-                DICE_SPARSE_MAP_ASSERT(!has_value(index));
-                DICE_SPARSE_MAP_ASSERT(has_deleted_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(!has_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(has_deleted_value(index));
 
                 return values_ + offset;
             }
@@ -507,7 +505,7 @@ namespace dice::sparse_map {
             }
 
             static iterator mutable_iterator(const_iterator pos) {
-                return ::dice::sparse_map::Remove_Const<iterator>::template remove<const_iterator>(pos);
+                return ::dice::unordered_sparse::Remove_Const<iterator>::template remove<const_iterator>(pos);
             }
 
             template<class Serializer>
@@ -608,7 +606,7 @@ namespace dice::sparse_map {
                 size_type nb_values,
                 size_type capacity_values) noexcept {
                 if (capacity_values == 0) {
-                    DICE_SPARSE_MAP_ASSERT(nb_values == 0);
+                    DICE_UNORDERED_SPARSE_ASSERT(nb_values == 0);
                     // nothing to deallocate
                     // alloc.deallocate(nullptr, 0) is invalid
                     return;
@@ -625,13 +623,13 @@ namespace dice::sparse_map {
             }
 
             size_type index_to_offset(size_type index) const noexcept {
-                DICE_SPARSE_MAP_ASSERT(index < BITMAP_NB_BITS);
+                DICE_UNORDERED_SPARSE_ASSERT(index < BITMAP_NB_BITS);
                 return popcount(bitmap_vals_ & ((bitmap_type(1) << index) - bitmap_type(1)));
             }
 
             // TODO optimize
             size_type offset_to_index(size_type offset) const noexcept {
-                DICE_SPARSE_MAP_ASSERT(offset < nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(offset < nb_elements_);
 
                 bitmap_type bitmap_vals = bitmap_vals_;
                 size_type index = 0;
@@ -690,8 +688,8 @@ namespace dice::sparse_map {
 
             template<typename... Args, typename U = value_type, typename std::enable_if<std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset, Args &&...value_args) {
-                DICE_SPARSE_MAP_ASSERT(offset <= nb_elements_);
-                DICE_SPARSE_MAP_ASSERT(nb_elements_ < capacity_);
+                DICE_UNORDERED_SPARSE_ASSERT(offset <= nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(nb_elements_ < capacity_);
 
                 for (size_type i = nb_elements_; i > offset; i--) {
                     construct_value(alloc, values_ + i, std::move(values_[i - 1]));
@@ -711,11 +709,11 @@ namespace dice::sparse_map {
 
             template<typename... Args, typename U = value_type, typename std::enable_if<std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
-                DICE_SPARSE_MAP_ASSERT(new_capacity > nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(new_capacity > nb_elements_);
 
                 pointer new_values = alloc.allocate(new_capacity);
                 // Allocate should throw if there is a failure
-                DICE_SPARSE_MAP_ASSERT(new_values != nullptr);
+                DICE_UNORDERED_SPARSE_ASSERT(new_values != nullptr);
 
                 try {
                     construct_value(alloc, new_values + offset, std::forward<Args>(value_args)...);
@@ -741,11 +739,11 @@ namespace dice::sparse_map {
 
             template<typename... Args, typename U = value_type, typename std::enable_if<!std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
-                DICE_SPARSE_MAP_ASSERT(new_capacity > nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(new_capacity > nb_elements_);
 
                 value_type *new_values = alloc.allocate(new_capacity);
                 // Allocate should throw if there is a failure
-                DICE_SPARSE_MAP_ASSERT(new_values != nullptr);
+                DICE_UNORDERED_SPARSE_ASSERT(new_values != nullptr);
 
                 size_type nb_new_values = 0;
                 try {
@@ -766,7 +764,7 @@ namespace dice::sparse_map {
                     throw;
                 }
 
-                DICE_SPARSE_MAP_ASSERT(nb_new_values == nb_elements_ + 1);
+                DICE_UNORDERED_SPARSE_ASSERT(nb_new_values == nb_elements_ + 1);
 
                 destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
 
@@ -789,7 +787,7 @@ namespace dice::sparse_map {
              */
             template<typename... Args, typename U = value_type, typename std::enable_if<std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
-                DICE_SPARSE_MAP_ASSERT(offset < nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(offset < nb_elements_);
 
                 destroy_value(alloc, values_ + offset);
 
@@ -801,7 +799,7 @@ namespace dice::sparse_map {
 
             template<typename... Args, typename U = value_type, typename std::enable_if<!std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void erase_at_offset(allocator_type &alloc, size_type offset) {
-                DICE_SPARSE_MAP_ASSERT(offset < nb_elements_);
+                DICE_UNORDERED_SPARSE_ASSERT(offset < nb_elements_);
 
                 // Erasing the last element, don't need to reallocate. We keep the capacity.
                 if (offset + 1 == nb_elements_) {
@@ -809,12 +807,12 @@ namespace dice::sparse_map {
                     return;
                 }
 
-                DICE_SPARSE_MAP_ASSERT(nb_elements_ > 1);
+                DICE_UNORDERED_SPARSE_ASSERT(nb_elements_ > 1);
                 size_type const new_capacity = nb_elements_ - 1;
 
                 value_type *new_values = alloc.allocate(new_capacity);
                 // Allocate should throw if there is a failure
-                DICE_SPARSE_MAP_ASSERT(new_values != nullptr);
+                DICE_UNORDERED_SPARSE_ASSERT(new_values != nullptr);
 
                 size_type nb_new_values = 0;
                 try {
@@ -829,7 +827,7 @@ namespace dice::sparse_map {
                     throw;
                 }
 
-                DICE_SPARSE_MAP_ASSERT(nb_new_values == nb_elements_ - 1);
+                DICE_UNORDERED_SPARSE_ASSERT(nb_new_values == nb_elements_ - 1);
 
                 destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
 
@@ -862,7 +860,7 @@ namespace dice::sparse_map {
          * if there is no value (in a set for example).
          *
          * The strong exception guarantee only holds if `ExceptionSafety` is set to
-         * `dice::sh::exception_safety::strong`.
+         * `dice::unordered_sparse::exception_safety::strong`.
          *
          * `ValueType` must be nothrow move constructible and/or copy constructible.
          * Behaviour is undefined if the destructor of `ValueType` throws.
@@ -887,7 +885,7 @@ namespace dice::sparse_map {
          * bucket container are standard layout themselves. The members are marked
          * potentially overlapping, so empty ones still cost no space.
          */
-        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, class GrowthPolicy, dice::sparse_map::sh::exception_safety ExceptionSafety, dice::sparse_map::sh::sparsity Sparsity, dice::sparse_map::sh::probing Probing>
+        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, class GrowthPolicy, dice::unordered_sparse::exception_safety ExceptionSafety, dice::unordered_sparse::sparsity Sparsity, dice::unordered_sparse::probing Probing>
         class sparse_hash {
         private:
             template<typename U>
@@ -919,7 +917,7 @@ namespace dice::sparse_map {
             using const_iterator = sparse_iterator<true>;
 
         private:
-            using sparse_array = dice::sparse_map::detail_sparse_hash::sparse_array<ValueType, Allocator, Sparsity>;
+            using sparse_array = dice::unordered_sparse::detail::sparse_array<ValueType, Allocator, Sparsity>;
 
             using sparse_buckets_allocator = typename std::allocator_traits<
                 allocator_type>::template rebind_alloc<sparse_array>;
@@ -1008,7 +1006,7 @@ namespace dice::sparse_map {
                 }
 
                 sparse_iterator &operator++() {
-                    DICE_SPARSE_MAP_ASSERT(sparse_array_it_ != nullptr);
+                    DICE_UNORDERED_SPARSE_ASSERT(sparse_array_it_ != nullptr);
                     ++sparse_array_it_;
 
                     // vector iterator with fancy pointers have a problem with ->
@@ -1081,7 +1079,7 @@ namespace dice::sparse_map {
                         sparse_array::nb_sparse_buckets(bucket_count));
                     sparse_buckets_ = sparse_buckets_data_.data();
 
-                    DICE_SPARSE_MAP_ASSERT(!sparse_buckets_data_.empty());
+                    DICE_UNORDERED_SPARSE_ASSERT(!sparse_buckets_data_.empty());
                     sparse_buckets_data_.back().set_as_last();
                 }
 
@@ -1316,7 +1314,7 @@ namespace dice::sparse_map {
                                   typename std::iterator_traits<InputIt>::iterator_category>::value) {
                     auto const nb_elements_insert = std::distance(first, last);
                     size_type const nb_free_buckets = load_threshold_rehash_ - size();
-                    DICE_SPARSE_MAP_ASSERT(load_threshold_rehash_ >= size());
+                    DICE_UNORDERED_SPARSE_ASSERT(load_threshold_rehash_ >= size());
 
                     if (nb_elements_insert > 0 && nb_free_buckets < size_type(nb_elements_insert)) {
                         reserve(size() + size_type(nb_elements_insert));
@@ -1379,7 +1377,7 @@ namespace dice::sparse_map {
              * when we use an iterator instead of a const_iterator.
              */
             iterator erase(iterator pos) {
-                DICE_SPARSE_MAP_ASSERT(pos != end() && nb_elements_ > 0);
+                DICE_UNORDERED_SPARSE_ASSERT(pos != end() && nb_elements_ > 0);
                 // vector iterator with fancy pointers have a problem with ->
                 auto it_sparse_array_next = (*pos.sparse_buckets_it_).erase(alloc_, pos.sparse_array_it_);
                 nb_elements_--;
@@ -1437,7 +1435,7 @@ namespace dice::sparse_map {
                 if constexpr (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
                     swap(alloc_, other.alloc_);
                 } else {
-                    DICE_SPARSE_MAP_ASSERT(alloc_ == other.alloc_);
+                    DICE_UNORDERED_SPARSE_ASSERT(alloc_ == other.alloc_);
                 }
 
                 swap(hash_, other.hash_);
@@ -1601,7 +1599,7 @@ namespace dice::sparse_map {
                 load_threshold_rehash_ = size_type(float(bucket_count()) * max_load_factor_);
 
                 float const max_load_factor_with_deleted_buckets = max_load_factor_ + 0.5f * (1.0f - max_load_factor_);
-                DICE_SPARSE_MAP_ASSERT(max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f);
+                DICE_UNORDERED_SPARSE_ASSERT(max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f);
                 load_threshold_clear_deleted_ = size_type(float(bucket_count()) * max_load_factor_with_deleted_buckets);
             }
 
@@ -1659,7 +1657,7 @@ namespace dice::sparse_map {
 
             size_type bucket_for_hash(std::size_t hash) const {
                 std::size_t const bucket = growth_policy_.bucket_for_hash(hash);
-                DICE_SPARSE_MAP_ASSERT(sparse_array::sparse_ibucket(bucket) < sparse_buckets_data_.size() || (bucket == 0 && sparse_buckets_data_.empty()));
+                DICE_UNORDERED_SPARSE_ASSERT(sparse_array::sparse_ibucket(bucket) < sparse_buckets_data_.size() || (bucket == 0 && sparse_buckets_data_.empty()));
 
                 return bucket;
             }
@@ -1669,10 +1667,10 @@ namespace dice::sparse_map {
             size_type next_bucket(size_type ibucket, size_type iprobe) const {
                 (void) iprobe;
                 // bucket_for_hash is a mask operation for a power of two policy
-                if constexpr (Probing == dice::sparse_map::sh::probing::linear) {
+                if constexpr (Probing == dice::unordered_sparse::probing::linear) {
                     return growth_policy_.bucket_for_hash(ibucket + 1);
                 } else {
-                    DICE_SPARSE_MAP_ASSERT(Probing == dice::sparse_map::sh::probing::quadratic);
+                    DICE_UNORDERED_SPARSE_ASSERT(Probing == dice::unordered_sparse::probing::quadratic);
                     return growth_policy_.bucket_for_hash(ibucket + iprobe);
                 }
             }
@@ -1681,11 +1679,11 @@ namespace dice::sparse_map {
                      typename std::enable_if<!is_power_of_two_policy<U>::value>::type * = nullptr>
             size_type next_bucket(size_type ibucket, size_type iprobe) const {
                 (void) iprobe;
-                if constexpr (Probing == dice::sparse_map::sh::probing::linear) {
+                if constexpr (Probing == dice::unordered_sparse::probing::linear) {
                     ibucket++;
                     return (ibucket != bucket_count()) ? ibucket : 0;
                 } else {
-                    DICE_SPARSE_MAP_ASSERT(Probing == dice::sparse_map::sh::probing::quadratic);
+                    DICE_UNORDERED_SPARSE_ASSERT(Probing == dice::unordered_sparse::probing::quadratic);
                     ibucket += iprobe;
                     return (ibucket < bucket_count()) ? ibucket : ibucket % bucket_count();
                 }
@@ -1704,7 +1702,7 @@ namespace dice::sparse_map {
                     throw;
                 }
 
-                DICE_SPARSE_MAP_ASSERT(sparse_buckets_data_.empty() || sparse_buckets_data_.back().last());
+                DICE_UNORDERED_SPARSE_ASSERT(sparse_buckets_data_.empty() || sparse_buckets_data_.back().last());
             }
 
             void move_buckets_from(sparse_hash &&other) {
@@ -1719,7 +1717,7 @@ namespace dice::sparse_map {
                     throw;
                 }
 
-                DICE_SPARSE_MAP_ASSERT(sparse_buckets_data_.empty() || sparse_buckets_data_.back().last());
+                DICE_UNORDERED_SPARSE_ASSERT(sparse_buckets_data_.empty() || sparse_buckets_data_.back().last());
             }
 
             template<class K, class... Args>
@@ -1898,11 +1896,11 @@ namespace dice::sparse_map {
                 // TODO could be optimized, we could do it in-place instead of allocating a
                 // new bucket array.
                 rehash_impl(bucket_count_);
-                DICE_SPARSE_MAP_ASSERT(nb_deleted_buckets_ == 0);
+                DICE_UNORDERED_SPARSE_ASSERT(nb_deleted_buckets_ == 0);
             }
 
-            template<dice::sparse_map::sh::exception_safety U = ExceptionSafety,
-                     typename std::enable_if<U == dice::sparse_map::sh::exception_safety::basic>::type
+            template<dice::unordered_sparse::exception_safety U = ExceptionSafety,
+                     typename std::enable_if<U == dice::unordered_sparse::exception_safety::basic>::type
                          * = nullptr>
             void rehash_impl(size_type count) {
                 sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
@@ -1924,9 +1922,9 @@ namespace dice::sparse_map {
              * them if they are nothrow_move_constructible without triggering
              * any exception if we reserve enough space in the sparse arrays beforehand.
              */
-            template<dice::sparse_map::sh::exception_safety U = ExceptionSafety,
+            template<dice::unordered_sparse::exception_safety U = ExceptionSafety,
                      typename std::enable_if<
-                         U == dice::sparse_map::sh::exception_safety::strong>::type * = nullptr>
+                         U == dice::unordered_sparse::exception_safety::strong>::type * = nullptr>
             void rehash_impl(size_type count) {
                 sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
 
@@ -1955,7 +1953,7 @@ namespace dice::sparse_map {
 
                         return;
                     } else {
-                        DICE_SPARSE_MAP_ASSERT(!compare_keys(
+                        DICE_UNORDERED_SPARSE_ASSERT(!compare_keys(
                             KeySelect()(key_value),
                             KeySelect()(*sparse_buckets_[sparse_ibucket].value(
                                 index_in_sparse_bucket))));
@@ -1993,7 +1991,7 @@ namespace dice::sparse_map {
 
             template<class Deserializer>
             void deserialize_impl(Deserializer &deserializer, bool hash_compatible) {
-                DICE_SPARSE_MAP_ASSERT(
+                DICE_UNORDERED_SPARSE_ASSERT(
                     bucket_count_ == 0 && sparse_buckets_data_.empty());  // Current hash table must be empty
 
                 slz_size_type const version = deserialize_value<slz_size_type>(deserializer);
@@ -2129,7 +2127,7 @@ namespace dice::sparse_map {
             float max_load_factor_;
         };
 
-    }  // namespace detail_sparse_hash
-}  // namespace dice::sparse_map
+    }  // namespace detail
+}  // namespace dice::unordered_sparse
 
 #endif

@@ -1,4 +1,4 @@
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -92,18 +92,18 @@ void is_default_insertable() {
     std::allocator_traits<array_alloc_type>::deallocate(m, p, 1);
 }
 
-template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+template<typename T, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
 struct normal_alloc {
     using value_type = T;
     using allocator_type = std::allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity>;
+    using array_type = dice::unordered_sparse::detail::sparse_array<T, allocator_type, Sparsity>;
 };
 
-template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+template<typename T, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
 struct scoped_alloc {
     using value_type = T;
     using allocator_type = std::scoped_allocator_adaptor<std::allocator<T>>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity>;
+    using array_type = dice::unordered_sparse::detail::sparse_array<T, allocator_type, Sparsity>;
 };
 
 TEST_SUITE("scoped_allocators/sparse_array_tests") {

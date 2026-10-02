@@ -1,12 +1,12 @@
-#ifndef DICE_SPARSE_MAP_BOOST_OFFSET_POINTER_HPP
-#define DICE_SPARSE_MAP_BOOST_OFFSET_POINTER_HPP
+#ifndef DICE_UNORDERED_SPARSE_DETAIL_BOOST_OFFSET_POINTER_HPP
+#define DICE_UNORDERED_SPARSE_DETAIL_BOOST_OFFSET_POINTER_HPP
 
 #if __has_include(<boost/interprocess/offset_ptr.hpp>)
 
-#include "dice/sparse-map/sparse_hash.hpp"  //needed, so the basic template is already included
+#include <dice/unordered_sparse/detail/sparse_hash.hpp>  //needed, so the basic template is already included
 #include <boost/interprocess/offset_ptr.hpp>
 
-namespace dice::sparse_map {
+namespace dice::unordered_sparse {
     /* Template specialisation for a "const_cast" of a boost offset_ptr.
      * @tparam PT PointedType
      * @tparam DT DifferenceType
@@ -21,7 +21,7 @@ namespace dice::sparse_map {
             return boost::interprocess::const_pointer_cast<PT, DT, OT, OA>(const_iter);
         }
     };
-}  // namespace dice::sparse_map
+}  // namespace dice::unordered_sparse
 
 #endif  // __has_include(<boost/interprocess/offset_ptr.hpp>)
-#endif  // DICE_SPARSE_MAP_BOOST_OFFSET_POINTER_HPP
+#endif  // DICE_UNORDERED_SPARSE_DETAIL_BOOST_OFFSET_POINTER_HPP

@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace dice::sparse_map::tests {
+namespace dice::unordered_sparse::tests {
 
     namespace {
         /**
@@ -229,4 +229,4 @@ namespace dice::sparse_map::tests {
         return os << c.records_;
     }
 
-}  // namespace dice::sparse_map::tests
+}  // namespace dice::unordered_sparse::tests

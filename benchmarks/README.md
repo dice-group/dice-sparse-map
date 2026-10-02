@@ -44,8 +44,8 @@ with `taskset -c 2`. The numbers of different runs are only comparable on the sa
 
 ## Containers
 
-Every benchmark runs `dice::sparse_map::sparse_map` (or `sparse_set`) with each sparsity level
-(`sh::sparsity::high`, `medium`, `low`) and two baselines: `ankerl::unordered_dense::map` (or `set`)
+Every benchmark runs `dice::sparse_map` (or `sparse_set`) with each sparsity level
+(`sparsity::high`, `medium`, `low`) and two baselines: `ankerl::unordered_dense::map` (or `set`)
 5.2.0 and `std::unordered_map` (or `std::unordered_set`). The sparsity sets by how many slots a group
 of 64 buckets grows when it is full (2, 4 or 8), so it trades memory for insert speed.
 

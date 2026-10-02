@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <utility>
 
-using namespace dice::sparse_map::tests;
+using namespace dice::unordered_sparse::tests;
 using namespace std::literals;
 
 // at
@@ -209,7 +209,7 @@ namespace {
         }
     };
 
-    using transparent_map = dice::sparse_map::sparse_map<std::string, int, transparent_hash, std::equal_to<>>;
+    using transparent_map = dice::sparse_map<std::string, int, transparent_hash, std::equal_to<>>;
 
 }  // namespace
 

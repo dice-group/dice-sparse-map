@@ -2,7 +2,7 @@
 #include "fixtures/checksum.hpp"
 #include "fixtures/counter.hpp"
 
-#include <dice/sparse-map/sparse_map.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <doctest/doctest.h>
 
@@ -20,8 +20,8 @@
  * (MIT license).
  */
 namespace {
-    using namespace dice::sparse_map;
-    using namespace dice::sparse_map::tests;
+    using namespace dice::unordered_sparse;
+    using namespace dice::unordered_sparse::tests;
 
     /// blocks that `leak_checking_allocator` handed out and did not get back yet
     std::ptrdiff_t live_blocks = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -56,18 +56,18 @@ namespace {
         }
     };
 
-    template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
+    template<exception_safety ExceptionSafety, sparsity Sparsity>
     using bombing_map = sparse_map<counter::obj,
                                    counter::obj,
                                    std::hash<counter::obj>,
                                    std::equal_to<counter::obj>,
                                    leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                   sh::power_of_two_growth_policy<2>,
+                                   power_of_two_growth_policy<2>,
                                    ExceptionSafety,
                                    Sparsity>;
 
-    constexpr auto basic = sh::exception_safety::basic;
-    constexpr auto strong = sh::exception_safety::strong;
+    constexpr auto basic = exception_safety::basic;
+    constexpr auto strong = exception_safety::strong;
 
     /// number of `counter::obj` that were constructed and not destroyed yet
     std::size_t alive(counter const &counts) {
@@ -144,12 +144,12 @@ namespace {
 
 }  // namespace
 
-TYPE_TO_STRING_AS("basic, high", bombing_map<basic, sh::sparsity::high>);
-TYPE_TO_STRING_AS("basic, medium", bombing_map<basic, sh::sparsity::medium>);
-TYPE_TO_STRING_AS("basic, low", bombing_map<basic, sh::sparsity::low>);
-TYPE_TO_STRING_AS("strong, high", bombing_map<strong, sh::sparsity::high>);
-TYPE_TO_STRING_AS("strong, medium", bombing_map<strong, sh::sparsity::medium>);
-TYPE_TO_STRING_AS("strong, low", bombing_map<strong, sh::sparsity::low>);
+TYPE_TO_STRING_AS("basic, high", bombing_map<basic, sparsity::high>);
+TYPE_TO_STRING_AS("basic, medium", bombing_map<basic, sparsity::medium>);
+TYPE_TO_STRING_AS("basic, low", bombing_map<basic, sparsity::low>);
+TYPE_TO_STRING_AS("strong, high", bombing_map<strong, sparsity::high>);
+TYPE_TO_STRING_AS("strong, medium", bombing_map<strong, sparsity::medium>);
+TYPE_TO_STRING_AS("strong, low", bombing_map<strong, sparsity::low>);
 
 // skipped: with `exception_safety::basic`, `sparse_hash::rehash_impl` moves the elements group by
 // group into the new table and clears each old group right after it. When an allocation fails, the
@@ -157,9 +157,9 @@ TYPE_TO_STRING_AS("strong, low", bombing_map<strong, sh::sparsity::low>);
 // `size()` counts elements that `find` and iteration no longer reach.
 TEST_CASE_TEMPLATE("basic: an insert that rehashes and throws leaves a valid map" * doctest::skip(),
                    map_t,
-                   bombing_map<basic, sh::sparsity::high>,
-                   bombing_map<basic, sh::sparsity::medium>,
-                   bombing_map<basic, sh::sparsity::low>) {
+                   bombing_map<basic, sparsity::high>,
+                   bombing_map<basic, sparsity::medium>,
+                   bombing_map<basic, sparsity::low>) {
     auto counts = counter{};
     std::size_t failures = 0;
     bool completed = false;
@@ -192,9 +192,9 @@ TEST_CASE_TEMPLATE("basic: an insert that rehashes and throws leaves a valid map
 
 TEST_CASE_TEMPLATE("strong: an insert that rehashes and throws leaves the contents unchanged",
                    map_t,
-                   bombing_map<strong, sh::sparsity::high>,
-                   bombing_map<strong, sh::sparsity::medium>,
-                   bombing_map<strong, sh::sparsity::low>) {
+                   bombing_map<strong, sparsity::high>,
+                   bombing_map<strong, sparsity::medium>,
+                   bombing_map<strong, sparsity::low>) {
     auto counts = counter{};
     std::size_t failures = 0;
     bool completed = false;
@@ -232,9 +232,9 @@ TEST_CASE_TEMPLATE("strong: an insert that rehashes and throws leaves the conten
 
 TEST_CASE_TEMPLATE("strong: a reserve that throws leaves the contents unchanged",
                    map_t,
-                   bombing_map<strong, sh::sparsity::high>,
-                   bombing_map<strong, sh::sparsity::medium>,
-                   bombing_map<strong, sh::sparsity::low>) {
+                   bombing_map<strong, sparsity::high>,
+                   bombing_map<strong, sparsity::medium>,
+                   bombing_map<strong, sparsity::low>) {
     auto counts = counter{};
     std::size_t failures = 0;
     bool completed = false;
@@ -271,12 +271,12 @@ TEST_CASE_TEMPLATE("strong: a reserve that throws leaves the contents unchanged"
 
 TEST_CASE_TEMPLATE("an insert that throws without a rehash leaves the other elements alone",
                    map_t,
-                   bombing_map<basic, sh::sparsity::high>,
-                   bombing_map<basic, sh::sparsity::medium>,
-                   bombing_map<basic, sh::sparsity::low>,
-                   bombing_map<strong, sh::sparsity::high>,
-                   bombing_map<strong, sh::sparsity::medium>,
-                   bombing_map<strong, sh::sparsity::low>) {
+                   bombing_map<basic, sparsity::high>,
+                   bombing_map<basic, sparsity::medium>,
+                   bombing_map<basic, sparsity::low>,
+                   bombing_map<strong, sparsity::high>,
+                   bombing_map<strong, sparsity::medium>,
+                   bombing_map<strong, sparsity::low>) {
     auto counts = counter{};
     std::size_t failures = 0;
     bool completed = false;
@@ -318,12 +318,12 @@ TEST_CASE_TEMPLATE("an insert that throws without a rehash leaves the other elem
 
 TEST_CASE_TEMPLATE("a copy construction that throws leaks nothing",
                    map_t,
-                   bombing_map<basic, sh::sparsity::high>,
-                   bombing_map<basic, sh::sparsity::medium>,
-                   bombing_map<basic, sh::sparsity::low>,
-                   bombing_map<strong, sh::sparsity::high>,
-                   bombing_map<strong, sh::sparsity::medium>,
-                   bombing_map<strong, sh::sparsity::low>) {
+                   bombing_map<basic, sparsity::high>,
+                   bombing_map<basic, sparsity::medium>,
+                   bombing_map<basic, sparsity::low>,
+                   bombing_map<strong, sparsity::high>,
+                   bombing_map<strong, sparsity::medium>,
+                   bombing_map<strong, sparsity::low>) {
     auto counts = counter{};
     {
         auto source = map_t{};
@@ -358,12 +358,12 @@ TEST_CASE_TEMPLATE("a copy construction that throws leaks nothing",
 
 TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
                    map_t,
-                   bombing_map<basic, sh::sparsity::high>,
-                   bombing_map<basic, sh::sparsity::medium>,
-                   bombing_map<basic, sh::sparsity::low>,
-                   bombing_map<strong, sh::sparsity::high>,
-                   bombing_map<strong, sh::sparsity::medium>,
-                   bombing_map<strong, sh::sparsity::low>) {
+                   bombing_map<basic, sparsity::high>,
+                   bombing_map<basic, sparsity::medium>,
+                   bombing_map<basic, sparsity::low>,
+                   bombing_map<strong, sparsity::high>,
+                   bombing_map<strong, sparsity::medium>,
+                   bombing_map<strong, sparsity::low>) {
     auto counts = counter{};
     {
         auto source = map_t{};
@@ -407,17 +407,17 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
 }
 
 // skipped: when `sparse_hash::operator=(sparse_hash const &)` throws, the target keeps the growth
-// policy of the source, but only the bucket groups it copied so far, and `m_sparse_buckets` still
+// policy of the source, but only the bucket groups it copied so far, and `sparse_buckets_` still
 // points to the memory of the old bucket vector. `find` then asserts in `bucket_for_hash`, or reads
 // freed memory, and `insert` writes there.
 TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map" * doctest::skip(),
                    map_t,
-                   bombing_map<basic, sh::sparsity::high>,
-                   bombing_map<basic, sh::sparsity::medium>,
-                   bombing_map<basic, sh::sparsity::low>,
-                   bombing_map<strong, sh::sparsity::high>,
-                   bombing_map<strong, sh::sparsity::medium>,
-                   bombing_map<strong, sh::sparsity::low>) {
+                   bombing_map<basic, sparsity::high>,
+                   bombing_map<basic, sparsity::medium>,
+                   bombing_map<basic, sparsity::low>,
+                   bombing_map<strong, sparsity::high>,
+                   bombing_map<strong, sparsity::medium>,
+                   bombing_map<strong, sparsity::low>) {
     auto counts = counter{};
     {
         auto source = map_t{};

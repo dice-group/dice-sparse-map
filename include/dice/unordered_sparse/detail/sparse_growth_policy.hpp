@@ -21,8 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef DICE_SPARSE_MAP_SPARSE_GROWTH_POLICY_HPP
-#define DICE_SPARSE_MAP_SPARSE_GROWTH_POLICY_HPP
+#ifndef DICE_UNORDERED_SPARSE_DETAIL_SPARSE_GROWTH_POLICY_HPP
+#define DICE_UNORDERED_SPARSE_DETAIL_SPARSE_GROWTH_POLICY_HPP
 
 #include <algorithm>
 #include <array>
@@ -34,7 +34,7 @@
 #include <ratio>
 #include <stdexcept>
 
-namespace dice::sparse_map::sh {
+namespace dice::unordered_sparse {
 
     /**
      * Grow the hash table by a factor of GrowthFactor keeping the bucket count to a
@@ -198,7 +198,7 @@ namespace dice::sparse_map::sh {
 
     /**
      * Grow the hash table by using prime numbers as bucket count. Slower than
-     * dice::sh::power_of_two_growth_policy in general but will probably distribute
+     * dice::unordered_sparse::power_of_two_growth_policy in general but will probably distribute
      * the values around better in the buckets with a poor hash function.
      *
      * To allow the compiler to optimize the modulo operation, a lookup table is
@@ -304,6 +304,6 @@ namespace dice::sparse_map::sh {
         unsigned int m_iprime;
     };
 
-}  // namespace dice::sparse_map::sh
+}  // namespace dice::unordered_sparse
 
 #endif

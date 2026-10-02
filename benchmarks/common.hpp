@@ -1,8 +1,7 @@
-#ifndef DICE_SPARSE_MAP_BENCHMARKS_COMMON_HPP
-#define DICE_SPARSE_MAP_BENCHMARKS_COMMON_HPP
+#ifndef DICE_UNORDERED_SPARSE_BENCHMARKS_COMMON_HPP
+#define DICE_UNORDERED_SPARSE_BENCHMARKS_COMMON_HPP
 
-#include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
+#include <dice/unordered_sparse.hpp>
 
 #include <ankerl/unordered_dense.h>
 #include <nanobench.h>
@@ -21,7 +20,7 @@
  * What the benchmarks share: the quick mode, the nanobench settings, the geometric mean and the
  * container configurations.
  */
-namespace dice::sparse_map::bench {
+namespace dice::unordered_sparse::bench {
 
     /**
      * True if the environment variable `DICE_SPARSE_MAP_BENCH_QUICK` is set to anything but empty
@@ -87,26 +86,26 @@ namespace dice::sparse_map::bench {
      * `sparse_map` and `sparse_set` with the default growth policy and exception safety, the given
      * sparsity and an allocator made from the template `Alloc`.
      */
-    template<sh::sparsity sparsity, template<typename> typename Alloc = std::allocator>
+    template<sparsity Sparsity, template<typename> typename Alloc = std::allocator>
     struct sparse_family {
         template<typename Key, typename T>
-        using map = ::dice::sparse_map::sparse_map<Key,
-                                                   T,
-                                                   table_hash<Key>,
-                                                   std::equal_to<Key>,
-                                                   Alloc<std::pair<Key, T>>,
-                                                   sh::power_of_two_growth_policy<2>,
-                                                   sh::exception_safety::basic,
-                                                   sparsity>;
+        using map = ::dice::sparse_map<Key,
+                                       T,
+                                       table_hash<Key>,
+                                       std::equal_to<Key>,
+                                       Alloc<std::pair<Key, T>>,
+                                       power_of_two_growth_policy<2>,
+                                       exception_safety::basic,
+                                       Sparsity>;
 
         template<typename Key>
-        using set = ::dice::sparse_map::sparse_set<Key,
-                                                   table_hash<Key>,
-                                                   std::equal_to<Key>,
-                                                   Alloc<Key>,
-                                                   sh::power_of_two_growth_policy<2>,
-                                                   sh::exception_safety::basic,
-                                                   sparsity>;
+        using set = ::dice::sparse_set<Key,
+                                       table_hash<Key>,
+                                       std::equal_to<Key>,
+                                       Alloc<Key>,
+                                       power_of_two_growth_policy<2>,
+                                       exception_safety::basic,
+                                       Sparsity>;
     };
 
     template<template<typename> typename Alloc = std::allocator>
@@ -127,9 +126,9 @@ namespace dice::sparse_map::bench {
         using set = std::unordered_set<Key, std::hash<Key>, std::equal_to<Key>, Alloc<Key>>;
     };
 
-    using sparse_high = sparse_family<sh::sparsity::high>;
-    using sparse_medium = sparse_family<sh::sparsity::medium>;
-    using sparse_low = sparse_family<sh::sparsity::low>;
+    using sparse_high = sparse_family<sparsity::high>;
+    using sparse_medium = sparse_family<sparsity::medium>;
+    using sparse_low = sparse_family<sparsity::low>;
 
     /**
      * Makes every map with `Map{}`. A source of maps has a member template `make<Map>()`.
@@ -141,6 +140,6 @@ namespace dice::sparse_map::bench {
         }
     };
 
-}  // namespace dice::sparse_map::bench
+}  // namespace dice::unordered_sparse::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_COMMON_HPP
+#endif  // DICE_UNORDERED_SPARSE_BENCHMARKS_COMMON_HPP
