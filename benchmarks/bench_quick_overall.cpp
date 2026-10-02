@@ -56,6 +56,22 @@ TEST_CASE("find_all std::unordered_map") {
 }
 
 /*
+ * The scored workloads with a mapped type whose move constructor can throw (see `throwing_move_value`), not part of
+ * the score.
+ */
+TEST_CASE("throwing_move sparse_map medium") {
+    throwing_move<sparse_medium>("sparse_map medium");
+}
+
+TEST_CASE("throwing_move unordered_dense") {
+    throwing_move<unordered_dense_family<>>("unordered_dense");
+}
+
+TEST_CASE("throwing_move std::unordered_map") {
+    throwing_move<std_family<>>("std::unordered_map");
+}
+
+/*
  * The string hash on its own, not part of the score. `sparse_map`, `sparse_set` and the
  * unordered_dense containers use `ankerl::unordered_dense::hash` here, `std::unordered_map` uses
  * `std::hash`.
