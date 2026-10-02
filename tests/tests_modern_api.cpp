@@ -545,10 +545,27 @@ namespace constant_evaluation {
         return map.size() == 100 && map.bucket_count() >= 1024 && all_found;
     }
 
+    /**
+     * `emplace` and `emplace_hint` construct the new element with the allocator of the container before they insert it.
+     */
+    constexpr bool emplace_in_a_constant_expression() {
+        auto map = sparse_map<int, std::string, constexpr_hash>{};
+        map.emplace(1, std::string(20, 'a'));
+        map.emplace(std::pair{2, std::string(20, 'b')});
+        map.emplace_hint(map.end(), 3, std::string(20, 'c'));
+        map.emplace(1, std::string(20, 'x'));
+        auto set = sparse_set<int, constexpr_hash>{};
+        set.emplace(7);
+        set.emplace_hint(set.end(), 8);
+        return map.size() == 3 && map.at(1) == std::string(20, 'a') && map.at(3) == std::string(20, 'c') && set.size() == 2
+               && set.contains(8);
+    }
+
     static_assert(map_in_a_constant_expression());
     static_assert(set_in_a_constant_expression());
     static_assert(map_of_strings_in_a_constant_expression());
     static_assert(map_of_copied_values_in_a_constant_expression());
+    static_assert(emplace_in_a_constant_expression());
 }  // namespace constant_evaluation
 
 TEST_CASE("containers in constant expressions") {
@@ -556,4 +573,5 @@ TEST_CASE("containers in constant expressions") {
     CHECK(constant_evaluation::set_in_a_constant_expression());
     CHECK(constant_evaluation::map_of_strings_in_a_constant_expression());
     CHECK(constant_evaluation::map_of_copied_values_in_a_constant_expression());
+    CHECK(constant_evaluation::emplace_in_a_constant_expression());
 }
