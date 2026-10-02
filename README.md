@@ -3,7 +3,7 @@
 
 The sparse-map library is a C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers. It uses open-addressing with sparse quadratic probing. The goal of the library is to be the most memory efficient possible, even at low load factor, while keeping reasonable performances. You can find an [article](https://smerity.com/articles/2015/google_sparsehash.html) of Stephen Merity which explains the idea behind `google::sparse_hash_map` and this project.
 
-Four classes are provided: `dice::sparse_map`, `dice::sparse_set`, `dice::unordered_sparse::sparse_pg_map` and `dice::unordered_sparse::sparse_pg_set`. The first two are faster and use a power of two growth policy, the last two use a prime growth policy instead and are able to cope better with a poor hash function. Use the prime version if there is a chance of repeating patterns in the lower bits of your hash (e.g. you are storing pointers with an identity hash function). See [GrowthPolicy](#growth-policy) for details.
+Two classes are provided: `dice::sparse_map` and `dice::sparse_set`. The number of buckets is a power of two. The hash of a hash function that is not marked as avalanching is mixed with one multiplication before it picks a bucket, see `dice::unordered_sparse::hash_is_avalanching`.
 
 A **benchmark** of `dice::sparse_map` against other hash maps may be found [here](https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html). The benchmark, in its additional tests page, notably includes `google::sparse_hash_map` and `spp::sparse_hash_map` to which `dice::sparse_map` is an alternative. This page also gives some advices on which hash table structure you should try for your use case (useful if you are a bit lost with the multiple hash tables implementations in the `tsl` namespace).
 
@@ -50,41 +50,6 @@ On Windows with MSVC, the detection is done at runtime.
 
 #### Move constructor
 Make sure that your key `Key` and potential value `T` have a `noexcept` move constructor. The library will work without it but insertions will be much slower if the copy constructor is expensive (the structure often needs to move some values around on insertion).
-
-### Growth policy
-
-The library supports multiple growth policies through the `GrowthPolicy` template parameter. Three policies are provided by the library but you can easily implement your own if needed.
-
-* **[dice::unordered_sparse::power_of_two_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1power__of__two__growth__policy.html)** Default policy used by `dice::sparse_map/set`. This policy keeps the size of the bucket array of the hash table to a power of two. This constraint allows the policy to avoid the usage of the slow modulo operation to map a hash to a bucket, instead of <code>hash % 2<sup>n</sup></code>, it uses <code>hash & (2<sup>n</sup> - 1)</code> (see [fast modulo](https://en.wikipedia.org/wiki/Modulo_operation#Performance_issues)). Fast but this may cause a lot of collisions with a poor hash function as the modulo with a power of two only masks the most significant bits in the end.
-* **[dice::unordered_sparse::prime_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html)** Default policy used by `dice::unordered_sparse::sparse_pg_map/set`. The policy keeps the size of the bucket array of the hash table to a prime number. When mapping a hash to a bucket, using a prime number as modulo will result in a better distribution of the hash across the buckets even with a poor hash function. To allow the compiler to optimize the modulo operation, the policy use a lookup table with constant primes modulos (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html#details) for details). Slower than `dice::unordered_sparse::power_of_two_growth_policy` but more secure.
-* **[dice::unordered_sparse::mod_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1mod__growth__policy.html)** The policy grows the map by a customizable growth factor passed in parameter. It then just use the modulo operator to map a hash to a bucket. Slower but more flexible.
-
-
-To implement your own policy, you have to implement the following interface.
-
-```c++
-struct custom_policy {
-    // Called on hash table construction and rehash, min_bucket_count_in_out is the minimum buckets
-    // that the hash table needs. The policy can change it to a higher number of buckets if needed 
-    // and the hash table will use this value as bucket count. If 0 bucket is asked, then the value
-    // must stay at 0.    
-    explicit custom_policy(std::size_t& min_bucket_count_in_out);
-    
-    // Return the bucket [0, bucket_count()) to which the hash belongs. 
-    // If bucket_count() is 0, it must always return 0.
-    std::size_t bucket_for_hash(std::size_t hash) const noexcept;
-    
-    // Return the number of buckets that should be used on next growth
-    std::size_t next_bucket_count() const;
-    
-    // Return the maximum number of buckets supported by the policy.
-    std::size_t max_bucket_count() const;
-    
-    // Reset the growth policy as if it was created with a bucket count of 0.
-    // After a clear, the policy must always return 0 when bucket_for_hash is called.
-    void clear() noexcept;
-}
-```
 
 ### Installation
 

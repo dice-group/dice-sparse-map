@@ -52,10 +52,8 @@ namespace details {
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::unordered_sparse::power_of_two_growth_policy<2>,
         dice::unordered_sparse::exception_safety::basic,
-        dice::unordered_sparse::sparsity::medium,
-        dice::unordered_sparse::probing::quadratic>;
+        dice::unordered_sparse::sparsity::medium>;
 
     template<typename T>
     typename T::map_type default_construct_map() {

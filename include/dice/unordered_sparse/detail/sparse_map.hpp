@@ -41,13 +41,9 @@ namespace dice::unordered_sparse {
      * probing. The goal on the hash map is to be the most memory efficient
      * possible, even at low load factor, while keeping reasonable performances.
      *
-     * `GrowthPolicy` defines how the map grows and consequently how a hash value is
-     * mapped to a bucket. By default the map uses
-     * `dice::unordered_sparse::power_of_two_growth_policy`. This policy keeps the number of
-     * buckets to a power of two and uses a mask to map the hash to a bucket instead
-     * of the slow modulo. Other growth policies are available and you may define
-     * your own growth policy, check `dice::unordered_sparse::power_of_two_growth_policy` for the
-     * interface.
+     * The number of buckets is a power of two, and a hash picks its bucket with a
+     * mask. The hash of a hash function that is not avalanching is mixed with one
+     * multiplication first, see `hash_is_avalanching`.
      *
      * `ExceptionSafety` defines the exception guarantee provided by the class. By
      * default only the basic exception safety is guaranteed which mean that all
@@ -80,7 +76,7 @@ namespace dice::unordered_sparse {
      * insert, invalidate the iterators.
      *  - erase: always invalidate the iterators.
      */
-    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, class GrowthPolicy = dice::unordered_sparse::power_of_two_growth_policy<2>, dice::unordered_sparse::exception_safety ExceptionSafety = dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
+    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, dice::unordered_sparse::exception_safety ExceptionSafety = dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
     class sparse_map {
     private:
         class KeySelect {
@@ -118,10 +114,8 @@ namespace dice::unordered_sparse {
             Hash,
             KeyEqual,
             Allocator,
-            GrowthPolicy,
             ExceptionSafety,
-            Sparsity,
-            dice::unordered_sparse::probing::quadratic>;
+            Sparsity>;
 
     public:
         using key_type = typename ht::key_type;
@@ -780,13 +774,6 @@ namespace dice::unordered_sparse {
     private:
         ht ht_;
     };
-
-    /**
-     * Same as `dice::sparse_map<Key, T, Hash, KeyEqual, Allocator,
-     * dice::unordered_sparse::prime_growth_policy>`.
-     */
-    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>>
-    using sparse_pg_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, dice::unordered_sparse::prime_growth_policy>;
 
 }  // namespace dice::unordered_sparse
 

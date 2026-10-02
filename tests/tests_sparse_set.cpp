@@ -44,14 +44,13 @@ TEST_SUITE("test_sparse_set") {
                                   dice::sparse_set<std::string>,
                                   dice::sparse_set<self_reference_member_test>,
                                   dice::sparse_set<move_only_test>,
-                                  dice::unordered_sparse::sparse_pg_set<self_reference_member_test>,
-                                  dice::sparse_set<move_only_test, std::hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::unordered_sparse::prime_growth_policy>,
                                   dice::sparse_set<self_reference_member_test,
                                                    std::hash<self_reference_member_test>,
                                                    std::equal_to<self_reference_member_test>,
                                                    std::allocator<self_reference_member_test>,
-                                                   dice::unordered_sparse::mod_growth_policy<>>,
-                                  dice::sparse_set<move_only_test, std::hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::unordered_sparse::mod_growth_policy<>>>;
+                                                   dice::unordered_sparse::exception_safety::strong>,
+                                  dice::sparse_set<move_only_test, std::hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity::high>,
+                                  dice::sparse_set<move_only_test, std::hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity::low>>;
 
     TEST_CASE_TEMPLATE_DEFINE("test_standard_layout", HSet, test_standard_layout_id) {
         static_assert(std::is_standard_layout_v<HSet>);

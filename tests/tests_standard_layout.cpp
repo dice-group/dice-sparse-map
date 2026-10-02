@@ -33,7 +33,6 @@ namespace {
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<entry_t>,
-                              power_of_two_growth_policy<2>,
                               exception_safety::basic,
                               Sparsity>;
 
@@ -42,7 +41,6 @@ namespace {
                               std::hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<std::uint64_t>,
-                              power_of_two_growth_policy<2>,
                               exception_safety::basic,
                               Sparsity>;
 
