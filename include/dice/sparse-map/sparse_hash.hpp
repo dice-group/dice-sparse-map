@@ -1203,12 +1203,13 @@ namespace dice::sparse_map {
             /**
              * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
              * `other`, the elements are moved one by one, or copied if their move constructor can throw. `other` is
-             * empty afterwards in both cases.
+             * empty afterwards in both cases. The hash function and the key equality are copied, so that `other` still
+             * finds its elements if moving them throws.
              */
             constexpr sparse_hash(sparse_hash &&other, slot_allocator_type const &alloc)
                 : alloc_(alloc),
-                  hash_(std::move(other.hash_)),
-                  key_equal_(std::move(other.key_equal_)),
+                  hash_(other.hash_),
+                  key_equal_(other.key_equal_),
                   bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
                   nb_deleted_buckets_(other.nb_deleted_buckets_),
@@ -1263,20 +1264,23 @@ namespace dice::sparse_map {
                 destroy_buckets();
                 reset_to_empty();
 
-                // the functors first: if one of them throws, *this is empty and `other` keeps its elements
-                hash_ = std::move(other.hash_);
-                key_equal_ = std::move(other.key_equal_);
-
-                if constexpr (propagate_on_move_assignment) {
-                    alloc_ = std::move(other.alloc_);
-                }
-
-                if (propagate_on_move_assignment || allocator_is_always_equal || alloc_ == other.alloc_) {
-                    buckets_ = std::exchange(other.buckets_, nullptr);
-                    nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
+                if constexpr (propagate_on_move_assignment || allocator_is_always_equal) {
+                    take_storage_from(other);
+                } else if (alloc_ == other.alloc_) {
+                    take_storage_from(other);
                 } else {
-                    // on an exception *this stays empty
+                    // The elements first: `other` keeps its functors, so that it still finds its elements if moving
+                    // them throws. On an exception *this stays empty. If a functor move throws after the elements
+                    // were moved, `other` keeps them in a moved-from state, and with a moved-from hash function if
+                    // the move of the key equality throws.
                     move_buckets_from(other);
+                    try {
+                        hash_ = std::move(other.hash_);
+                        key_equal_ = std::move(other.key_equal_);
+                    } catch (...) {
+                        destroy_buckets();
+                        throw;
+                    }
                     other.destroy_buckets();
                 }
 
@@ -1957,6 +1961,25 @@ namespace dice::sparse_map {
                 build_buckets_from(other, [this](sparse_array *target, sparse_array const &source) {
                     std::construct_at(target, source, alloc_);
                 });
+            }
+
+            /**
+             * Takes the functors, the buckets and, if it propagates on move assignment, the allocator of `other`.
+             * Expects that this table has no buckets and that its allocator can free the buckets of `other`. The
+             * functors first: if one of them throws, this table has no buckets and `other` keeps its elements. If the
+             * move of the key equality throws, `other` keeps them with a moved-from hash function, which may not find
+             * them.
+             */
+            constexpr void take_storage_from(sparse_hash &other) {
+                hash_ = std::move(other.hash_);
+                key_equal_ = std::move(other.key_equal_);
+
+                if constexpr (propagate_on_move_assignment) {
+                    alloc_ = std::move(other.alloc_);
+                }
+
+                buckets_ = std::exchange(other.buckets_, nullptr);
+                nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
             }
 
             /**
