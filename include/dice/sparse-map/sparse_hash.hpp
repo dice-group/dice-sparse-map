@@ -999,6 +999,7 @@ namespace dice::sparse_map {
             using slot_type = typename Access::slot_type;
             using slot_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<slot_type>;
             using slot_allocator_traits = std::allocator_traits<slot_allocator_type>;
+            using value_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<value_type>;
             using sparse_array = detail_sparse_hash::sparse_array<slot_type, slot_allocator_type, sparsity, AllocationFailure>;
             using array_size_type = typename sparse_array::size_type;
             using bucket_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<sparse_array>;
@@ -1450,16 +1451,22 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Constructs a `value_type` from `args` and inserts it if its key is not in the table yet.
+             * Constructs a `value_type` from `args` and inserts it if its key is not in the table yet. The `value_type`
+             * is constructed with the allocator of the table, as the stored element is, so that a scoped or a
+             * polymorphic allocator passes itself on to the key and the mapped value.
              */
             template<typename... Args>
             constexpr std::pair<iterator, bool> emplace(Args &&...args) {
-                return insert(value_type(std::forward<Args>(args)...));
+                value_allocator_type alloc(alloc_);
+                value_holder<value_type, value_allocator_type> value(alloc, std::forward<Args>(args)...);
+                return insert(std::move(value.get()));
             }
 
             template<typename... Args>
             constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {
-                return insert_hint(hint, value_type(std::forward<Args>(args)...));
+                value_allocator_type alloc(alloc_);
+                value_holder<value_type, value_allocator_type> value(alloc, std::forward<Args>(args)...);
+                return insert_hint(hint, std::move(value.get()));
             }
 
             /**

@@ -370,8 +370,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Constructs a `value_type` from `args`, and inserts it if it is not in the set yet. Like
-         * `insert(value_type(std::forward<Args>(args)...))`.
+         * Constructs a `value_type` from `args` with the allocator of the set, and inserts it if it is not in the set
+         * yet. A scoped or a polymorphic allocator passes itself on to the element.
          */
         template<typename... Args>
         constexpr std::pair<iterator, bool> emplace(Args &&...args) {
@@ -379,7 +379,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Like `insert(hint, value_type(std::forward<Args>(args)...))`.
+         * Constructs a `value_type` from `args` with the allocator of the set, and inserts it like
+         * `insert(hint, value)`.
          */
         template<typename... Args>
         constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {
