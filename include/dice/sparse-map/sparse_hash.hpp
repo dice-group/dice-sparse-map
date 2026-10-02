@@ -1056,7 +1056,7 @@ namespace dice::sparse_map {
                  */
                 using iterator_category = std::conditional_t<Access::is_map, std::input_iterator_tag, std::forward_iterator_tag>;
                 using value_type = typename sparse_hash::value_type;
-                using difference_type = std::ptrdiff_t;
+                using difference_type = typename sparse_hash::difference_type;
                 using reference = std::conditional_t<is_const, typename Access::const_reference, typename Access::reference>;
                 using pointer = std::conditional_t<Access::is_map, arrow_proxy<reference>, value_type const *>;
 
@@ -1654,11 +1654,12 @@ namespace dice::sparse_map {
             }
 
             /**
-             * @return the largest power of two of `std::size_t`, or less if the allocator cannot provide as many
-             * `sparse_array`s
+             * @return the largest power of two that `size_type` and `std::size_t` can hold, or less if the allocator
+             * cannot provide as many `sparse_array`s
              */
             [[nodiscard]] constexpr size_type max_bucket_count() const noexcept {
-                constexpr auto largest_power_of_two = static_cast<size_type>((std::numeric_limits<std::size_t>::max() / 2) + 1);
+                constexpr auto largest_power_of_two = static_cast<size_type>(std::bit_floor(std::min<std::uintmax_t>(std::numeric_limits<size_type>::max(),
+                                                                                                                     std::numeric_limits<std::size_t>::max())));
                 return std::min<size_type>(largest_power_of_two, bucket_allocator_traits::max_size(bucket_allocator_type(alloc_)));
             }
 
