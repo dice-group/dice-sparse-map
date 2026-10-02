@@ -40,8 +40,6 @@
 #include <utility>
 #include <vector>
 
-#include <dice/unordered_sparse/detail/sparse_growth_policy.hpp>
-
 /**
  * Internal consistency checks. Enabled when `DICE_UNORDERED_SPARSE_DEBUG` or `TSL_DEBUG` is defined.
  */
@@ -52,11 +50,6 @@
 #endif
 
 namespace dice::unordered_sparse {
-
-    enum class probing {
-        linear,
-        quadratic
-    };
 
     enum class exception_safety {
         basic,
@@ -83,18 +76,66 @@ namespace dice::unordered_sparse {
         }
     };
 
+    /**
+     * A hash function is avalanching if every bit of the input changes about half of the bits of the output.
+     * The low bits of such a hash are good enough to pick a bucket. `sparse_map` and `sparse_set` use the hash
+     * of an avalanching hash function as it is, and mix the hash of any other hash function with a multiplication
+     * first. `std::hash` of integers is the identity in libstdc++ and libc++, so it is not avalanching.
+     *
+     * A hash function is marked as avalanching by a member type `is_avalanching`
+     * (`using is_avalanching = void;`), or by a specialization of this trait. This is the convention of
+     * `ankerl::unordered_dense` and of `boost::unordered`.
+     */
+    template<typename Hash>
+        struct hash_is_avalanching : std::bool_constant < requires {
+        typename Hash::is_avalanching;
+    }>{};
+
+    template<typename Hash>
+    inline constexpr bool hash_is_avalanching_v = hash_is_avalanching<Hash>::value;
+
     namespace detail {
+        /**
+         * Multiplies `a` and `b` to 128 bits and returns the xor of the two halves.
+         */
+        [[nodiscard]] constexpr std::uint64_t multiply_fold(std::uint64_t a, std::uint64_t b) noexcept {
+#if defined(__SIZEOF_INT128__)
+            __extension__ using uint128_t = unsigned __int128;
+            auto const product = static_cast<uint128_t>(a) * b;
+            return static_cast<std::uint64_t>(product) ^ static_cast<std::uint64_t>(product >> 64U);
+#else
+            std::uint64_t const a_lo = a & 0xFFFFFFFFU;
+            std::uint64_t const a_hi = a >> 32U;
+            std::uint64_t const b_lo = b & 0xFFFFFFFFU;
+            std::uint64_t const b_hi = b >> 32U;
+            std::uint64_t const lo_lo = a_lo * b_lo;
+            std::uint64_t const hi_lo = a_hi * b_lo;
+            std::uint64_t const lo_hi = a_lo * b_hi;
+            std::uint64_t const hi_hi = a_hi * b_hi;
+            std::uint64_t const cross = (lo_lo >> 32U) + (hi_lo & 0xFFFFFFFFU) + lo_hi;
+            std::uint64_t const hi = hi_hi + (hi_lo >> 32U) + (cross >> 32U);
+            std::uint64_t const lo = (cross << 32U) | (lo_lo & 0xFFFFFFFFU);
+            return lo ^ hi;
+#endif
+        }
+
+        /**
+         * The hash that picks the bucket: `hash` itself for an avalanching hash function, otherwise `hash`
+         * mixed with the golden ratio constant.
+         */
+        template<typename Hash>
+        [[nodiscard]] constexpr std::size_t mixed_hash(std::size_t hash) noexcept {
+            if constexpr (hash_is_avalanching_v<Hash>) {
+                return hash;
+            } else {
+                return static_cast<std::size_t>(multiply_fold(hash, UINT64_C(0x9E3779B97F4A7C15)));
+            }
+        }
+
         template<typename T>
         concept has_is_transparent = requires {
             typename T::is_transparent;
         };
-
-        template<typename U>
-        struct is_power_of_two_policy : std::false_type {};
-
-        template<std::size_t GrowthFactor>
-        struct is_power_of_two_policy<dice::unordered_sparse::power_of_two_growth_policy<GrowthFactor>>
-            : std::true_type {};
 
         inline constexpr bool is_power_of_two(std::size_t value) {
             return value != 0 && (value & (value - 1)) == 0;
@@ -765,27 +806,21 @@ namespace dice::unordered_sparse {
          * `sparse_array::sparse_ibucket(ibucket)` and
          * `sparse_array::index_in_sparse_bucket(ibucket)`.
          *
-         * The hasher, the key equality, the allocator and the growth policy are held
-         * as members, not as base classes. A standard layout class may declare its
-         * non-static data members in one class of the hierarchy only, and a growth
-         * policy usually has state. Keeping everything in `sparse_hash` therefore
-         * makes `sparse_hash`, and with it `sparse_map` and `sparse_set`, a standard
-         * layout type whenever `Hash`, `KeyEqual`, `Allocator`, `GrowthPolicy` and the
-         * bucket container are standard layout themselves. The members are marked
-         * potentially overlapping, so empty ones still cost no space.
+         * The number of buckets is 0 or a power of two. A hash picks its bucket with a mask, after `mixed_hash`
+         * (see `hash_is_avalanching`).
+         *
+         * The hasher, the key equality and the allocator are held as members, not as base classes. A standard
+         * layout class may declare its non-static data members in one class of the hierarchy only. Keeping
+         * everything in `sparse_hash` therefore makes `sparse_hash`, and with it `sparse_map` and `sparse_set`, a
+         * standard layout type whenever `Hash`, `KeyEqual`, `Allocator` and the bucket container are standard
+         * layout themselves. The members are marked potentially overlapping, so empty ones still cost no space.
          */
-        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, class GrowthPolicy, dice::unordered_sparse::exception_safety ExceptionSafety, dice::unordered_sparse::sparsity Sparsity, dice::unordered_sparse::probing Probing>
+        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, dice::unordered_sparse::exception_safety ExceptionSafety, dice::unordered_sparse::sparsity Sparsity>
         class sparse_hash {
         private:
             template<typename U>
             using has_mapped_type =
                 typename std::integral_constant<bool, !std::is_same<U, void>::value>;
-
-            static_assert(
-                noexcept(std::declval<GrowthPolicy>().bucket_for_hash(std::size_t(0))),
-                "GrowthPolicy::bucket_for_hash must be noexcept.");
-            static_assert(noexcept(std::declval<GrowthPolicy>().clear()),
-                          "GrowthPolicy::clear must be noexcept.");
 
         public:
             template<bool IsConst>
@@ -943,7 +978,7 @@ namespace dice::unordered_sparse {
                 : alloc_(alloc),
                   hash_(hash),
                   key_equal_(equal),
-                  growth_policy_(bucket_count),
+                  mask_(round_bucket_count(bucket_count)),
                   sparse_buckets_data_(alloc),
                   //         sparse_buckets_data_(std::allocator_traits<Allocator>::rebind_alloc<sparse_buckets_container::Allocator>(alloc)),
                   sparse_buckets_(static_empty_sparse_bucket_ptr()),
@@ -990,7 +1025,7 @@ namespace dice::unordered_sparse {
                          Allocator>::select_on_container_copy_construction(other.alloc_)),
                   hash_(other.hash_),
                   key_equal_(other.key_equal_),
-                  growth_policy_(other.growth_policy_),
+                  mask_(other.mask_),
                   sparse_buckets_data_(
                       std::allocator_traits<
                           Allocator>::select_on_container_copy_construction(other.alloc_)),
@@ -1007,11 +1042,11 @@ namespace dice::unordered_sparse {
             }
 
             sparse_hash(sparse_hash &&other) noexcept(
-                std::is_nothrow_move_constructible<Allocator>::value && std::is_nothrow_move_constructible<Hash>::value && std::is_nothrow_move_constructible<KeyEqual>::value && std::is_nothrow_move_constructible<GrowthPolicy>::value && std::is_nothrow_move_constructible<sparse_buckets_container>::value)
+                std::is_nothrow_move_constructible<Allocator>::value && std::is_nothrow_move_constructible<Hash>::value && std::is_nothrow_move_constructible<KeyEqual>::value && std::is_nothrow_move_constructible<sparse_buckets_container>::value)
                 : alloc_(std::move(other.alloc_)),
                   hash_(std::move(other.hash_)),
                   key_equal_(std::move(other.key_equal_)),
-                  growth_policy_(std::move(other.growth_policy_)),
+                  mask_(other.mask_),
                   sparse_buckets_data_(std::move(other.sparse_buckets_data_)),
                   sparse_buckets_(sparse_buckets_data_.empty()
                                       ? static_empty_sparse_bucket_ptr()
@@ -1022,7 +1057,7 @@ namespace dice::unordered_sparse {
                   load_threshold_rehash_(other.load_threshold_rehash_),
                   load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
                   max_load_factor_(other.max_load_factor_) {
-                other.growth_policy_.clear();
+                other.mask_ = 0;
                 other.sparse_buckets_data_.clear();
                 other.sparse_buckets_ = static_empty_sparse_bucket_ptr();
                 other.bucket_count_ = 0;
@@ -1043,7 +1078,7 @@ namespace dice::unordered_sparse {
 
                     hash_ = other.hash_;
                     key_equal_ = other.key_equal_;
-                    growth_policy_ = other.growth_policy_;
+                    mask_ = other.mask_;
 
                     if constexpr (std::allocator_traits<
                                       Allocator>::propagate_on_container_copy_assignment::value) {
@@ -1090,7 +1125,7 @@ namespace dice::unordered_sparse {
 
                 hash_ = std::move(other.hash_);
                 key_equal_ = std::move(other.key_equal_);
-                growth_policy_ = std::move(other.growth_policy_);
+                mask_ = other.mask_;
                 bucket_count_ = other.bucket_count_;
                 nb_elements_ = other.nb_elements_;
                 nb_deleted_buckets_ = other.nb_deleted_buckets_;
@@ -1098,7 +1133,7 @@ namespace dice::unordered_sparse {
                 load_threshold_clear_deleted_ = other.load_threshold_clear_deleted_;
                 max_load_factor_ = other.max_load_factor_;
 
-                other.growth_policy_.clear();
+                other.mask_ = 0;
                 other.sparse_buckets_data_.clear();
                 other.sparse_buckets_ = static_empty_sparse_bucket_ptr();
                 other.bucket_count_ = 0;
@@ -1329,7 +1364,7 @@ namespace dice::unordered_sparse {
 
                 swap(hash_, other.hash_);
                 swap(key_equal_, other.key_equal_);
-                swap(growth_policy_, other.growth_policy_);
+                swap(mask_, other.mask_);
                 swap(sparse_buckets_data_, other.sparse_buckets_data_);
                 swap(sparse_buckets_, other.sparse_buckets_);
                 swap(bucket_count_, other.bucket_count_);
@@ -1535,37 +1570,49 @@ namespace dice::unordered_sparse {
             }
 
             size_type bucket_for_hash(std::size_t hash) const {
-                std::size_t const bucket = growth_policy_.bucket_for_hash(hash);
+                std::size_t const bucket = mixed_hash<Hash>(hash) & mask_;
                 DICE_UNORDERED_SPARSE_ASSERT(sparse_array::sparse_ibucket(bucket) < sparse_buckets_data_.size() || (bucket == 0 && sparse_buckets_data_.empty()));
 
                 return bucket;
             }
 
-            template<class U = GrowthPolicy,
-                     typename std::enable_if<is_power_of_two_policy<U>::value>::type * = nullptr>
+            /**
+             * @return the bucket of the probe `iprobe` after bucket `ibucket` (quadratic probing)
+             */
             size_type next_bucket(size_type ibucket, size_type iprobe) const {
-                (void) iprobe;
-                // bucket_for_hash is a mask operation for a power of two policy
-                if constexpr (Probing == dice::unordered_sparse::probing::linear) {
-                    return growth_policy_.bucket_for_hash(ibucket + 1);
-                } else {
-                    DICE_UNORDERED_SPARSE_ASSERT(Probing == dice::unordered_sparse::probing::quadratic);
-                    return growth_policy_.bucket_for_hash(ibucket + iprobe);
-                }
+                return (ibucket + iprobe) & mask_;
             }
 
-            template<class U = GrowthPolicy,
-                     typename std::enable_if<!is_power_of_two_policy<U>::value>::type * = nullptr>
-            size_type next_bucket(size_type ibucket, size_type iprobe) const {
-                (void) iprobe;
-                if constexpr (Probing == dice::unordered_sparse::probing::linear) {
-                    ibucket++;
-                    return (ibucket != bucket_count()) ? ibucket : 0;
-                } else {
-                    DICE_UNORDERED_SPARSE_ASSERT(Probing == dice::unordered_sparse::probing::quadratic);
-                    ibucket += iprobe;
-                    return (ibucket < bucket_count()) ? ibucket : ibucket % bucket_count();
+            /**
+             * Largest power of two of `std::size_t`, the largest bucket count.
+             */
+            static constexpr std::size_t max_power_of_two_bucket_count = (std::numeric_limits<std::size_t>::max() / 2) + 1;
+
+            /**
+             * Rounds `bucket_count` up to a power of two. 0 stays 0.
+             * @return the mask that picks a bucket from a hash
+             * @throws std::length_error if `bucket_count` is larger than the largest power of two of `std::size_t`
+             */
+            static std::size_t round_bucket_count(size_type &bucket_count) {
+                if (bucket_count > max_power_of_two_bucket_count) {
+                    throw std::length_error("The hash table exceeds its maximum size.");
                 }
+                if (bucket_count == 0) {
+                    return 0;
+                }
+                bucket_count = round_up_to_power_of_two(bucket_count);
+                return bucket_count - 1;
+            }
+
+            /**
+             * @return the bucket count after the next growth, twice the current one
+             * @throws std::length_error if the table cannot grow any more
+             */
+            std::size_t next_bucket_count() const {
+                if ((mask_ + 1) > max_power_of_two_bucket_count / 2) {
+                    throw std::length_error("The hash table exceeds its maximum size.");
+                }
+                return (mask_ + 1) * 2;
             }
 
             // TODO encapsulate sparse_buckets_data_ to avoid the managing the allocator
@@ -1619,7 +1666,7 @@ namespace dice::unordered_sparse {
 
                 auto confirmed_insert = [&](std::size_t sparse_ibucket, typename sparse_array::size_type index_in_sparse_bucket) {
                     if (size() >= load_threshold_rehash_) {
-                        rehash_impl(growth_policy_.next_bucket_count());
+                        rehash_impl(next_bucket_count());
                         return insert_impl(key, std::forward<Args>(value_type_args)...);
                     } else if (size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
                         clear_deleted_buckets();
@@ -1861,11 +1908,9 @@ namespace dice::unordered_sparse {
             [[no_unique_address]] KeyEqual key_equal_;
 
             /**
-             * Declared before bucket_count_. Its constructor takes the bucket count by
-             * reference and rounds it up to the count the policy can serve, and
-             * bucket_count_ is initialized from that rounded value.
+             * `bucket_count_ - 1`, or 0 without buckets.
              */
-            [[no_unique_address]] GrowthPolicy growth_policy_;
+            std::size_t mask_;
 
             sparse_buckets_container sparse_buckets_data_;
 
