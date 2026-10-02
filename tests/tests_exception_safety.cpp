@@ -743,6 +743,65 @@ TEST_CASE("a swap whose hash throws swaps neither the elements nor the allocator
 }
 
 namespace {
+    /**
+     * A hash with a seed, which it adds to the key. Two maps with different seeds place the same key in different
+     * buckets.
+     */
+    struct seeded_hash {
+        std::size_t seed = 0;
+
+        std::size_t operator()(std::size_t key) const noexcept {
+            return key + seed;
+        }
+    };
+
+    /// the move assignment of `fragile_key_equal` throws while this is true
+    bool key_equal_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * A key equality whose move assignment throws while `key_equal_moves_throw` is true. `std::swap` of two of
+     * them move assigns, so it throws, too.
+     */
+    struct fragile_key_equal {
+        fragile_key_equal() = default;
+        fragile_key_equal(fragile_key_equal const &) = default;
+        fragile_key_equal(fragile_key_equal &&) = default;
+        fragile_key_equal &operator=(fragile_key_equal const &) = default;
+        ~fragile_key_equal() = default;
+
+        fragile_key_equal &operator=(fragile_key_equal && /*other*/) noexcept(false) {
+            if (key_equal_moves_throw) {
+                throw std::runtime_error("fragile_key_equal move assignment");
+            }
+            return *this;
+        }
+
+        bool operator()(std::size_t lhs, std::size_t rhs) const noexcept {
+            return lhs == rhs;
+        }
+    };
+}  // namespace
+
+TEST_CASE("a swap whose key equality throws leaves both maps able to find their elements") {
+    using map_t = sparse_map<std::size_t, std::size_t, seeded_hash, fragile_key_equal>;
+    auto map_1 = map_t{0, seeded_hash{1}};
+    auto map_2 = map_t{0, seeded_hash{1000}};
+    for (std::size_t key = 0; key < 100; ++key) {
+        map_1[key] = key;
+        map_2[key + 1000] = key + 1000;
+    }
+    static_assert(!noexcept(map_1.swap(map_2)));
+
+    // the hash functions are swapped first, then the key equality throws
+    key_equal_moves_throw = true;
+    CHECK_THROWS_AS(map_1.swap(map_2), std::runtime_error);
+    key_equal_moves_throw = false;
+
+    check_holds(map_1, 0, 100);
+    check_holds(map_2, 1000, 100);
+}
+
+namespace {
     /// moves and copies of `countdown_value` that are left before one throws, -1 never throws
     int value_transfers_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
