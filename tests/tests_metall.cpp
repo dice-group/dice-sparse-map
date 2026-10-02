@@ -443,3 +443,135 @@ TEST_CASE("a map of maps that passes the allocator by hand survives closing and 
 TEST_CASE("a map of maps with std::scoped_allocator_adaptor survives closing and opening") {
     check_map_of_maps_round_trip<scoped_outer_map>("scoped_map_of_maps");
 }
+
+namespace {
+    /**
+     * A value whose move constructor can throw, without a pointer, so that it can live in a datastore. A map copies
+     * it instead of moving it, and an erase leaves a hole in the group.
+     */
+    struct copied_value {
+        std::uint64_t value = 0;
+
+        explicit copied_value(std::uint64_t v) noexcept
+            : value(v) {
+        }
+
+        copied_value(copied_value const &) = default;
+
+        copied_value(copied_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
+            : value(other.value) {
+        }
+
+        copied_value &operator=(copied_value const &) = default;
+
+        copied_value &operator=(copied_value &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
+            value = other.value;
+            return *this;
+        }
+
+        ~copied_value() = default;
+    };
+
+    using map_with_holes = sparse_map<std::uint64_t,
+                                      copied_value,
+                                      std::hash<std::uint64_t>,
+                                      std::equal_to<std::uint64_t>,
+                                      metall_allocator<std::pair<std::uint64_t, copied_value>>>;
+
+    static_assert(!std::is_nothrow_move_constructible_v<dice::unordered_sparse::detail::map_slot<std::uint64_t, copied_value>>);
+    static_assert(std::is_standard_layout_v<map_with_holes>);
+
+    /// true if `map` holds exactly the keys below `end` for which `expected(key)` is true, each with its value
+    template<typename Expected>
+    bool holds_exactly(map_with_holes const &map, std::uint64_t end, Expected const &expected) {
+        std::uint64_t nb_expected = 0;
+        bool found_right = true;
+        for (std::uint64_t key = 0; key < end; ++key) {
+            auto const it = map.find(key);
+            if (expected(key)) {
+                ++nb_expected;
+                found_right = found_right && it != map.end() && it->second.value == value_of(key);
+            } else {
+                found_right = found_right && it == map.end();
+            }
+        }
+        std::uint64_t nb_iterated = 0;
+        bool iterated_right = true;
+        for (auto const &[key, value] : map) {
+            iterated_right = iterated_right && key < end && expected(key) && value.value == value_of(key);
+            ++nb_iterated;
+        }
+        return found_right && iterated_right && nb_iterated == nb_expected && map.size() == nb_expected;
+    }
+}  // namespace
+
+// The holes stay in the groups when the datastore is closed. After it is opened again, iteration and find skip them,
+// and insertions fill them.
+TEST_CASE("a map whose groups have holes survives closing and opening") {
+    datastore_path const store{"map_with_holes"};
+    char const *object_name = "map_with_holes";
+    constexpr std::uint64_t nb_keys = 10000;
+    mapping last_mapping;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *map = manager.construct<map_with_holes>(object_name)(manager.get_allocator());
+        REQUIRE(map != nullptr);
+        for (std::uint64_t key = 0; key < nb_keys; ++key) {
+            map->try_emplace(key, value_of(key));
+        }
+        for (std::uint64_t key = 0; key < nb_keys; key += 3) {
+            map->erase(key);
+        }
+        CHECK(holds_exactly(*map, nb_keys, [](std::uint64_t key) {
+            return key % 3 != 0;
+        }));
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *map = std::get<0>(manager.find<map_with_holes>(object_name));
+        REQUIRE(map != nullptr);
+        CHECK(holds_exactly(*map, nb_keys, [](std::uint64_t key) {
+            return key % 3 != 0;
+        }));
+
+        // more holes, then the keys of the first holes again, and new keys
+        for (std::uint64_t key = 1; key < nb_keys; key += 3) {
+            map->erase(key);
+        }
+        for (std::uint64_t key = 0; key < nb_keys; key += 3) {
+            map->try_emplace(key, value_of(key));
+        }
+        for (std::uint64_t key = nb_keys; key < nb_keys + nb_keys / 2; ++key) {
+            map->try_emplace(key, value_of(key));
+        }
+        CHECK(holds_exactly(*map, nb_keys + nb_keys / 2, [](std::uint64_t key) {
+            return key >= nb_keys || key % 3 != 1;
+        }));
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto *map = std::get<0>(manager.find<map_with_holes>(object_name));
+        REQUIRE(map != nullptr);
+        CHECK(holds_exactly(*map, nb_keys + nb_keys / 2, [](std::uint64_t key) {
+            return key >= nb_keys || key % 3 != 1;
+        }));
+
+        CHECK(manager.destroy<map_with_holes>(object_name));
+        // the map gave back every block it got from the datastore
+        CHECK(manager.all_memory_deallocated());
+    }
+}
