@@ -543,17 +543,11 @@ namespace dice::unordered_sparse {
                 }
             }
 
+            /**
+             * Not assignable: an assignment could not free the old storage, because the allocator is not stored.
+             */
             sparse_array &operator=(sparse_array const &) = delete;
-
-            constexpr sparse_array &operator=(sparse_array &&other) noexcept {
-                values_ = std::exchange(other.values_, nullptr);
-                bitmap_vals_ = std::exchange(other.bitmap_vals_, 0);
-                bitmap_deleted_vals_ = std::exchange(other.bitmap_deleted_vals_, 0);
-                nb_elements_ = std::exchange(other.nb_elements_, 0);
-                capacity_ = std::exchange(other.capacity_, 0);
-                last_array_ = other.last_array_;
-                return *this;
-            }
+            sparse_array &operator=(sparse_array &&) = delete;
 
             constexpr ~sparse_array() noexcept {
                 // the owner must have called clear(Allocator &) before
