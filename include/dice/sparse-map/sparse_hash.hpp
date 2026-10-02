@@ -978,6 +978,10 @@ namespace dice::sparse_map {
          *
          * `AllocationFailure` decides what a failed allocation does, see `allocate`.
          *
+         * The constructors take the allocator of the container or the allocator of the stored elements, and convert
+         * it with a direct initialization. So an allocator with an `explicit` converting constructor works, as the
+         * allocator requirements allow.
+         *
          * The hasher, the key equality and the allocator are members, not base classes, and `sparse_hash` has
          * no base class. So `sparse_hash`, and with it `sparse_map` and `sparse_set`, is a standard layout type
          * whenever `Hash`, `KeyEqual`, the allocator and the allocator's pointer type are standard layout.
@@ -1153,7 +1157,9 @@ namespace dice::sparse_map {
              * Creates a table with at least `bucket_count` buckets. The bucket count is rounded up to a power of two.
              * @throws std::length_error if `bucket_count` is larger than `max_bucket_count()`
              */
-            constexpr sparse_hash(size_type bucket_count, Hash const &hash, KeyEqual const &equal, slot_allocator_type const &alloc, float max_load_factor)
+            template<typename Alloc>
+            requires std::constructible_from<slot_allocator_type, Alloc const &>
+            constexpr sparse_hash(size_type bucket_count, Hash const &hash, KeyEqual const &equal, Alloc const &alloc, float max_load_factor)
                 : alloc_(alloc),
                   hash_(hash),
                   key_equal_(equal) {
@@ -1180,7 +1186,9 @@ namespace dice::sparse_map {
             /**
              * Copies `other`, with storage from `alloc`.
              */
-            constexpr sparse_hash(sparse_hash const &other, slot_allocator_type const &alloc)
+            template<typename Alloc>
+            requires std::constructible_from<slot_allocator_type, Alloc const &>
+            constexpr sparse_hash(sparse_hash const &other, Alloc const &alloc)
                 : alloc_(alloc),
                   hash_(other.hash_),
                   key_equal_(other.key_equal_),
@@ -1215,7 +1223,9 @@ namespace dice::sparse_map {
              * empty afterwards in both cases. The hash function and the key equality are copied, so that `other` still
              * finds its elements if moving them throws.
              */
-            constexpr sparse_hash(sparse_hash &&other, slot_allocator_type const &alloc)
+            template<typename Alloc>
+            requires std::constructible_from<slot_allocator_type, Alloc const &>
+            constexpr sparse_hash(sparse_hash &&other, Alloc const &alloc)
                 : alloc_(alloc),
                   hash_(other.hash_),
                   key_equal_(other.key_equal_),
