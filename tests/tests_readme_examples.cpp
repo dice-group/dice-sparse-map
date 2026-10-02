@@ -1,4 +1,4 @@
-// The examples of README.md, so that they keep compiling and doing what the README says.
+// The examples of README.md and doc/usage.md, so that they keep compiling and doing what the docs say.
 
 #include <dice/hash/DiceHash.hpp>
 #include <dice/sparse-map/sparse_map.hpp>
@@ -8,10 +8,12 @@
 
 #include <cstddef>
 #include <functional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -25,6 +27,23 @@ namespace {
     };
 
 }  // namespace
+
+TEST_CASE("readme example") {
+    dice::sparse_map::sparse_map<std::string, int> map = {{"a", 1}, {"b", 2}};
+    map["c"] = 3;
+    map.erase("a");
+
+    dice::sparse_map::sparse_set const wanted(std::from_range, std::views::single(2));
+    static_assert(std::is_same_v<decltype(wanted), dice::sparse_map::sparse_set<int> const>);
+
+    std::vector<std::string> printed;
+    for (auto const &[key, value] : map) {
+        if (wanted.contains(value)) {
+            printed.push_back(key);
+        }
+    }
+    CHECK(printed == std::vector<std::string>{"b"});
+}
 
 TEST_CASE("example") {
     dice::sparse_map::sparse_map<std::string, int> map = {{"a", 1}, {"b", 2}};

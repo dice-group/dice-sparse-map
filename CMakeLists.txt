@@ -10,10 +10,14 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.hpp.in ${CMAKE_CURRENT_
 
 option(BUILD_TESTING "Build tests" OFF)
 option(BUILD_BENCHMARKS "Build benchmarks" OFF)
+option(BUILD_README_BENCHMARKS "Build the benchmarks of the README plots (needs abseil)" OFF)
 
 if (PROJECT_IS_TOP_LEVEL)
-    if (BUILD_TESTING OR BUILD_BENCHMARKS)
+    if (BUILD_TESTING OR BUILD_BENCHMARKS OR BUILD_README_BENCHMARKS)
         set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=&:with_test_deps=True")
+    endif ()
+    if (BUILD_README_BENCHMARKS)
+        set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=&:with_readme_benchmark_deps=True")
     endif ()
     # only boost headers are needed, never the compiled libraries
     set(CONAN_INSTALL_ARGS "${CONAN_INSTALL_ARGS};-o=boost/*:header_only=True")
@@ -63,6 +67,11 @@ if (PROJECT_IS_TOP_LEVEL)
     if (BUILD_BENCHMARKS)
         message("Benchmarks are configured to be build.")
         add_subdirectory(benchmarks)
+    endif ()
+
+    if (BUILD_README_BENCHMARKS)
+        message("README benchmarks are configured to be build.")
+        add_subdirectory(benchmarks/readme)
     endif ()
 
     include(cmake/install_interface_library.cmake)
