@@ -394,7 +394,11 @@ namespace dice::unordered_sparse {
          * called before a `sparse_array` is destroyed.
          *
          * `T` must be nothrow move constructible and/or copy constructible. The behaviour is undefined if the
-         * destructor of `T` throws.
+         * destructor of `T` throws. A `T` that is nothrow move constructible is moved with
+         * `allocator_traits::construct`, and that must not throw either: the moves that shift the values of a group
+         * cannot be undone. With a scoped or a polymorphic allocator, `construct` calls the allocator-extended move
+         * constructor, which does not throw when the allocators are equal, as they are within a table. `std::vector`
+         * makes the same assumption.
          *
          * See https://smerity.com/articles/2015/google_sparsehash.html for the idea.
          */
@@ -940,7 +944,7 @@ namespace dice::unordered_sparse {
          * and on what throws. See `rehash_impl`.
          *
          * The stored elements must be nothrow move constructible and/or copy constructible. The behaviour is
-         * undefined if their destructor throws.
+         * undefined if their destructor throws. See `sparse_array` for what a nothrow move needs from the allocator.
          *
          * The buckets are kept in two dimensions. `buckets_` points to an array of `nb_sparse_buckets_`
          * `sparse_array`s, and each `sparse_array` holds `sparse_array::bitmap_nb_bits` buckets. Bucket `ibucket`

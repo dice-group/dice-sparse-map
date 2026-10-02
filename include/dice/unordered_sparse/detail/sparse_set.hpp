@@ -65,7 +65,10 @@ namespace dice::unordered_sparse {
      * less memory and slower insertions. The lookup speed does not depend on it.
      *
      * `Key` must be nothrow move constructible and/or copy constructible. The behaviour is undefined if the
-     * destructor of `Key` throws.
+     * destructor of `Key` throws. If `Key` is nothrow move constructible, the set moves its elements with
+     * `std::allocator_traits<Allocator>::construct` and expects that this does not throw either. With a scoped or a
+     * polymorphic allocator, that is the allocator-extended move constructor of `Key`, which does not throw when the
+     * allocators are equal. `std::vector` makes the same assumption.
      *
      * Iterator invalidation:
      *  - `clear`, `operator=`, `reserve`, `rehash`, `merge`: always invalidate the iterators.
