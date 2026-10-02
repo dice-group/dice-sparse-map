@@ -120,6 +120,8 @@ namespace constant_evaluation {
 
     /**
      * A rehash copies the elements of this map and frees the old groups at the end: their move constructor can throw.
+     * An erase destroys an element in place and leaves a hole, a slot without an object. A constant expression that
+     * reads a hole as an element does not compile.
      */
     constexpr bool map_of_copied_values_in_a_constant_expression() {
         static_assert(!std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<int, copied_value>>);
@@ -133,7 +135,44 @@ namespace constant_evaluation {
         for (int i = 0; i < 100; ++i) {
             all_found = all_found && map.at(i).value == i;
         }
-        return map.size() == 100 && map.bucket_count() >= 1024 && all_found;
+        bool const rehashed = map.size() == 100 && map.bucket_count() >= 1024 && all_found;
+
+        // holes in the middle of the groups: 34 erased, 66 left
+        for (int i = 0; i < 100; i += 3) {
+            map.erase(i);
+        }
+        int sum = 0;
+        int count = 0;
+        for (auto &&[key, value] : map) {
+            sum += value.value;
+            count += key == value.value ? 1 : 0;
+        }
+        bool const holes_skipped = map.size() == 66 && count == 66 && sum == 4950 - 1683 && !map.contains(3) && map.contains(4);
+
+        // the insertions of 0, 3, ..., 27 fill holes
+        for (int i = 0; i < 30; i += 3) {
+            map.try_emplace(i, i);
+        }
+        bool const holes_filled = map.size() == 76 && map.at(27).value == 27 && !map.contains(30);
+
+        // a copy has no holes, a rehash neither
+        auto copy = map;
+        copy.erase(1);
+        copy.rehash(2048);
+        auto other = sparse_map<int, copied_value, constexpr_hash>{};
+        other.try_emplace(1000, 1000);
+        other.try_emplace(2, -1);
+        copy.merge(other);
+        bool const merged = copy.size() == 76 && copy.at(1000).value == 1000 && other.size() == 1 && other.at(2).value == -1;
+
+        // the even keys: 33 below 100 that are not a multiple of 3, 0, 6, 12, 18, 24 and 1000
+        auto const erased = erase_if(copy, [](auto const &element) {
+            return element.first % 2 == 0;
+        });
+        bool const erased_right = erased == 39 && copy.size() == 37 && !copy.contains(1000) && copy.contains(5);
+
+        map.clear();
+        return rehashed && holes_skipped && holes_filled && merged && erased_right && map.empty() && map.begin() == map.end();
     }
 
     /**
