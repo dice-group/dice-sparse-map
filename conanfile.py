@@ -15,9 +15,11 @@ class Recipe(ConanFile):
     generators = "CMakeDeps", "CMakeToolchain"
     options = {
         "with_test_deps": [True, False],
+        "with_readme_benchmark_deps": [True, False],
     }
     default_options = {
         "with_test_deps": False,
+        "with_readme_benchmark_deps": False,
         "boost/*:header_only": True,
     }
 
@@ -28,6 +30,9 @@ class Recipe(ConanFile):
             self.test_requires("nanobench/4.3.11")
             self.test_requires("metall/0.35")
             self.test_requires("unordered_dense/5.2.0")
+        if self.options.with_readme_benchmark_deps:
+            # only for the README benchmark (benchmarks/readme)
+            self.test_requires("abseil/20250814.2")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:
