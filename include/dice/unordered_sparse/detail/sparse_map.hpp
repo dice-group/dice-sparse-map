@@ -754,56 +754,6 @@ namespace dice::unordered_sparse {
             return ht_.mutable_iterator(pos);
         }
 
-        /**
-         * Serialize the map through the `serializer` parameter.
-         *
-         * The `serializer` parameter must be a function object that supports the
-         * following call:
-         *  - `template<typename U> void operator()(const U& value);` where the types
-         * `std::uint64_t`, `float` and `std::pair<Key, T>` must be supported for U.
-         *
-         * The implementation leaves binary compatibility (endianness, IEEE 754 for
-         * floats, ...) of the types it serializes in the hands of the `Serializer`
-         * function object if compatibility is required.
-         */
-        template<class Serializer>
-        void serialize(Serializer &serializer) const {
-            ht_.serialize(serializer);
-        }
-
-        /**
-         * Deserialize a previously serialized map through the `deserializer`
-         * parameter.
-         *
-         * The `deserializer` parameter must be a function object that supports the
-         * following calls:
-         *  - `template<typename U> U operator()();` where the types `std::uint64_t`,
-         * `float` and `std::pair<Key, T>` must be supported for U.
-         *
-         * If the deserialized hash map type is hash compatible with the serialized
-         * map, the deserialization process can be sped up by setting
-         * `hash_compatible` to true. To be hash compatible, the Hash, KeyEqual and
-         * GrowthPolicy must behave the same way than the ones used on the serialized
-         * map. The `std::size_t` must also be of the same size as the one on the
-         * platform used to serialize the map. If these criteria are not met, the
-         * behaviour is undefined with `hash_compatible` sets to true.
-         *
-         * The behaviour is undefined if the type `Key` and `T` of the `sparse_map`
-         * are not the same as the types used during serialization.
-         *
-         * The implementation leaves binary compatibility (endianness, IEEE 754 for
-         * floats, size of int, ...) of the types it deserializes in the hands of the
-         * `Deserializer` function object if compatibility is required.
-         */
-        template<class Deserializer>
-        static sparse_map deserialize(Deserializer &deserializer,
-                                      bool hash_compatible = false) {
-            sparse_map map(0);
-            map.ht_.deserialize(deserializer, hash_compatible);
-
-            return map;
-        }
-
         friend bool operator==(sparse_map const &lhs, sparse_map const &rhs) {
             if (lhs.size() != rhs.size()) {
                 return false;
