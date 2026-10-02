@@ -178,16 +178,19 @@ namespace {
         ~copied() = default;
     };
 
-    /// a map with the default `sh::allocation_failure::terminating` that allocates through `failing_allocator`
+    /**
+     * A map with the default `sh::allocation_failure::terminating` that allocates through `failing_allocator`. Its
+     * groups store the elements as `detail_sparse_hash::map_slot`.
+     */
     template<typename T>
     using failing_map = sparse_map<std::size_t,
                                    T,
                                    detail_sparse_hash::default_hash<std::size_t>,
                                    std::equal_to<std::size_t>,
-                                   failing_allocator<std::pair<std::size_t, T>, std::pair<std::size_t, T>>>;
+                                   failing_allocator<std::pair<std::size_t, T>, detail_sparse_hash::map_slot<std::size_t, T>>>;
 
-    static_assert(std::is_nothrow_move_constructible_v<failing_map<std::size_t>::value_type>);
-    static_assert(!std::is_nothrow_move_constructible_v<failing_map<copied>::value_type>);
+    static_assert(std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, std::size_t>>);
+    static_assert(!std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, copied>>);
 
     /// allocator whose `allocate` throws `std::length_error`
     struct length_error_allocator {

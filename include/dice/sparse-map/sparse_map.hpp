@@ -53,9 +53,12 @@ namespace dice::sparse_map {
      * grows. A hash picks its bucket with a mask.
      *
      * The interface follows `std::unordered_map`, with these differences:
-     *  - The iterators return `std::pair<Key, T> const &`, so the mapped value cannot be changed through `*it`
-     *    or `it->second`. `it.value()` is a mutable reference to the mapped value, `it.key()` the key.
-     *  - The iterators are forward iterators.
+     *  - `value_type` is `std::pair<Key, T>`. Elements are stored as `Key` and `T` in a standard layout type,
+     *    not as `std::pair`. The iterators return a proxy reference: `*it` is `std::pair<Key const &, T &>`,
+     *    and `it->second` is a mutable reference to the mapped value. Bind it with `auto &&` or `auto const &`,
+     *    not with `auto &`.
+     *  - The iterators are forward iterators. They model `std::forward_iterator`, but a map iterator meets only
+     *    the Cpp17InputIterator requirements, because its reference type is not `value_type &`.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - `emplace` constructs the element first and inserts it if its key is not in the map.
      *  - Heterogeneous lookup and erasure are enabled by `KeyEqual::is_transparent` alone.
