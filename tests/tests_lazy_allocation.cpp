@@ -152,3 +152,22 @@ TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", c
     CHECK(source.contains(1));
 }
 TEST_CASE_TEMPLATE_APPLY(moved_from, counted_containers);
+
+// `reserve(n)` once per batch of insertions is a common pattern. It must not rebuild the table when the table has room.
+TEST_CASE_TEMPLATE_DEFINE("reserve and rehash allocate nothing when the bucket count stays", container_t, reserve_with_room) {
+    auto container = container_t{};
+    container.reserve(100);
+    for (int i = 0; i < 50; ++i) {
+        insert_one(container, i);
+    }
+    auto const bucket_count = container.bucket_count();
+    auto const before = num_allocations;
+
+    container.reserve(100);
+    container.reserve(80);
+    container.rehash(bucket_count);
+    CHECK(num_allocations == before);
+    CHECK(container.bucket_count() == bucket_count);
+    CHECK(container.size() == 50);
+}
+TEST_CASE_TEMPLATE_APPLY(reserve_with_room, counted_containers);

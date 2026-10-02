@@ -1690,8 +1690,16 @@ namespace dice::sparse_map {
                 load_threshold_clear_deleted_ = static_cast<size_type>(static_cast<float>(bucket_count()) * max_load_factor_with_deleted_buckets);
             }
 
+            /**
+             * Rebuilds the table with at least `count` buckets, and with room for its elements. Does nothing if the
+             * bucket count stays the same and no bucket is marked as deleted.
+             */
             constexpr void rehash(size_type count) {
-                rehash_impl(std::max(count, bucket_count_for(size())));
+                count = std::max(count, bucket_count_for(size()));
+                if (nb_deleted_buckets_ == 0 && rounded_bucket_count(count) == bucket_count_) {
+                    return;
+                }
+                rehash_impl(count);
             }
 
             constexpr void reserve(size_type count) {
