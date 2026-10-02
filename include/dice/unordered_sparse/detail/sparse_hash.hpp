@@ -125,6 +125,15 @@ namespace dice::unordered_sparse {
         concept NotIterator = !std::is_convertible_v<K, Iterator> && !std::is_convertible_v<K, ConstIterator>;
 
         /**
+         * A type that meets the parts of the allocator requirements that the deduction guides check.
+         */
+        template<typename A>
+        concept AllocatorLike = requires (A &alloc, std::size_t n) {
+            typename A::value_type;
+            alloc.allocate(n);
+        };
+
+        /**
          * A type with the tuple protocol and two elements, like `std::pair`.
          */
         template<typename P>
@@ -143,9 +152,40 @@ namespace dice::unordered_sparse {
         };
 
         /**
+         * A range whose elements convert to `T` (the exposition-only concept container-compatible-range of the
+         * standard library).
+         */
+        template<typename R, typename T>
+        concept ContainerCompatibleRange = std::ranges::input_range<R> && std::convertible_to<std::ranges::range_reference_t<R>, T>;
+
+        /*
+         * Helpers for the deduction guides, as in the standard library.
+         */
+        template<typename InputIt>
+        using iter_value_t = typename std::iterator_traits<InputIt>::value_type;
+
+        template<typename InputIt>
+        using iter_key_t = std::remove_const_t<std::tuple_element_t<0, iter_value_t<InputIt>>>;
+
+        template<typename InputIt>
+        using iter_mapped_t = std::tuple_element_t<1, iter_value_t<InputIt>>;
+
+        template<typename InputIt>
+        using iter_to_alloc_t = std::pair<iter_key_t<InputIt>, iter_mapped_t<InputIt>>;
+
+        template<std::ranges::input_range R>
+        using range_key_t = std::remove_const_t<std::tuple_element_t<0, std::ranges::range_value_t<R>>>;
+
+        template<std::ranges::input_range R>
+        using range_mapped_t = std::tuple_element_t<1, std::ranges::range_value_t<R>>;
+
+        template<std::ranges::input_range R>
+        using range_to_alloc_t = std::pair<range_key_t<R>, range_mapped_t<R>>;
+
+        /**
          * `std::ceil(value)` as `std::size_t`, for a non-negative `value`. Saturates at the maximum of `std::size_t`.
          */
-        [[nodiscard]] inline std::size_t ceil_to_size(float value) noexcept {
+        [[nodiscard]] constexpr std::size_t ceil_to_size(float value) noexcept {
             if (!(value < static_cast<float>(std::numeric_limits<std::size_t>::max()))) {
                 return std::numeric_limits<std::size_t>::max();
             }
@@ -161,7 +201,7 @@ namespace dice::unordered_sparse {
         template<typename T, typename Allocator>
         struct value_holder {
             template<typename... Args>
-            explicit value_holder(Allocator &alloc, Args &&...args)
+            constexpr explicit value_holder(Allocator &alloc, Args &&...args)
                 : alloc_(alloc) {
                 std::allocator_traits<Allocator>::construct(alloc_, std::addressof(storage_.value), std::forward<Args>(args)...);
             }
@@ -171,11 +211,11 @@ namespace dice::unordered_sparse {
             value_holder &operator=(value_holder const &) = delete;
             value_holder &operator=(value_holder &&) = delete;
 
-            ~value_holder() {
+            constexpr ~value_holder() {
                 std::allocator_traits<Allocator>::destroy(alloc_, std::addressof(storage_.value));
             }
 
-            [[nodiscard]] T &get() noexcept {
+            [[nodiscard]] constexpr T &get() noexcept {
                 return storage_.value;
             }
 
@@ -184,10 +224,10 @@ namespace dice::unordered_sparse {
              * Storage for a `T` that is constructed and destroyed by hand.
              */
             union storage_type {
-                storage_type() noexcept {
+                constexpr storage_type() noexcept {
                 }
 
-                ~storage_type() {
+                constexpr ~storage_type() {
                 }
 
                 T value;
@@ -202,7 +242,7 @@ namespace dice::unordered_sparse {
          * constructor is then copied, as `std::pair` does.
          */
         template<typename T, typename U>
-        [[nodiscard]] decltype(auto) forward_or_copy(U &&u) noexcept {
+        [[nodiscard]] constexpr decltype(auto) forward_or_copy(U &&u) noexcept {
             if constexpr (std::is_constructible_v<T, U &&>) {
                 return std::forward<U>(u);
             } else {
@@ -223,7 +263,7 @@ namespace dice::unordered_sparse {
             T value;
 
             template<typename... KeyArgs, typename... ValueArgs>
-            map_slot(std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
+            constexpr map_slot(std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
                 : key(std::make_from_tuple<Key>(std::move(key_args))),
                   value(std::make_from_tuple<T>(std::move(value_args))) {
             }
@@ -232,19 +272,19 @@ namespace dice::unordered_sparse {
              * Constructs the slot from the two elements of a pair-like object, e.g. a `std::pair`.
              */
             template<PairLike P>
-            explicit map_slot(P &&pair)
+            constexpr explicit map_slot(P &&pair)
                 : key(forward_or_copy<Key>(std::get<0>(std::forward<P>(pair)))),
                   value(forward_or_copy<T>(std::get<1>(std::forward<P>(pair)))) {
             }
 
-            map_slot(map_slot const &) = default;
-            map_slot(map_slot &&) = default;
+            constexpr map_slot(map_slot const &) = default;
+            constexpr map_slot(map_slot &&) = default;
             map_slot &operator=(map_slot const &) = default;
             map_slot &operator=(map_slot &&) = default;
-            ~map_slot() = default;
+            constexpr ~map_slot() = default;
 
             template<typename Alloc, typename... KeyArgs, typename... ValueArgs>
-            map_slot(std::allocator_arg_t, Alloc const &alloc, std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
+            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
                 : key(std::apply([&alloc](auto &&...args) {
                       return std::make_obj_using_allocator<Key>(alloc, std::forward<decltype(args)>(args)...);
                   },
@@ -256,19 +296,19 @@ namespace dice::unordered_sparse {
             }
 
             template<typename Alloc, PairLike P>
-            map_slot(std::allocator_arg_t, Alloc const &alloc, P &&pair)
+            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, P &&pair)
                 : key(std::make_obj_using_allocator<Key>(alloc, std::get<0>(std::forward<P>(pair)))),
                   value(std::make_obj_using_allocator<T>(alloc, std::get<1>(std::forward<P>(pair)))) {
             }
 
             template<typename Alloc>
-            map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot const &other)
+            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot const &other)
                 : key(std::make_obj_using_allocator<Key>(alloc, other.key)),
                   value(std::make_obj_using_allocator<T>(alloc, other.value)) {
             }
 
             template<typename Alloc>
-            map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot &&other)
+            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot &&other)
                 : key(std::make_obj_using_allocator<Key>(alloc, std::move(other.key))),
                   value(std::make_obj_using_allocator<T>(alloc, std::move(other.value))) {
             }
@@ -281,7 +321,7 @@ namespace dice::unordered_sparse {
         struct arrow_proxy {
             Reference ref;
 
-            [[nodiscard]] Reference const *operator->() const noexcept {
+            [[nodiscard]] constexpr Reference const *operator->() const noexcept {
                 return std::addressof(ref);
             }
         };
@@ -301,19 +341,19 @@ namespace dice::unordered_sparse {
             using reference = std::pair<Key const &, T &>;
             using const_reference = std::pair<Key const &, T const &>;
 
-            [[nodiscard]] static Key const &key(slot_type const &slot) noexcept {
+            [[nodiscard]] static constexpr Key const &key(slot_type const &slot) noexcept {
                 return slot.key;
             }
 
-            [[nodiscard]] static T &mapped(slot_type &slot) noexcept {
+            [[nodiscard]] static constexpr T &mapped(slot_type &slot) noexcept {
                 return slot.value;
             }
 
-            [[nodiscard]] static T const &mapped(slot_type const &slot) noexcept {
+            [[nodiscard]] static constexpr T const &mapped(slot_type const &slot) noexcept {
                 return slot.value;
             }
 
-            [[nodiscard]] static Key const &key_of_value(value_type const &value) noexcept {
+            [[nodiscard]] static constexpr Key const &key_of_value(value_type const &value) noexcept {
                 return value.first;
             }
         };
@@ -331,11 +371,11 @@ namespace dice::unordered_sparse {
             using reference = Key const &;
             using const_reference = Key const &;
 
-            [[nodiscard]] static Key const &key(slot_type const &slot) noexcept {
+            [[nodiscard]] static constexpr Key const &key(slot_type const &slot) noexcept {
                 return slot;
             }
 
-            [[nodiscard]] static Key const &key_of_value(value_type const &value) noexcept {
+            [[nodiscard]] static constexpr Key const &key_of_value(value_type const &value) noexcept {
                 return value;
             }
         };
@@ -393,21 +433,21 @@ namespace dice::unordered_sparse {
             /**
              * @return the index of the `sparse_array` that holds bucket `ibucket` of the table
              */
-            [[nodiscard]] static std::size_t sparse_ibucket(std::size_t ibucket) noexcept {
+            [[nodiscard]] static constexpr std::size_t sparse_ibucket(std::size_t ibucket) noexcept {
                 return ibucket >> bucket_shift;
             }
 
             /**
              * @return the index of bucket `ibucket` of the table in its `sparse_array`
              */
-            [[nodiscard]] static size_type index_in_sparse_bucket(std::size_t ibucket) noexcept {
+            [[nodiscard]] static constexpr size_type index_in_sparse_bucket(std::size_t ibucket) noexcept {
                 return static_cast<size_type>(ibucket & bucket_mask);
             }
 
             /**
              * @return the number of `sparse_array`s of a table with `bucket_count` buckets
              */
-            [[nodiscard]] static std::size_t nb_sparse_buckets(std::size_t bucket_count) noexcept {
+            [[nodiscard]] static constexpr std::size_t nb_sparse_buckets(std::size_t bucket_count) noexcept {
                 if (bucket_count == 0) {
                     return 0;
                 }
@@ -415,22 +455,22 @@ namespace dice::unordered_sparse {
                 return std::max<std::size_t>(1, sparse_ibucket(std::bit_ceil(bucket_count)));
             }
 
-            sparse_array() noexcept = default;
+            constexpr sparse_array() noexcept = default;
 
             /**
              * For uses-allocator construction. The allocator is not stored.
              */
-            sparse_array(std::allocator_arg_t, Allocator const & /*alloc*/) noexcept {
+            constexpr sparse_array(std::allocator_arg_t, Allocator const & /*alloc*/) noexcept {
             }
 
-            explicit sparse_array(bool last_bucket) noexcept
+            constexpr explicit sparse_array(bool last_bucket) noexcept
                 : last_array_(last_bucket) {
             }
 
             /**
              * Allocates storage for `capacity` values. The allocator is const for the MoveInsertable requirement.
              */
-            sparse_array(size_type capacity, Allocator const &const_alloc)
+            constexpr sparse_array(size_type capacity, Allocator const &const_alloc)
                 : capacity_(capacity) {
                 if (capacity_ > 0) {
                     Allocator alloc(const_alloc);
@@ -442,7 +482,7 @@ namespace dice::unordered_sparse {
             /**
              * Copies `other` into storage from `const_alloc`.
              */
-            sparse_array(sparse_array const &other, Allocator const &const_alloc)
+            constexpr sparse_array(sparse_array const &other, Allocator const &const_alloc)
                 : bitmap_vals_(other.bitmap_vals_),
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
@@ -466,7 +506,7 @@ namespace dice::unordered_sparse {
                 }
             }
 
-            sparse_array(sparse_array &&other) noexcept
+            constexpr sparse_array(sparse_array &&other) noexcept
                 : values_(std::exchange(other.values_, nullptr)),
                   bitmap_vals_(std::exchange(other.bitmap_vals_, 0)),
                   bitmap_deleted_vals_(std::exchange(other.bitmap_deleted_vals_, 0)),
@@ -479,7 +519,7 @@ namespace dice::unordered_sparse {
              * Moves the values of `other` into storage from `const_alloc`, or copies them if their move constructor
              * can throw. `other` keeps its values, the moved ones in a moved-from state.
              */
-            sparse_array(sparse_array &&other, Allocator const &const_alloc)
+            constexpr sparse_array(sparse_array &&other, Allocator const &const_alloc)
                 : bitmap_vals_(other.bitmap_vals_),
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
@@ -505,7 +545,7 @@ namespace dice::unordered_sparse {
 
             sparse_array &operator=(sparse_array const &) = delete;
 
-            sparse_array &operator=(sparse_array &&other) noexcept {
+            constexpr sparse_array &operator=(sparse_array &&other) noexcept {
                 values_ = std::exchange(other.values_, nullptr);
                 bitmap_vals_ = std::exchange(other.bitmap_vals_, 0);
                 bitmap_deleted_vals_ = std::exchange(other.bitmap_deleted_vals_, 0);
@@ -515,47 +555,47 @@ namespace dice::unordered_sparse {
                 return *this;
             }
 
-            ~sparse_array() noexcept {
+            constexpr ~sparse_array() noexcept {
                 // the owner must have called clear(Allocator &) before
                 DICE_UNORDERED_SPARSE_ASSERT(capacity_ == 0 && nb_elements_ == 0 && values_ == nullptr);
             }
 
-            [[nodiscard]] iterator begin() noexcept {
+            [[nodiscard]] constexpr iterator begin() noexcept {
                 return values();
             }
 
-            [[nodiscard]] iterator end() noexcept {
+            [[nodiscard]] constexpr iterator end() noexcept {
                 return values() + nb_elements_;
             }
 
-            [[nodiscard]] const_iterator begin() const noexcept {
+            [[nodiscard]] constexpr const_iterator begin() const noexcept {
                 return cbegin();
             }
 
-            [[nodiscard]] const_iterator end() const noexcept {
+            [[nodiscard]] constexpr const_iterator end() const noexcept {
                 return cend();
             }
 
-            [[nodiscard]] const_iterator cbegin() const noexcept {
+            [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
                 return values();
             }
 
-            [[nodiscard]] const_iterator cend() const noexcept {
+            [[nodiscard]] constexpr const_iterator cend() const noexcept {
                 return values() + nb_elements_;
             }
 
-            [[nodiscard]] bool empty() const noexcept {
+            [[nodiscard]] constexpr bool empty() const noexcept {
                 return nb_elements_ == 0;
             }
 
-            [[nodiscard]] size_type size() const noexcept {
+            [[nodiscard]] constexpr size_type size() const noexcept {
                 return nb_elements_;
             }
 
             /**
              * Destroys all values and frees the storage.
              */
-            void clear(allocator_type &alloc) noexcept {
+            constexpr void clear(allocator_type &alloc) noexcept {
                 destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
 
                 values_ = nullptr;
@@ -568,30 +608,30 @@ namespace dice::unordered_sparse {
             /**
              * @return true if this is the last `sparse_array` of the table
              */
-            [[nodiscard]] bool last() const noexcept {
+            [[nodiscard]] constexpr bool last() const noexcept {
                 return last_array_;
             }
 
-            void set_as_last() noexcept {
+            constexpr void set_as_last() noexcept {
                 last_array_ = true;
             }
 
-            [[nodiscard]] bool has_value(size_type index) const noexcept {
+            [[nodiscard]] constexpr bool has_value(size_type index) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
                 return (bitmap_vals_ & (bitmap_type{1} << index)) != 0;
             }
 
-            [[nodiscard]] bool has_deleted_value(size_type index) const noexcept {
+            [[nodiscard]] constexpr bool has_deleted_value(size_type index) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
                 return (bitmap_deleted_vals_ & (bitmap_type{1} << index)) != 0;
             }
 
-            [[nodiscard]] iterator value(size_type index) noexcept {
+            [[nodiscard]] constexpr iterator value(size_type index) noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
                 return values() + index_to_offset(index);
             }
 
-            [[nodiscard]] const_iterator value(size_type index) const noexcept {
+            [[nodiscard]] constexpr const_iterator value(size_type index) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
                 return values() + index_to_offset(index);
             }
@@ -601,7 +641,7 @@ namespace dice::unordered_sparse {
              * @return iterator to the new value
              */
             template<typename... Args>
-            iterator set(allocator_type &alloc, size_type index, Args &&...value_args) {
+            constexpr iterator set(allocator_type &alloc, size_type index, Args &&...value_args) {
                 DICE_UNORDERED_SPARSE_ASSERT(!has_value(index));
 
                 size_type const offset = index_to_offset(index);
@@ -618,7 +658,7 @@ namespace dice::unordered_sparse {
                 return values() + offset;
             }
 
-            iterator erase(allocator_type &alloc, iterator position) {
+            constexpr iterator erase(allocator_type &alloc, iterator position) {
                 auto const offset = static_cast<size_type>(position - begin());
                 return erase(alloc, position, offset_to_index(offset));
             }
@@ -627,7 +667,7 @@ namespace dice::unordered_sparse {
              * Erases the value at `position`, which is at `index`, and marks the bucket as deleted.
              * @return iterator to the next value, or `end()`
              */
-            iterator erase(allocator_type &alloc, iterator position, size_type index) {
+            constexpr iterator erase(allocator_type &alloc, iterator position, size_type index) {
                 DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
                 DICE_UNORDERED_SPARSE_ASSERT(!has_deleted_value(index));
 
@@ -645,7 +685,7 @@ namespace dice::unordered_sparse {
                 return values() + offset;
             }
 
-            void swap(sparse_array &other) noexcept {
+            constexpr void swap(sparse_array &other) noexcept {
                 using std::swap;
 
                 swap(values_, other.values_);
@@ -657,24 +697,24 @@ namespace dice::unordered_sparse {
             }
 
         private:
-            [[nodiscard]] value_type *values() noexcept {
+            [[nodiscard]] constexpr value_type *values() noexcept {
                 return std::to_address(values_);
             }
 
-            [[nodiscard]] value_type const *values() const noexcept {
+            [[nodiscard]] constexpr value_type const *values() const noexcept {
                 return std::to_address(values_);
             }
 
             template<typename... Args>
-            static void construct_value(allocator_type &alloc, value_type *value, Args &&...value_args) {
+            static constexpr void construct_value(allocator_type &alloc, value_type *value, Args &&...value_args) {
                 allocator_traits::construct(alloc, value, std::forward<Args>(value_args)...);
             }
 
-            static void destroy_value(allocator_type &alloc, value_type *value) noexcept {
+            static constexpr void destroy_value(allocator_type &alloc, value_type *value) noexcept {
                 allocator_traits::destroy(alloc, value);
             }
 
-            static void destroy_and_deallocate_values(allocator_type &alloc, pointer values, size_type nb_values, size_type capacity_values) noexcept {
+            static constexpr void destroy_and_deallocate_values(allocator_type &alloc, pointer values, size_type nb_values, size_type capacity_values) noexcept {
                 if (capacity_values == 0) {
                     // nothing to deallocate, alloc.deallocate(nullptr, 0) is invalid
                     DICE_UNORDERED_SPARSE_ASSERT(nb_values == 0);
@@ -688,11 +728,11 @@ namespace dice::unordered_sparse {
                 allocator_traits::deallocate(alloc, values, capacity_values);
             }
 
-            [[nodiscard]] static size_type popcount(bitmap_type val) noexcept {
+            [[nodiscard]] static constexpr size_type popcount(bitmap_type val) noexcept {
                 return static_cast<size_type>(std::popcount(val));
             }
 
-            [[nodiscard]] size_type index_to_offset(size_type index) const noexcept {
+            [[nodiscard]] constexpr size_type index_to_offset(size_type index) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
                 return popcount(bitmap_vals_ & ((bitmap_type{1} << index) - bitmap_type{1}));
             }
@@ -700,7 +740,7 @@ namespace dice::unordered_sparse {
             /**
              * @return the index of the occupied bucket whose value is at `offset`
              */
-            [[nodiscard]] size_type offset_to_index(size_type offset) const noexcept {
+            [[nodiscard]] constexpr size_type offset_to_index(size_type offset) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(offset < nb_elements_);
 
                 bitmap_type bitmap = bitmap_vals_;
@@ -711,7 +751,7 @@ namespace dice::unordered_sparse {
                 return static_cast<size_type>(std::countr_zero(bitmap));
             }
 
-            [[nodiscard]] size_type next_capacity() const noexcept {
+            [[nodiscard]] constexpr size_type next_capacity() const noexcept {
                 return static_cast<size_type>(capacity_ + capacity_growth_step);
             }
 
@@ -727,7 +767,7 @@ namespace dice::unordered_sparse {
              * slower, but it is the only way to keep the strong exception guarantee.
              */
             template<typename... Args>
-            void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
+            constexpr void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
                 if constexpr (std::is_nothrow_move_constructible_v<value_type>) {
                     if (nb_elements_ < capacity_) {
                         insert_at_offset_no_realloc(alloc, offset, std::forward<Args>(value_args)...);
@@ -740,7 +780,7 @@ namespace dice::unordered_sparse {
             }
 
             template<typename... Args>
-            void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset, Args &&...value_args) {
+            constexpr void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset, Args &&...value_args) {
                 static_assert(std::is_nothrow_move_constructible_v<value_type>);
                 DICE_UNORDERED_SPARSE_ASSERT(offset <= nb_elements_);
                 DICE_UNORDERED_SPARSE_ASSERT(nb_elements_ < capacity_);
@@ -772,7 +812,7 @@ namespace dice::unordered_sparse {
             }
 
             template<typename... Args>
-            void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
+            constexpr void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
                 DICE_UNORDERED_SPARSE_ASSERT(new_capacity > nb_elements_);
 
                 pointer const new_values = allocator_traits::allocate(alloc, new_capacity);
@@ -835,7 +875,7 @@ namespace dice::unordered_sparse {
              * becomes the new storage. This is slower, but it is the only way to keep the strong exception
              * guarantee.
              */
-            void erase_at_offset(allocator_type &alloc, size_type offset) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
+            constexpr void erase_at_offset(allocator_type &alloc, size_type offset) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
                 DICE_UNORDERED_SPARSE_ASSERT(offset < nb_elements_);
                 value_type *const raw_values = values();
 
@@ -984,13 +1024,13 @@ namespace dice::unordered_sparse {
                 /**
                  * `slot_` is nullptr if `bucket_` is the end of the bucket array.
                  */
-                sparse_iterator(bucket_type *bucket, slot_pointer slot) noexcept
+                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot) noexcept
                     : bucket_(bucket),
                       slot_(slot),
                       slot_end_(slot == nullptr ? nullptr : bucket->end()) {
                 }
 
-                sparse_iterator(bucket_type *bucket, slot_pointer slot, slot_pointer slot_end) noexcept
+                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot, slot_pointer slot_end) noexcept
                     : bucket_(bucket),
                       slot_(slot),
                       slot_end_(slot_end) {
@@ -1008,20 +1048,20 @@ namespace dice::unordered_sparse {
                 using reference = std::conditional_t<is_const, typename Policy::const_reference, typename Policy::reference>;
                 using pointer = std::conditional_t<Policy::is_map, arrow_proxy<reference>, value_type const *>;
 
-                sparse_iterator() noexcept = default;
+                constexpr sparse_iterator() noexcept = default;
 
                 /**
                  * Converts an `iterator` into a `const_iterator`.
                  */
                 template<bool other_is_const>
                 requires (is_const && !other_is_const)
-                sparse_iterator(sparse_iterator<other_is_const> const &other) noexcept  // NOLINT(google-explicit-constructor)
+                constexpr sparse_iterator(sparse_iterator<other_is_const> const &other) noexcept  // NOLINT(google-explicit-constructor)
                     : bucket_(other.bucket_),
                       slot_(other.slot_),
                       slot_end_(other.slot_end_) {
                 }
 
-                [[nodiscard]] reference operator*() const noexcept {
+                [[nodiscard]] constexpr reference operator*() const noexcept {
                     if constexpr (Policy::is_map) {
                         return reference{Policy::key(*slot_), Policy::mapped(*slot_)};
                     } else {
@@ -1029,7 +1069,7 @@ namespace dice::unordered_sparse {
                     }
                 }
 
-                [[nodiscard]] pointer operator->() const noexcept {
+                [[nodiscard]] constexpr pointer operator->() const noexcept {
                     if constexpr (Policy::is_map) {
                         return pointer{**this};
                     } else {
@@ -1037,7 +1077,7 @@ namespace dice::unordered_sparse {
                     }
                 }
 
-                sparse_iterator &operator++() noexcept {
+                constexpr sparse_iterator &operator++() noexcept {
                     DICE_UNORDERED_SPARSE_ASSERT(slot_ != nullptr && slot_end_ == bucket_->end());
                     ++slot_;
 
@@ -1048,7 +1088,7 @@ namespace dice::unordered_sparse {
                     return *this;
                 }
 
-                sparse_iterator operator++(int) noexcept {
+                constexpr sparse_iterator operator++(int) noexcept {
                     sparse_iterator tmp(*this);
                     ++*this;
                     return tmp;
@@ -1058,7 +1098,7 @@ namespace dice::unordered_sparse {
                  * Two iterators of the same table are equal if they point to the same element. All end iterators
                  * have `slot_ == nullptr`.
                  */
-                friend bool operator==(sparse_iterator const &lhs, sparse_iterator const &rhs) noexcept {
+                friend constexpr bool operator==(sparse_iterator const &lhs, sparse_iterator const &rhs) noexcept {
                     return lhs.slot_ == rhs.slot_;
                 }
 
@@ -1066,7 +1106,7 @@ namespace dice::unordered_sparse {
                 /**
                  * Moves to the first element of the next group that is not empty, or to the end.
                  */
-                void to_next_group() noexcept {
+                constexpr void to_next_group() noexcept {
                     do {
                         if (bucket_->last()) {
                             ++bucket_;
@@ -1092,7 +1132,7 @@ namespace dice::unordered_sparse {
              * Creates a table with at least `bucket_count` buckets. The bucket count is rounded up to a power of two.
              * @throws std::length_error if `bucket_count` is larger than `max_bucket_count()`
              */
-            sparse_hash(size_type bucket_count, Hash const &hash, KeyEqual const &equal, slot_allocator_type const &alloc, float max_load_factor)
+            constexpr sparse_hash(size_type bucket_count, Hash const &hash, KeyEqual const &equal, slot_allocator_type const &alloc, float max_load_factor)
                 : alloc_(alloc),
                   hash_(hash),
                   key_equal_(equal) {
@@ -1108,18 +1148,18 @@ namespace dice::unordered_sparse {
                               "Key, and T if present, must be nothrow move constructible and/or copy constructible.");
             }
 
-            ~sparse_hash() {
+            constexpr ~sparse_hash() {
                 destroy_buckets();
             }
 
-            sparse_hash(sparse_hash const &other)
+            constexpr sparse_hash(sparse_hash const &other)
                 : sparse_hash(other, slot_allocator_traits::select_on_container_copy_construction(other.alloc_)) {
             }
 
             /**
              * Copies `other`, with storage from `alloc`.
              */
-            sparse_hash(sparse_hash const &other, slot_allocator_type const &alloc)
+            constexpr sparse_hash(sparse_hash const &other, slot_allocator_type const &alloc)
                 : alloc_(alloc),
                   hash_(other.hash_),
                   key_equal_(other.key_equal_),
@@ -1132,9 +1172,9 @@ namespace dice::unordered_sparse {
                 copy_buckets_from(other);
             }
 
-            sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible_v<slot_allocator_type>
-                                                      && std::is_nothrow_move_constructible_v<Hash>
-                                                      && std::is_nothrow_move_constructible_v<KeyEqual>)
+            constexpr sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible_v<slot_allocator_type>
+                                                                && std::is_nothrow_move_constructible_v<Hash>
+                                                                && std::is_nothrow_move_constructible_v<KeyEqual>)
                 : alloc_(std::move(other.alloc_)),
                   hash_(std::move(other.hash_)),
                   key_equal_(std::move(other.key_equal_)),
@@ -1148,7 +1188,32 @@ namespace dice::unordered_sparse {
                   max_load_factor_(other.max_load_factor_) {
             }
 
-            sparse_hash &operator=(sparse_hash const &other) {
+            /**
+             * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
+             * `other`, the elements are moved one by one, or copied if their move constructor can throw, and `other`
+             * is left empty.
+             */
+            constexpr sparse_hash(sparse_hash &&other, slot_allocator_type const &alloc)
+                : alloc_(alloc),
+                  hash_(std::move(other.hash_)),
+                  key_equal_(std::move(other.key_equal_)),
+                  bucket_count_(other.bucket_count_),
+                  nb_elements_(other.nb_elements_),
+                  nb_deleted_buckets_(other.nb_deleted_buckets_),
+                  load_threshold_rehash_(other.load_threshold_rehash_),
+                  load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
+                  max_load_factor_(other.max_load_factor_) {
+                if (allocator_is_always_equal || alloc_ == other.alloc_) {
+                    buckets_ = std::exchange(other.buckets_, nullptr);
+                    nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
+                } else {
+                    move_buckets_from(other);
+                    other.destroy_buckets();
+                }
+                other.reset_to_empty();
+            }
+
+            constexpr sparse_hash &operator=(sparse_hash const &other) {
                 if (this == &other) {
                     return *this;
                 }
@@ -1176,9 +1241,9 @@ namespace dice::unordered_sparse {
                 return *this;
             }
 
-            sparse_hash &operator=(sparse_hash &&other) noexcept((propagate_on_move_assignment || allocator_is_always_equal)
-                                                                 && std::is_nothrow_move_assignable_v<Hash>
-                                                                 && std::is_nothrow_move_assignable_v<KeyEqual>) {
+            constexpr sparse_hash &operator=(sparse_hash &&other) noexcept((propagate_on_move_assignment || allocator_is_always_equal)
+                                                                           && std::is_nothrow_move_assignable_v<Hash>
+                                                                           && std::is_nothrow_move_assignable_v<KeyEqual>) {
                 if (this == &other) {
                     return *this;
                 }
@@ -1215,14 +1280,14 @@ namespace dice::unordered_sparse {
                 return *this;
             }
 
-            [[nodiscard]] allocator_type get_allocator() const noexcept {
+            [[nodiscard]] constexpr allocator_type get_allocator() const noexcept {
                 return allocator_type(alloc_);
             }
 
             /*
              * Iterators
              */
-            [[nodiscard]] iterator begin() noexcept {
+            [[nodiscard]] constexpr iterator begin() noexcept {
                 sparse_array *bucket = buckets_begin();
                 sparse_array *const last = buckets_end();
                 while (bucket != last && bucket->empty()) {
@@ -1232,11 +1297,11 @@ namespace dice::unordered_sparse {
                 return iterator(bucket, bucket != last ? bucket->begin() : nullptr);
             }
 
-            [[nodiscard]] const_iterator begin() const noexcept {
+            [[nodiscard]] constexpr const_iterator begin() const noexcept {
                 return cbegin();
             }
 
-            [[nodiscard]] const_iterator cbegin() const noexcept {
+            [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
                 sparse_array const *bucket = buckets_begin();
                 sparse_array const *const last = buckets_end();
                 while (bucket != last && bucket->empty()) {
@@ -1246,37 +1311,37 @@ namespace dice::unordered_sparse {
                 return const_iterator(bucket, bucket != last ? bucket->cbegin() : nullptr);
             }
 
-            [[nodiscard]] iterator end() noexcept {
+            [[nodiscard]] constexpr iterator end() noexcept {
                 return iterator(buckets_end(), nullptr);
             }
 
-            [[nodiscard]] const_iterator end() const noexcept {
+            [[nodiscard]] constexpr const_iterator end() const noexcept {
                 return cend();
             }
 
-            [[nodiscard]] const_iterator cend() const noexcept {
+            [[nodiscard]] constexpr const_iterator cend() const noexcept {
                 return const_iterator(buckets_end(), nullptr);
             }
 
             /*
              * Capacity
              */
-            [[nodiscard]] bool empty() const noexcept {
+            [[nodiscard]] constexpr bool empty() const noexcept {
                 return nb_elements_ == 0;
             }
 
-            [[nodiscard]] size_type size() const noexcept {
+            [[nodiscard]] constexpr size_type size() const noexcept {
                 return nb_elements_;
             }
 
-            [[nodiscard]] size_type max_size() const noexcept {
+            [[nodiscard]] constexpr size_type max_size() const noexcept {
                 return std::min<size_type>(slot_allocator_traits::max_size(alloc_), max_bucket_count());
             }
 
             /*
              * Modifiers
              */
-            void clear() noexcept {
+            constexpr void clear() noexcept {
                 for (sparse_array &bucket : buckets()) {
                     bucket.clear(alloc_);
                 }
@@ -1285,16 +1350,25 @@ namespace dice::unordered_sparse {
                 nb_deleted_buckets_ = 0;
             }
 
-            std::pair<iterator, bool> insert(value_type const &value) {
+            constexpr std::pair<iterator, bool> insert(value_type const &value) {
                 return insert_impl(Policy::key_of_value(value), value);
             }
 
-            std::pair<iterator, bool> insert(value_type &&value) {
+            constexpr std::pair<iterator, bool> insert(value_type &&value) {
                 return insert_impl(Policy::key_of_value(value), std::move(value));
             }
 
+            /**
+             * Inserts a set element whose key compares equal to `key`. The element is constructed from `key`
+             * only if it is inserted.
+             */
+            template<typename K>
+            constexpr std::pair<iterator, bool> insert_key(K &&key) {
+                return insert_impl(key, std::forward<K>(key));
+            }
+
             template<typename V>
-            iterator insert_hint(const_iterator hint, V &&value) {
+            constexpr iterator insert_hint(const_iterator hint, V &&value) {
                 if (hint != cend() && compare_keys(key_of(hint), Policy::key_of_value(value))) {
                     return mutable_iterator(hint);
                 }
@@ -1303,7 +1377,7 @@ namespace dice::unordered_sparse {
             }
 
             template<LegacyInputIterator InputIt>
-            void insert(InputIt first, InputIt last) {
+            constexpr void insert(InputIt first, InputIt last) {
                 if constexpr (std::forward_iterator<InputIt>) {
                     reserve_for_insertion(static_cast<std::size_t>(std::distance(first, last)));
                 }
@@ -1313,8 +1387,24 @@ namespace dice::unordered_sparse {
                 }
             }
 
+            /**
+             * Inserts every element of `range` whose key is not in the table yet.
+             */
+            template<std::ranges::input_range R>
+            constexpr void insert_range(R &&range) {
+                if constexpr (std::ranges::sized_range<R>) {
+                    reserve_for_insertion(static_cast<std::size_t>(std::ranges::size(range)));
+                } else if constexpr (std::ranges::forward_range<R>) {
+                    reserve_for_insertion(static_cast<std::size_t>(std::ranges::distance(range)));
+                }
+
+                for (auto &&element : range) {
+                    emplace_value(std::forward<decltype(element)>(element));
+                }
+            }
+
             template<typename K, typename M>
-            std::pair<iterator, bool> insert_or_assign(K &&key, M &&obj) {
+            constexpr std::pair<iterator, bool> insert_or_assign(K &&key, M &&obj) {
                 auto it = try_emplace(std::forward<K>(key), std::forward<M>(obj));
                 if (!it.second) {
                     Policy::mapped(*it.first.slot_) = std::forward<M>(obj);
@@ -1324,7 +1414,7 @@ namespace dice::unordered_sparse {
             }
 
             template<typename K, typename M>
-            iterator insert_or_assign_hint(const_iterator hint, K &&key, M &&obj) {
+            constexpr iterator insert_or_assign_hint(const_iterator hint, K &&key, M &&obj) {
                 if (hint != cend() && compare_keys(key_of(hint), key)) {
                     auto it = mutable_iterator(hint);
                     Policy::mapped(*it.slot_) = std::forward<M>(obj);
@@ -1339,12 +1429,12 @@ namespace dice::unordered_sparse {
              * Constructs a `value_type` from `args` and inserts it if its key is not in the table yet.
              */
             template<typename... Args>
-            std::pair<iterator, bool> emplace(Args &&...args) {
+            constexpr std::pair<iterator, bool> emplace(Args &&...args) {
                 return insert(value_type(std::forward<Args>(args)...));
             }
 
             template<typename... Args>
-            iterator emplace_hint(const_iterator hint, Args &&...args) {
+            constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {
                 return insert_hint(hint, value_type(std::forward<Args>(args)...));
             }
 
@@ -1353,12 +1443,12 @@ namespace dice::unordered_sparse {
              * map. Otherwise neither `key` nor `args` are used.
              */
             template<typename K, typename... Args>
-            std::pair<iterator, bool> try_emplace(K &&key, Args &&...args) {
+            constexpr std::pair<iterator, bool> try_emplace(K &&key, Args &&...args) {
                 return insert_impl(key, std::piecewise_construct, std::forward_as_tuple(std::forward<K>(key)), std::forward_as_tuple(std::forward<Args>(args)...));
             }
 
             template<typename K, typename... Args>
-            iterator try_emplace_hint(const_iterator hint, K &&key, Args &&...args) {
+            constexpr iterator try_emplace_hint(const_iterator hint, K &&key, Args &&...args) {
                 if (hint != cend() && compare_keys(key_of(hint), key)) {
                     return mutable_iterator(hint);
                 }
@@ -1370,7 +1460,7 @@ namespace dice::unordered_sparse {
              * Erases the element at `pos`.
              * @return iterator to the element after the erased one
              */
-            iterator erase(iterator pos) {
+            constexpr iterator erase(iterator pos) {
                 DICE_UNORDERED_SPARSE_ASSERT(pos != end() && nb_elements_ > 0);
                 sparse_array *bucket = pos.bucket_;
                 slot_type *const next_slot = bucket->erase(alloc_, pos.slot_);
@@ -1389,11 +1479,11 @@ namespace dice::unordered_sparse {
                 return bucket == last ? end() : iterator(bucket, bucket->begin());
             }
 
-            iterator erase(const_iterator pos) {
+            constexpr iterator erase(const_iterator pos) {
                 return erase(mutable_iterator(pos));
             }
 
-            iterator erase(const_iterator first, const_iterator last) {
+            constexpr iterator erase(const_iterator first, const_iterator last) {
                 if (first == last) {
                     return mutable_iterator(first);
                 }
@@ -1408,7 +1498,7 @@ namespace dice::unordered_sparse {
             }
 
             template<typename K>
-            size_type erase(K const &key) {
+            constexpr size_type erase(K const &key) {
                 return erase_impl(key, hash_key(key));
             }
 
@@ -1416,12 +1506,36 @@ namespace dice::unordered_sparse {
              * @param hash `hash_function()(key)`
              */
             template<typename K>
-            size_type erase(K const &key, std::size_t hash) {
+            constexpr size_type erase(K const &key, std::size_t hash) {
                 return erase_impl(key, mixed_hash<Hash>(hash));
             }
 
-            void swap(sparse_hash &other) noexcept(std::is_nothrow_swappable_v<Hash>
-                                                   && std::is_nothrow_swappable_v<KeyEqual>) {
+            /**
+             * Moves every element of `source` whose key is not in this table into this table, and erases it from
+             * `source`. An element is copied instead if its move constructor can throw. If an exception is thrown,
+             * the element that was being merged is still in `source`. A rehash of this table that throws can leave
+             * this table empty, see `rehash_impl`.
+             */
+            template<typename OtherHash>
+            constexpr void merge(OtherHash &source) {
+                for (auto it = source.begin(); it != source.end();) {
+                    auto &slot = *it.slot_;
+                    std::size_t const hash = hash_key(Policy::key(slot));
+                    if (find_impl(Policy::key(slot), hash) != cend()) {
+                        ++it;
+                        continue;
+                    }
+
+                    // A rehash moves a new element before it moves the others. Here it runs before the element is
+                    // touched, so that the element stays in `source` if the rehash throws.
+                    make_room_for_one_insertion();
+                    insert_impl_hashed(Policy::key(slot), hash, std::move_if_noexcept(slot));
+                    it = source.erase(it);
+                }
+            }
+
+            constexpr void swap(sparse_hash &other) noexcept(std::is_nothrow_swappable_v<Hash>
+                                                             && std::is_nothrow_swappable_v<KeyEqual>) {
                 using std::swap;
 
                 // the functors first: if one of them throws, the storage and the allocators are not swapped
@@ -1452,39 +1566,39 @@ namespace dice::unordered_sparse {
              */
             template<typename Self, typename K>
             requires Policy::is_map
-            auto &at(this Self &self, K const &key) {
+            constexpr auto &at(this Self &self, K const &key) {
                 return self.at_mixed(key, self.hash_key(key));
             }
 
             template<typename Self, typename K>
             requires Policy::is_map
-            auto &at(this Self &self, K const &key, std::size_t hash) {
+            constexpr auto &at(this Self &self, K const &key, std::size_t hash) {
                 return self.at_mixed(key, mixed_hash<Hash>(hash));
             }
 
             template<typename K>
             requires Policy::is_map
-            auto &operator[](K &&key) {
+            constexpr auto &operator[](K &&key) {
                 return Policy::mapped(*try_emplace(std::forward<K>(key)).first.slot_);
             }
 
             template<typename K>
-            [[nodiscard]] bool contains(K const &key) const {
+            [[nodiscard]] constexpr bool contains(K const &key) const {
                 return find_impl(key, hash_key(key)) != cend();
             }
 
             template<typename K>
-            [[nodiscard]] bool contains(K const &key, std::size_t hash) const {
+            [[nodiscard]] constexpr bool contains(K const &key, std::size_t hash) const {
                 return find_impl(key, mixed_hash<Hash>(hash)) != cend();
             }
 
             template<typename K>
-            [[nodiscard]] size_type count(K const &key) const {
+            [[nodiscard]] constexpr size_type count(K const &key) const {
                 return contains(key) ? size_type{1} : size_type{0};
             }
 
             template<typename K>
-            [[nodiscard]] size_type count(K const &key, std::size_t hash) const {
+            [[nodiscard]] constexpr size_type count(K const &key, std::size_t hash) const {
                 return contains(key, hash) ? size_type{1} : size_type{0};
             }
 
@@ -1492,29 +1606,29 @@ namespace dice::unordered_sparse {
              * @return `iterator` for a non-const table, `const_iterator` for a const table
              */
             template<typename Self, typename K>
-            [[nodiscard]] auto find(this Self &self, K const &key) {
+            [[nodiscard]] constexpr auto find(this Self &self, K const &key) {
                 return self.find_mixed(key, self.hash_key(key));
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] auto find(this Self &self, K const &key, std::size_t hash) {
+            [[nodiscard]] constexpr auto find(this Self &self, K const &key, std::size_t hash) {
                 return self.find_mixed(key, mixed_hash<Hash>(hash));
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] auto equal_range(this Self &self, K const &key) {
+            [[nodiscard]] constexpr auto equal_range(this Self &self, K const &key) {
                 return self.equal_range_mixed(key, self.hash_key(key));
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] auto equal_range(this Self &self, K const &key, std::size_t hash) {
+            [[nodiscard]] constexpr auto equal_range(this Self &self, K const &key, std::size_t hash) {
                 return self.equal_range_mixed(key, mixed_hash<Hash>(hash));
             }
 
             /*
              * Bucket interface
              */
-            [[nodiscard]] size_type bucket_count() const noexcept {
+            [[nodiscard]] constexpr size_type bucket_count() const noexcept {
                 return bucket_count_;
             }
 
@@ -1522,7 +1636,7 @@ namespace dice::unordered_sparse {
              * @return the largest power of two of `std::size_t`, or less if the allocator cannot provide as many
              * `sparse_array`s
              */
-            [[nodiscard]] size_type max_bucket_count() const noexcept {
+            [[nodiscard]] constexpr size_type max_bucket_count() const noexcept {
                 constexpr auto largest_power_of_two = static_cast<size_type>((std::numeric_limits<std::size_t>::max() / 2) + 1);
                 return std::min<size_type>(largest_power_of_two, bucket_allocator_traits::max_size(bucket_allocator_type(alloc_)));
             }
@@ -1530,7 +1644,7 @@ namespace dice::unordered_sparse {
             /*
              * Hash policy
              */
-            [[nodiscard]] float load_factor() const noexcept {
+            [[nodiscard]] constexpr float load_factor() const noexcept {
                 if (bucket_count() == 0) {
                     return 0;
                 }
@@ -1538,14 +1652,14 @@ namespace dice::unordered_sparse {
                 return static_cast<float>(nb_elements_) / static_cast<float>(bucket_count());
             }
 
-            [[nodiscard]] float max_load_factor() const noexcept {
+            [[nodiscard]] constexpr float max_load_factor() const noexcept {
                 return max_load_factor_;
             }
 
             /**
              * Sets the maximum load factor, clamped to [0.1, 0.8].
              */
-            void max_load_factor(float ml) noexcept {
+            constexpr void max_load_factor(float ml) noexcept {
                 max_load_factor_ = std::max(min_max_load_factor, std::min(ml, max_max_load_factor));
                 load_threshold_rehash_ = static_cast<size_type>(static_cast<float>(bucket_count()) * max_load_factor_);
 
@@ -1554,36 +1668,36 @@ namespace dice::unordered_sparse {
                 load_threshold_clear_deleted_ = static_cast<size_type>(static_cast<float>(bucket_count()) * max_load_factor_with_deleted_buckets);
             }
 
-            void rehash(size_type count) {
+            constexpr void rehash(size_type count) {
                 count = std::max(count, static_cast<size_type>(ceil_to_size(static_cast<float>(size()) / max_load_factor())));
                 rehash_impl(count);
             }
 
-            void reserve(size_type count) {
+            constexpr void reserve(size_type count) {
                 rehash(static_cast<size_type>(ceil_to_size(static_cast<float>(count) / max_load_factor())));
             }
 
             /*
              * Observers
              */
-            [[nodiscard]] hasher hash_function() const {
+            [[nodiscard]] constexpr hasher hash_function() const {
                 return hash_;
             }
 
-            [[nodiscard]] key_equal key_eq() const {
+            [[nodiscard]] constexpr key_equal key_eq() const {
                 return key_equal_;
             }
 
             /*
              * Other
              */
-            [[nodiscard]] iterator mutable_iterator(const_iterator pos) noexcept {
+            [[nodiscard]] constexpr iterator mutable_iterator(const_iterator pos) noexcept {
                 return iterator(const_cast<sparse_array *>(pos.bucket_), const_cast<slot_type *>(pos.slot_), const_cast<slot_type *>(pos.slot_end_));
             }
 
         private:
             template<typename Self, typename K>
-            [[nodiscard]] auto find_mixed(this Self &self, K const &key, std::size_t mixed) {
+            [[nodiscard]] constexpr auto find_mixed(this Self &self, K const &key, std::size_t mixed) {
                 if constexpr (std::is_const_v<Self>) {
                     return self.find_impl(key, mixed);
                 } else {
@@ -1592,7 +1706,7 @@ namespace dice::unordered_sparse {
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] auto &at_mixed(this Self &self, K const &key, std::size_t mixed) {
+            [[nodiscard]] constexpr auto &at_mixed(this Self &self, K const &key, std::size_t mixed) {
                 auto const it = self.find_mixed(key, mixed);
                 if (it == self.end()) {
                     throw std::out_of_range("Couldn't find key.");
@@ -1602,41 +1716,41 @@ namespace dice::unordered_sparse {
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] auto equal_range_mixed(this Self &self, K const &key, std::size_t mixed) {
+            [[nodiscard]] constexpr auto equal_range_mixed(this Self &self, K const &key, std::size_t mixed) {
                 auto const it = self.find_mixed(key, mixed);
                 return std::pair{it, (it == self.end()) ? it : std::next(it)};
             }
 
-            [[nodiscard]] sparse_array *buckets_begin() noexcept {
+            [[nodiscard]] constexpr sparse_array *buckets_begin() noexcept {
                 return std::to_address(buckets_);
             }
 
-            [[nodiscard]] sparse_array const *buckets_begin() const noexcept {
+            [[nodiscard]] constexpr sparse_array const *buckets_begin() const noexcept {
                 return std::to_address(buckets_);
             }
 
-            [[nodiscard]] sparse_array *buckets_end() noexcept {
+            [[nodiscard]] constexpr sparse_array *buckets_end() noexcept {
                 return buckets_begin() + nb_sparse_buckets_;
             }
 
-            [[nodiscard]] sparse_array const *buckets_end() const noexcept {
+            [[nodiscard]] constexpr sparse_array const *buckets_end() const noexcept {
                 return buckets_begin() + nb_sparse_buckets_;
             }
 
-            [[nodiscard]] std::ranges::subrange<sparse_array *> buckets() noexcept {
+            [[nodiscard]] constexpr std::ranges::subrange<sparse_array *> buckets() noexcept {
                 return {buckets_begin(), buckets_end()};
             }
 
-            [[nodiscard]] std::ranges::subrange<sparse_array const *> buckets() const noexcept {
+            [[nodiscard]] constexpr std::ranges::subrange<sparse_array const *> buckets() const noexcept {
                 return {buckets_begin(), buckets_end()};
             }
 
             template<typename K1, typename K2>
-            [[nodiscard]] bool compare_keys(K1 const &key1, K2 const &key2) const {
+            [[nodiscard]] constexpr bool compare_keys(K1 const &key1, K2 const &key2) const {
                 return key_equal_(key1, key2);
             }
 
-            [[nodiscard]] static key_type const &key_of(const_iterator it) noexcept {
+            [[nodiscard]] static constexpr key_type const &key_of(const_iterator it) noexcept {
                 return Policy::key(*it.slot_);
             }
 
@@ -1644,7 +1758,7 @@ namespace dice::unordered_sparse {
              * @return `hash_function()(key)`, mixed (see `hash_is_avalanching`)
              */
             template<typename K>
-            [[nodiscard]] std::size_t hash_key(K const &key) const {
+            [[nodiscard]] constexpr std::size_t hash_key(K const &key) const {
                 return mixed_hash<Hash>(hash_(key));
             }
 
@@ -1652,7 +1766,7 @@ namespace dice::unordered_sparse {
              * @param hash a mixed hash
              * @return the bucket of `hash`. The table must have buckets.
              */
-            [[nodiscard]] std::size_t bucket_for_hash(std::size_t hash) const noexcept {
+            [[nodiscard]] constexpr std::size_t bucket_for_hash(std::size_t hash) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(bucket_count_ > 0);
                 return hash & (bucket_count_ - 1);
             }
@@ -1660,7 +1774,7 @@ namespace dice::unordered_sparse {
             /**
              * @return the bucket after `ibucket` on the quadratic probe sequence, at probe number `iprobe`
              */
-            [[nodiscard]] std::size_t next_bucket(std::size_t ibucket, std::size_t iprobe) const noexcept {
+            [[nodiscard]] constexpr std::size_t next_bucket(std::size_t ibucket, std::size_t iprobe) const noexcept {
                 return (ibucket + iprobe) & (bucket_count_ - 1);
             }
 
@@ -1668,7 +1782,7 @@ namespace dice::unordered_sparse {
              * @return `bucket_count` rounded up to a power of two, or 0 for 0
              * @throws std::length_error if the result is larger than `max_bucket_count()`
              */
-            [[nodiscard]] size_type rounded_bucket_count(size_type bucket_count) const {
+            [[nodiscard]] constexpr size_type rounded_bucket_count(size_type bucket_count) const {
                 if (bucket_count > max_bucket_count()) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
@@ -1687,7 +1801,7 @@ namespace dice::unordered_sparse {
              * @return the bucket count after the next growth, twice the current one, at least 2
              * @throws std::length_error if the table cannot grow
              */
-            [[nodiscard]] size_type next_bucket_count() const {
+            [[nodiscard]] constexpr size_type next_bucket_count() const {
                 if (bucket_count_ > max_bucket_count() / 2) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
@@ -1697,7 +1811,7 @@ namespace dice::unordered_sparse {
             /**
              * Allocates `nb_sparse_buckets` empty `sparse_array`s and makes them the buckets of the table.
              */
-            void allocate_buckets(std::size_t nb_sparse_buckets) {
+            constexpr void allocate_buckets(std::size_t nb_sparse_buckets) {
                 DICE_UNORDERED_SPARSE_ASSERT(buckets_ == nullptr && nb_sparse_buckets > 0);
                 bucket_allocator_type bucket_alloc(alloc_);
                 bucket_pointer const new_buckets = bucket_allocator_traits::allocate(bucket_alloc, nb_sparse_buckets);
@@ -1714,7 +1828,7 @@ namespace dice::unordered_sparse {
             /**
              * Destroys all elements and frees the bucket array. The counters stay as they are.
              */
-            void destroy_buckets() noexcept {
+            constexpr void destroy_buckets() noexcept {
                 if (nb_sparse_buckets_ == 0) {
                     return;
                 }
@@ -1733,7 +1847,7 @@ namespace dice::unordered_sparse {
             /**
              * Sets the table to the state of a table with a bucket count of 0. Expects that it has no buckets.
              */
-            void reset_to_empty() noexcept {
+            constexpr void reset_to_empty() noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(buckets_ == nullptr && nb_sparse_buckets_ == 0);
                 bucket_count_ = 0;
                 nb_elements_ = 0;
@@ -1747,7 +1861,7 @@ namespace dice::unordered_sparse {
              * constructing each new bucket in place. On an exception the table has no buckets.
              */
             template<typename OtherHash, typename Make>
-            void build_buckets_from(OtherHash &other, Make const &make) {
+            constexpr void build_buckets_from(OtherHash &other, Make const &make) {
                 DICE_UNORDERED_SPARSE_ASSERT(buckets_ == nullptr && nb_sparse_buckets_ == 0);
                 if (other.nb_sparse_buckets_ == 0) {
                     return;
@@ -1776,7 +1890,7 @@ namespace dice::unordered_sparse {
                 nb_sparse_buckets_ = other.nb_sparse_buckets_;
             }
 
-            void copy_buckets_from(sparse_hash const &other) {
+            constexpr void copy_buckets_from(sparse_hash const &other) {
                 build_buckets_from(other, [this](sparse_array *target, sparse_array const &source) {
                     std::construct_at(target, source, alloc_);
                 });
@@ -1787,7 +1901,7 @@ namespace dice::unordered_sparse {
              * constructor can throw. `other` keeps its buckets and its elements, the moved ones in a moved-from
              * state.
              */
-            void move_buckets_from(sparse_hash &other) {
+            constexpr void move_buckets_from(sparse_hash &other) {
                 build_buckets_from(other, [this](sparse_array *target, sparse_array &source) {
                     std::construct_at(target, std::move(source), alloc_);
                 });
@@ -1796,7 +1910,7 @@ namespace dice::unordered_sparse {
             /**
              * Reserves room for `nb_elements_to_insert` more elements if the table does not have it.
              */
-            void reserve_for_insertion(std::size_t nb_elements_to_insert) {
+            constexpr void reserve_for_insertion(std::size_t nb_elements_to_insert) {
                 // a lower max load factor can put the threshold below the size
                 size_type const nb_free_buckets = load_threshold_rehash_ > size() ? load_threshold_rehash_ - size() : 0;
                 if (nb_elements_to_insert > 0 && nb_free_buckets < nb_elements_to_insert) {
@@ -1805,10 +1919,23 @@ namespace dice::unordered_sparse {
             }
 
             /**
+             * Grows the table, or removes the deleted-bucket markers, if the insertion of one new element would do
+             * it. After it, the insertion of one new element does not rehash.
+             */
+            constexpr void make_room_for_one_insertion() {
+                while (size() >= load_threshold_rehash_) {
+                    rehash_impl(next_bucket_count());
+                }
+                if (size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
+                    clear_deleted_buckets();
+                }
+            }
+
+            /**
              * Inserts an element of a range: `value_type` directly, anything else through `emplace`.
              */
             template<typename V>
-            void emplace_value(V &&value) {
+            constexpr void emplace_value(V &&value) {
                 if constexpr (std::is_same_v<std::remove_cvref_t<V>, value_type>) {
                     insert(std::forward<V>(value));
                 } else {
@@ -1824,7 +1951,7 @@ namespace dice::unordered_sparse {
              * on until an empty bucket, and remembers the first deleted bucket for the insertion.
              */
             template<typename K, typename... Args>
-            std::pair<iterator, bool> insert_impl(K const &key, Args &&...args) {
+            constexpr std::pair<iterator, bool> insert_impl(K const &key, Args &&...args) {
                 return insert_impl_hashed(key, hash_key(key), std::forward<Args>(args)...);
             }
 
@@ -1832,7 +1959,7 @@ namespace dice::unordered_sparse {
              * `insert_impl` with the mixed hash of `key`.
              */
             template<typename K, typename... Args>
-            std::pair<iterator, bool> insert_impl_hashed(K const &key, std::size_t hash, Args &&...args) {
+            constexpr std::pair<iterator, bool> insert_impl_hashed(K const &key, std::size_t hash, Args &&...args) {
                 if (nb_sparse_buckets_ == 0) {
                     return insert_new(hash, 0, 0, false, std::forward<Args>(args)...);
                 }
@@ -1877,7 +2004,7 @@ namespace dice::unordered_sparse {
              * the new element.
              */
             template<typename... Args>
-            std::pair<iterator, bool> insert_new(std::size_t hash, std::size_t sparse_ibucket, array_size_type index_in_sparse_bucket, bool reuses_deleted_bucket, Args &&...args) {
+            constexpr std::pair<iterator, bool> insert_new(std::size_t hash, std::size_t sparse_ibucket, array_size_type index_in_sparse_bucket, bool reuses_deleted_bucket, Args &&...args) {
                 bool const grows = size() >= load_threshold_rehash_;
                 if (grows || size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
                     // `key` and the arguments may refer to elements that the rehash moves, so the new element is
@@ -1902,7 +2029,7 @@ namespace dice::unordered_sparse {
             }
 
             template<typename K>
-            size_type erase_impl(K const &key, std::size_t hash) {
+            constexpr size_type erase_impl(K const &key, std::size_t hash) {
                 if (nb_sparse_buckets_ == 0) {
                     return 0;
                 }
@@ -1933,7 +2060,7 @@ namespace dice::unordered_sparse {
             }
 
             template<typename K>
-            [[nodiscard]] const_iterator find_impl(K const &key, std::size_t hash) const {
+            [[nodiscard]] constexpr const_iterator find_impl(K const &key, std::size_t hash) const {
                 if (nb_sparse_buckets_ == 0) {
                     return cend();
                 }
@@ -1962,7 +2089,7 @@ namespace dice::unordered_sparse {
             /**
              * Removes the deleted-bucket markers with a rehash to the same bucket count.
              */
-            void clear_deleted_buckets() {
+            constexpr void clear_deleted_buckets() {
                 rehash_impl(bucket_count_);
                 DICE_UNORDERED_SPARSE_ASSERT(nb_deleted_buckets_ == 0);
             }
@@ -1987,7 +2114,7 @@ namespace dice::unordered_sparse {
              *
              * The table takes the new buckets with `swap_storage`, which cannot throw.
              */
-            void rehash_impl(size_type count) {
+            constexpr void rehash_impl(size_type count) {
                 sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
 
                 if constexpr (copy_on_rehash) {
@@ -2017,7 +2144,7 @@ namespace dice::unordered_sparse {
              * Swaps the buckets and the counters with `other`, which has the same allocator, hash function, key
              * equality and maximum load factor. Unlike `swap`, it needs no swappable hash function or key equality.
              */
-            void swap_storage(sparse_hash &other) noexcept {
+            constexpr void swap_storage(sparse_hash &other) noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(alloc_ == other.alloc_);
                 using std::swap;
                 swap(buckets_, other.buckets_);
@@ -2033,7 +2160,7 @@ namespace dice::unordered_sparse {
              * Inserts an element whose key is known not to be in the table. Does not check the load thresholds.
              */
             template<typename S>
-            void insert_on_rehash(S &&slot_value) {
+            constexpr void insert_on_rehash(S &&slot_value) {
                 std::size_t ibucket = bucket_for_hash(hash_key(Policy::key(slot_value)));
                 sparse_array *const raw_buckets = buckets_begin();
 
