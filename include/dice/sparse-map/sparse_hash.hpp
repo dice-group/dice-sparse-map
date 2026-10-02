@@ -207,12 +207,12 @@ namespace dice::sparse_map {
         /**
          * `std::ceil(value)` as `std::size_t`, for a non-negative `value`. Saturates at the maximum of `std::size_t`.
          */
-        [[nodiscard]] constexpr std::size_t ceil_to_size(float value) noexcept {
-            if (!(value < static_cast<float>(std::numeric_limits<std::size_t>::max()))) {
+        [[nodiscard]] constexpr std::size_t ceil_to_size(double value) noexcept {
+            if (!(value < static_cast<double>(std::numeric_limits<std::size_t>::max()))) {
                 return std::numeric_limits<std::size_t>::max();
             }
             auto const truncated = static_cast<std::size_t>(value);
-            return static_cast<float>(truncated) < value ? truncated + 1 : truncated;
+            return static_cast<double>(truncated) < value ? truncated + 1 : truncated;
         }
 
         /**
@@ -1683,7 +1683,7 @@ namespace dice::sparse_map {
              */
             constexpr void max_load_factor(float ml) noexcept {
                 max_load_factor_ = std::max(min_max_load_factor, std::min(ml, max_max_load_factor));
-                load_threshold_rehash_ = static_cast<size_type>(static_cast<float>(bucket_count()) * max_load_factor_);
+                load_threshold_rehash_ = rehash_threshold(bucket_count());
 
                 float const max_load_factor_with_deleted_buckets = max_load_factor_ + 0.5f * (1.0f - max_load_factor_);
                 DICE_SPARSE_MAP_ASSERT(max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f);
@@ -1691,12 +1691,11 @@ namespace dice::sparse_map {
             }
 
             constexpr void rehash(size_type count) {
-                count = std::max(count, static_cast<size_type>(ceil_to_size(static_cast<float>(size()) / max_load_factor())));
-                rehash_impl(count);
+                rehash_impl(std::max(count, bucket_count_for(size())));
             }
 
             constexpr void reserve(size_type count) {
-                rehash(static_cast<size_type>(ceil_to_size(static_cast<float>(count) / max_load_factor())));
+                rehash(bucket_count_for(count));
             }
 
             /*
@@ -1817,6 +1816,34 @@ namespace dice::sparse_map {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
                 return rounded;
+            }
+
+            /**
+             * @return the maximum that the number of elements can reach in a table with `bucket_count` buckets
+             * before a rehash grows the table
+             */
+            [[nodiscard]] constexpr size_type rehash_threshold(size_type bucket_count) const noexcept {
+                return static_cast<size_type>(static_cast<float>(bucket_count) * max_load_factor_);
+            }
+
+            /**
+             * @return the smallest bucket count that holds `nb_elements` elements without a rehash, or 0 for 0
+             * @throws std::length_error if the result is larger than `max_bucket_count()`
+             */
+            [[nodiscard]] constexpr size_type bucket_count_for(size_type nb_elements) const {
+                if (nb_elements == 0) {
+                    return 0;
+                }
+
+                auto count = rounded_bucket_count(static_cast<size_type>(ceil_to_size(static_cast<double>(nb_elements) / static_cast<double>(max_load_factor_))));
+                // the division rounds, so `count` can be one doubling too small
+                if (rehash_threshold(count) < nb_elements) {
+                    if (count > max_bucket_count() / 2) {
+                        throw std::length_error("The hash table exceeds its maximum size.");
+                    }
+                    count *= 2;
+                }
+                return count;
             }
 
             /**
