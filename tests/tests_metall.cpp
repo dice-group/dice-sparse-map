@@ -575,3 +575,65 @@ TEST_CASE("a map whose groups have holes survives closing and opening") {
         CHECK(manager.all_memory_deallocated());
     }
 }
+
+namespace {
+    /// the hash of a key is the key, and the table uses it without mixing, so key `64 * g` is in group `g`
+    struct bucket_hash {
+        using is_avalanching = void;
+
+        std::size_t operator()(std::uint64_t key) const noexcept {
+            return static_cast<std::size_t>(key);
+        }
+    };
+
+    using bucket_map = sparse_map<std::uint64_t,
+                                  std::uint64_t,
+                                  bucket_hash,
+                                  std::equal_to<std::uint64_t>,
+                                  metall_allocator<std::pair<std::uint64_t, std::uint64_t>>>;
+}  // namespace
+
+// metall maps a datastore that is open read-only without write access, so a write into the map faults. `begin()` of a
+// const map reads where the first element is and writes nothing.
+TEST_CASE("begin, iteration and find of a map in a datastore that is open read-only") {
+    datastore_path const store{"read_only"};
+    char const *object_name = "bucket_map";
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        auto *map = manager.construct<bucket_map>(object_name)(manager.get_allocator());
+        REQUIRE(map != nullptr);
+        // 2048 buckets, the groups 0 to 31
+        map->reserve(1000);
+        REQUIRE(map->bucket_count() == 2048);
+        // the first group with an element is group 10
+        for (std::uint64_t const key : {std::uint64_t{0}, std::uint64_t{640}, std::uint64_t{1300}, std::uint64_t{1920}}) {
+            map->try_emplace(key, value_of(key));
+        }
+        CHECK(map->erase(0) == 1);
+    }
+
+    {
+        metall::manager manager{metall::open_read_only, store.path.c_str()};
+        auto const *map = std::get<0>(manager.find<bucket_map>(object_name));
+        REQUIRE(map != nullptr);
+        REQUIRE(map->begin() != map->end());
+        CHECK(map->begin()->first == 640);
+        CHECK(map->cbegin()->first == 640);
+
+        std::uint64_t nb_iterated = 0;
+        bool values_right = true;
+        for (auto const &[key, value] : *map) {
+            values_right = values_right && value == value_of(key);
+            ++nb_iterated;
+        }
+        CHECK(nb_iterated == 3);
+        CHECK(values_right);
+
+        auto const it = map->find(1300);
+        REQUIRE(it != map->end());
+        CHECK(it->second == value_of(1300));
+        CHECK(map->find(0) == map->end());
+    }
+}
