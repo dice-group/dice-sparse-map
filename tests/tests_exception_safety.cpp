@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <iterator>
+#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -185,7 +187,7 @@ namespace {
 
     /// number of `counter::obj` that were constructed and not destroyed yet
     std::size_t alive(counter const &counts) {
-        return counts.ctor() + counts.default_ctor() + counter::static_default_ctor + counts.copy_ctor() + counts.move_ctor()
+        return counts.ctor() + counts.default_ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor()
                - counts.dtor() - counter::static_dtor;
     }
 
@@ -557,10 +559,7 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
     CHECK(live_blocks == 0);
 }
 
-// skipped: when `sparse_hash::operator=(sparse_hash const &)` throws, the target keeps the mask of the
-// source, but only the bucket groups it copied so far, and `sparse_buckets_` still points to the memory
-// of the old bucket vector. `find` then reads freed memory, and `insert` writes there.
-TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map" * doctest::skip(),
+TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map",
                    map_t,
                    moving_map<sh::sparsity::high>,
                    moving_map<sh::sparsity::medium>,
@@ -629,6 +628,19 @@ namespace {
             return test_hash<std::size_t>{}(key);
         }
     };
+
+    /// `map` holds the keys `first` to `first + count - 1`, each mapped to itself, and nothing else
+    template<typename Map>
+    void check_holds(Map const &map, std::size_t first, std::size_t count) {
+        CHECK(map.size() == count);
+        std::size_t found = 0;
+        for (std::size_t key = first; key < first + count; ++key) {
+            auto const it = map.find(key);
+            found += (it != map.end() && it->second == key) ? 1 : 0;
+        }
+        CHECK(found == count);
+        CHECK(static_cast<std::size_t>(std::distance(map.begin(), map.end())) == count);
+    }
 }  // namespace
 
 TEST_CASE("a rehash does not swap the hash function") {

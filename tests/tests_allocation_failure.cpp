@@ -13,7 +13,6 @@
 #include <iostream>
 #include <memory>
 #include <new>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -28,8 +27,8 @@
  * What `sparse_map` and `sparse_set` do when an allocation of the table fails. With the default
  * `sh::allocation_failure::terminating` the process ends with `std::abort()`. Each case runs the operation in a child
  * process (`DICE_SANDBOX` of the dice-template-library) and checks that the child ends with `SIGABRT` and writes
- * nothing to stderr. There is one case for each place where a group or the vector of the groups allocates. The cases
- * are skipped where `<sys/wait.h>` is missing.
+ * nothing to stderr. There is one case for each place where a group or the bucket array allocates. The cases are
+ * skipped where `<sys/wait.h>` is missing.
  * `tests_exception_safety` checks `sh::allocation_failure::throwing`.
  */
 namespace {
@@ -89,8 +88,8 @@ namespace {
     /// the allocations of `failing_allocator` that throw `std::bad_alloc`
     enum class failing {
         nothing,
-        groups,        ///< the arrays of the elements of the groups, allocations of `Value`
-        bucket_vector  ///< the vector of the groups, all other allocations
+        groups,       ///< the arrays of the elements of the groups, allocations of `Value`
+        bucket_array  ///< the bucket array, the array of the groups, all other allocations
     };
 
     failing fail = failing::nothing;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -111,7 +110,7 @@ namespace {
 
     /**
      * Allocator that throws `std::bad_alloc` for the allocations that `fail` names. An allocation of `Value` is one of
-     * the elements of a group, any other allocation is one of the vector of the groups. Instances with different `id`
+     * the elements of a group, any other allocation is one of the bucket array. Instances with different `id`
      * compare unequal, and the allocator does not propagate, like `std::pmr::polymorphic_allocator`.
      */
     template<typename T, typename Value>
@@ -137,7 +136,7 @@ namespace {
 
         T *allocate(std::size_t n) {
             bool const is_group = std::is_same_v<T, Value>;
-            if ((fail == failing::groups && is_group) || (fail == failing::bucket_vector && !is_group)) {
+            if ((fail == failing::groups && is_group) || (fail == failing::bucket_array && !is_group)) {
                 throw std::bad_alloc{};
             }
             return std::allocator<T>{}.allocate(n);
@@ -230,48 +229,42 @@ TEST_CASE("the default of AllocationFailure is terminating") {
                                     sh::allocation_failure::terminating>>);
 }
 
-TEST_CASE("a failed allocation of the vector of groups aborts in the constructor and in a rehash" * doctest::skip(!can_fork)) {
+TEST_CASE("a failed allocation of the bucket array aborts in the constructor and in a rehash" * doctest::skip(!can_fork)) {
     CHECK(expect_abort([] {
-        auto const guard = fail_while_in_scope{failing::bucket_vector};
+        auto const guard = fail_while_in_scope{failing::bucket_array};
         auto const map = failing_map<std::size_t>(64);
     }));
 
     auto map = failing_map<std::size_t>{};
     insert_keys(map, 100);
     CHECK(expect_abort([&] {
-        auto const guard = fail_while_in_scope{failing::bucket_vector};
+        auto const guard = fail_while_in_scope{failing::bucket_array};
         map.rehash(map.bucket_count() * 2);
     }));
 }
 
-TEST_CASE("a failed allocation of the vector of groups aborts in a copy" * doctest::skip(!can_fork)) {
+TEST_CASE("a failed allocation of the bucket array aborts in a copy" * doctest::skip(!can_fork)) {
     auto source = failing_map<std::size_t>{};
     insert_keys(source, 100);
     CHECK(expect_abort([&] {
-        auto const guard = fail_while_in_scope{failing::bucket_vector};
+        auto const guard = fail_while_in_scope{failing::bucket_array};
         auto const copy = source;
     }));
 }
 
-TEST_CASE("a failed allocation of the vector of groups aborts in a move assignment to another allocator" * doctest::skip(!can_fork)) {
+TEST_CASE("a failed allocation of the bucket array aborts in a move assignment to another allocator" * doctest::skip(!can_fork)) {
     using map_t = failing_map<std::size_t>;
     auto source = map_t{map_t::allocator_type{1}};
     auto target = map_t{map_t::allocator_type{2}};
     insert_keys(source, 100);
     CHECK(expect_abort([&] {
-        auto const guard = fail_while_in_scope{failing::bucket_vector};
+        auto const guard = fail_while_in_scope{failing::bucket_array};
         target = std::move(source);
     }));
 }
 
-// `std::length_error` is a size limit and not a failed allocation, so the helpers let it through with `terminating` too:
-// `allocate_with` for the vector of the groups, `allocate` for the groups.
-TEST_CASE("allocate_with and allocate let std::length_error through with terminating") {
-    CHECK_THROWS_AS(detail_sparse_hash::allocate_with<sh::allocation_failure::terminating>([] {
-                        throw std::length_error{"size limit"};
-                    }),
-                    std::length_error);
-
+// `std::length_error` is a size limit and not a failed allocation, so `allocate` lets it through with `terminating` too.
+TEST_CASE("allocate lets std::length_error through with terminating") {
     auto alloc = length_error_allocator{};
     CHECK_THROWS_AS(static_cast<void>(detail_sparse_hash::allocate<sh::allocation_failure::terminating>(alloc, 1)), std::length_error);
 }
