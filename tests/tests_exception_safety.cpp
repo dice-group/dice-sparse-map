@@ -11,6 +11,7 @@
 #include <iterator>
 #include <new>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 /**
@@ -447,6 +448,59 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map",
 }
 
 namespace {
+    /// a string that does not fit the small string buffer, so that a moved-from copy is empty
+    std::string long_value(std::size_t key) {
+        return std::string(40, 'x') + std::to_string(key);
+    }
+
+    template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
+    using bombing_string_map = sparse_map<std::size_t,
+                                          std::string,
+                                          std::hash<std::size_t>,
+                                          std::equal_to<std::size_t>,
+                                          leak_checking_allocator<std::pair<std::size_t, std::string>>,
+                                          ExceptionSafety,
+                                          Sparsity>;
+
+    /// the next insertion of a new key into `map` rehashes it
+    template<typename Map>
+    void fill_strings_until_next_insert_rehashes(Map &map, std::size_t min_size) {
+        std::size_t key = 0;
+        while (map.size() < min_size || !next_insert_rehashes(map)) {
+            map.try_emplace(key, long_value(key));
+            ++key;
+        }
+    }
+
+    /// number of copies that are left before `fragile_string` throws, -1 never throws
+    int copies_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * A string whose move constructor is not `noexcept`, and whose copy constructor throws when
+     * `copies_until_throw` reaches 0. A container copies it where a move could throw.
+     */
+    struct fragile_string {
+        std::string value;
+
+        explicit fragile_string(std::string v)
+            : value(std::move(v)) {
+        }
+
+        fragile_string(fragile_string const &other)
+            : value(other.value) {
+            if (copies_until_throw >= 0 && 0 == copies_until_throw--) {
+                throw std::runtime_error("fragile_string copy");
+            }
+        }
+
+        fragile_string(fragile_string &&other) noexcept(false)
+            : value(std::move(other.value)) {
+        }
+
+        fragile_string &operator=(fragile_string const &) = default;
+        fragile_string &operator=(fragile_string &&) noexcept(false) = default;
+        ~fragile_string() = default;
+    };
 
     /// the move assignment of `fragile_hash` throws while this is true
     bool hash_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -487,6 +541,149 @@ namespace {
         CHECK(static_cast<std::size_t>(std::distance(map.begin(), map.end())) == count);
     }
 }  // namespace
+
+TEST_CASE_TEMPLATE("a merge that throws in the rehash of the target leaves the element in the source",
+                   map_t,
+                   bombing_string_map<basic, sh::sparsity::high>,
+                   bombing_string_map<basic, sh::sparsity::medium>,
+                   bombing_string_map<basic, sh::sparsity::low>,
+                   bombing_string_map<strong, sh::sparsity::high>,
+                   bombing_string_map<strong, sh::sparsity::medium>,
+                   bombing_string_map<strong, sh::sparsity::low>) {
+    std::size_t failures = 0;
+    bool completed = false;
+    for (int budget = 0; budget < max_budget && !completed; ++budget) {
+        {
+            auto target = map_t{};
+            fill_strings_until_next_insert_rehashes(target, 200);
+            auto const new_key = target.size();
+            auto const target_size = target.size();
+            auto source = map_t{};
+            source.try_emplace(new_key, long_value(new_key));
+            try {
+                auto const bomb = bomb_after{budget};
+                target.merge(source);
+                completed = true;
+            } catch (std::bad_alloc const &) {
+                ++failures;
+                // with exception_safety::basic a failed rehash can lose elements of the target
+                CHECK(target.size() <= target_size);
+                CHECK(static_cast<std::size_t>(std::distance(target.begin(), target.end())) == target.size());
+                CHECK_FALSE(target.contains(new_key));
+            }
+            if (completed) {
+                CHECK(source.empty());
+                CHECK(target.at(new_key) == long_value(new_key));
+            } else {
+                REQUIRE(source.size() == 1);
+                CHECK(source.at(new_key) == long_value(new_key));
+            }
+        }
+        CHECK(live_blocks == 0);
+    }
+    CHECK(failures > 0);
+    CHECK(completed);
+}
+
+TEST_CASE_TEMPLATE("a merge that throws in the clean-up rehash of the target leaves the element in the source",
+                   map_t,
+                   bombing_string_map<basic, sh::sparsity::high>,
+                   bombing_string_map<basic, sh::sparsity::medium>,
+                   bombing_string_map<basic, sh::sparsity::low>,
+                   bombing_string_map<strong, sh::sparsity::high>,
+                   bombing_string_map<strong, sh::sparsity::medium>,
+                   bombing_string_map<strong, sh::sparsity::low>) {
+    std::size_t failures = 0;
+    bool completed = false;
+    for (int budget = 0; budget < max_budget && !completed; ++budget) {
+        {
+            // 64 buckets, at max load factor 0.8 the table takes 51 elements without growing
+            auto target = map_t{};
+            target.rehash(64);
+            target.max_load_factor(0.8f);
+            for (std::size_t key = 0; key < 51; ++key) {
+                target.try_emplace(key, long_value(key));
+            }
+            REQUIRE(target.bucket_count() == 64);
+            // 5 elements and 46 deleted buckets: below the growth threshold of 6, above the clean-up threshold of
+            // 35, so the next insertion of a new key removes the deleted buckets with a rehash
+            for (std::size_t key = 5; key < 51; ++key) {
+                target.erase(key);
+            }
+            target.max_load_factor(0.1f);
+
+            auto source = map_t{};
+            source.try_emplace(1000, long_value(1000));
+            try {
+                auto const bomb = bomb_after{budget};
+                target.merge(source);
+                completed = true;
+            } catch (std::bad_alloc const &) {
+                ++failures;
+                CHECK(target.size() <= 5);
+                CHECK_FALSE(target.contains(1000));
+            }
+            if (completed) {
+                CHECK(source.empty());
+                CHECK(target.at(1000) == long_value(1000));
+                CHECK(target.bucket_count() == 64);
+            } else {
+                REQUIRE(source.size() == 1);
+                CHECK(source.at(1000) == long_value(1000));
+            }
+        }
+        CHECK(live_blocks == 0);
+    }
+    CHECK(failures > 0);
+    CHECK(completed);
+}
+
+TEST_CASE("a merge copies an element whose move constructor can throw, so that the element stays in the source on an exception") {
+    using map_t = sparse_map<std::size_t, fragile_string, std::hash<std::size_t>, std::equal_to<std::size_t>, std::allocator<std::pair<std::size_t, fragile_string>>, sh::exception_safety::basic, sh::sparsity::high>;
+    auto target = map_t{};
+    target.rehash(64);
+    // one group; with sparsity high a group of 10 elements has no free capacity, so the next insertion
+    // copies the group into a new array: the elements before the new one, the new one, the elements after it
+    for (std::size_t key = 0; key < 10; ++key) {
+        target.try_emplace(key, std::to_string(key));
+    }
+    REQUIRE(target.bucket_count() == 64);
+
+    // a key whose element does not land behind all elements of the group, so that copies follow the new element
+    std::size_t new_key = 100;
+    for (;; ++new_key) {
+        auto probe = target;
+        probe.try_emplace(new_key, "");
+        auto const position = static_cast<std::size_t>(std::distance(probe.begin(), probe.find(new_key)));
+        if (position + 1 < probe.size()) {
+            break;
+        }
+    }
+
+    bool completed = false;
+    for (int copies = 0; copies < 20 && !completed; ++copies) {
+        CAPTURE(copies);
+        auto source = map_t{};
+        source.try_emplace(new_key, long_value(new_key));
+        copies_until_throw = copies;
+        try {
+            target.merge(source);
+            completed = true;
+        } catch (std::runtime_error const &) {
+        }
+        copies_until_throw = -1;
+        if (completed) {
+            CHECK(source.empty());
+            CHECK(target.at(new_key).value == long_value(new_key));
+        } else {
+            CHECK(target.size() == 10);
+            CHECK_FALSE(target.contains(new_key));
+            REQUIRE(source.size() == 1);
+            CHECK(source.at(new_key).value == long_value(new_key));
+        }
+    }
+    CHECK(completed);
+}
 
 TEST_CASE("a move assignment whose hash throws leaves both maps usable") {
     using map_t = sparse_map<std::size_t, std::size_t, fragile_hash>;
