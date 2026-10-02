@@ -455,13 +455,17 @@ namespace dice::sparse_map {
             using iterator = value_type *;
             using const_iterator = value_type const *;
 
+            /**
+             * The number of buckets of a `sparse_array`.
+             */
+            static constexpr std::size_t bitmap_nb_bits = 64;
+
         private:
             static constexpr size_type capacity_growth_step = (sparsity == sh::sparsity::high)     ? 2
                                                               : (sparsity == sh::sparsity::medium) ? 4
                                                                                                    : 8;
 
             using bitmap_type = std::uint_least64_t;
-            static constexpr std::size_t bitmap_nb_bits = 64;
             static constexpr std::size_t bucket_shift = 6;
             static constexpr std::size_t bucket_mask = bitmap_nb_bits - 1;
 
@@ -1681,12 +1685,15 @@ namespace dice::sparse_map {
 
             /**
              * @return the largest power of two that `size_type` and `std::size_t` can hold, or less if the allocator
-             * cannot provide as many `sparse_array`s
+             * cannot provide enough `sparse_array`s of `sparse_array::bitmap_nb_bits` buckets each
              */
             [[nodiscard]] constexpr size_type max_bucket_count() const noexcept {
-                constexpr auto largest_power_of_two = static_cast<size_type>(std::bit_floor(std::min<std::uintmax_t>(std::numeric_limits<size_type>::max(),
-                                                                                                                     std::numeric_limits<std::size_t>::max())));
-                return std::min<size_type>(largest_power_of_two, bucket_allocator_traits::max_size(bucket_allocator_type(alloc_)));
+                constexpr std::uintmax_t largest_count = std::min<std::uintmax_t>(std::numeric_limits<size_type>::max(), std::numeric_limits<std::size_t>::max());
+                std::uintmax_t const max_nb_sparse_buckets = bucket_allocator_traits::max_size(bucket_allocator_type(alloc_));
+                std::uintmax_t const count = max_nb_sparse_buckets > largest_count / sparse_array::bitmap_nb_bits
+                                                 ? largest_count
+                                                 : max_nb_sparse_buckets * sparse_array::bitmap_nb_bits;
+                return static_cast<size_type>(std::bit_floor(count));
             }
 
             /*

@@ -630,9 +630,10 @@ TEST_SUITE("test_sparse_map") {
                 std::numeric_limits<std::size_t>::max())),
             std::length_error);
 
+        auto const max_bucket_count = dice::sparse_map::sparse_map<int, int>().max_bucket_count();
         CHECK_THROWS_AS(
             (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>>(
-                std::numeric_limits<std::size_t>::max() / 2 + 1)),
+                max_bucket_count + 1)),
             std::length_error);
     }
 
