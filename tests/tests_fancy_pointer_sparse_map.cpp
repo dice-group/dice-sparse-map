@@ -23,35 +23,11 @@ using dice::sparse_map::tests::offset_ptr_allocator;
  * The template parameter now also holds the value_type.
  */
 namespace details {
-    template<typename Key, typename T>
-    struct key_select {
-        using key_type = Key;
-        key_type const &operator()(std::pair<Key, T> const &key_value) const noexcept {
-            return key_value.first;
-        }
-        key_type &operator()(std::pair<Key, T> &key_value) noexcept {
-            return key_value.first;
-        }
-    };
-
-    template<typename Key, typename T>
-    struct value_select {
-        using value_type = T;
-        value_type const &operator()(std::pair<Key, T> const &key_value) const noexcept {
-            return key_value.second;
-        }
-        value_type &operator()(std::pair<Key, T> &key_value) noexcept {
-            return key_value.second;
-        }
-    };
-
     template<typename Key, typename T, typename Alloc>
     using sparse_map = dice::sparse_map::detail_sparse_hash::sparse_hash<
-        std::pair<Key, T>,
-        key_select<Key, T>,
-        value_select<Key, T>,
-        std::hash<T>,
-        std::equal_to<T>,
+        dice::sparse_map::detail_sparse_hash::map_policy<Key, T>,
+        std::hash<Key>,
+        std::equal_to<Key>,
         Alloc,
         dice::sparse_map::sh::exception_safety::basic,
         dice::sparse_map::sh::sparsity::medium>;
@@ -59,11 +35,11 @@ namespace details {
     template<typename T>
     typename T::map_type default_construct_map() {
         using key_type = typename T::key_type;
-        return typename T::map_type(T::map_type::DEFAULT_INIT_BUCKET_COUNT,
+        return typename T::map_type(T::map_type::default_init_bucket_count,
                                     std::hash<key_type>(),
                                     std::equal_to<key_type>(),
                                     typename T::allocator_type(),
-                                    T::map_type::DEFAULT_MAX_LOAD_FACTOR);
+                                    T::map_type::default_max_load_factor);
     }
 
     /** Checks if all values of the map are in the initializer_list and then if the lengths are equal.

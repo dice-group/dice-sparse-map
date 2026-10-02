@@ -7,22 +7,9 @@
 #include <scoped_allocator>
 
 namespace details {
-    template<typename Key>
-    struct key_select {
-        using key_type = Key;
-        key_type const &operator()(Key const &key) const noexcept {
-            return key;
-        }
-        key_type &operator()(Key &key) noexcept {
-            return key;
-        }
-    };
-
     template<typename T, typename Alloc>
     using sparse_set = dice::sparse_map::detail_sparse_hash::sparse_hash<
-        T,
-        details::key_select<T>,
-        void,
+        dice::sparse_map::detail_sparse_hash::set_policy<T>,
         std::hash<T>,
         std::equal_to<T>,
         Alloc,
@@ -33,7 +20,7 @@ namespace details {
 template<typename T>
 void construction() {
     using value_type = typename T::value_type;
-    typename T::set_type(T::set_type::DEFAULT_INIT_BUCKET_COUNT, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::DEFAULT_MAX_LOAD_FACTOR);
+    typename T::set_type(T::set_type::default_init_bucket_count, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::default_max_load_factor);
 }
 
 

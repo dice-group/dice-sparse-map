@@ -8,7 +8,9 @@
 
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <new>
+#include <stdexcept>
 #include <utility>
 
 /**
@@ -70,7 +72,7 @@ namespace {
 
     /// number of `counter::obj` that were constructed and not destroyed yet
     std::size_t alive(counter const &counts) {
-        return counts.ctor() + counts.default_ctor() + counter::static_default_ctor + counts.copy_ctor() + counts.move_ctor()
+        return counts.ctor() + counts.default_ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor()
                - counts.dtor() - counter::static_dtor;
     }
 
@@ -150,11 +152,7 @@ TYPE_TO_STRING_AS("strong, high", bombing_map<strong, sh::sparsity::high>);
 TYPE_TO_STRING_AS("strong, medium", bombing_map<strong, sh::sparsity::medium>);
 TYPE_TO_STRING_AS("strong, low", bombing_map<strong, sh::sparsity::low>);
 
-// skipped: with `exception_safety::basic`, `sparse_hash::rehash_impl` moves the elements group by
-// group into the new table and clears each old group right after it. When an allocation fails, the
-// new table is destroyed with the elements it got so far, but `m_nb_elements` keeps its value:
-// `size()` counts elements that `find` and iteration no longer reach.
-TEST_CASE_TEMPLATE("basic: an insert that rehashes and throws leaves a valid map" * doctest::skip(),
+TEST_CASE_TEMPLATE("basic: an insert that rehashes and throws leaves a valid map",
                    map_t,
                    bombing_map<basic, sh::sparsity::high>,
                    bombing_map<basic, sh::sparsity::medium>,
@@ -405,11 +403,7 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
     CHECK(live_blocks == 0);
 }
 
-// skipped: when `sparse_hash::operator=(sparse_hash const &)` throws, the target keeps the growth
-// policy of the source, but only the bucket groups it copied so far, and `m_sparse_buckets` still
-// points to the memory of the old bucket vector. `find` then asserts in `bucket_for_hash`, or reads
-// freed memory, and `insert` writes there.
-TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map" * doctest::skip(),
+TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map",
                    map_t,
                    bombing_map<basic, sh::sparsity::high>,
                    bombing_map<basic, sh::sparsity::medium>,
@@ -450,4 +444,96 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map" * doctest
     }
     CHECK(alive(counts) == 0);
     CHECK(live_blocks == 0);
+}
+
+namespace {
+
+    /// the move assignment of `fragile_hash` throws while this is true
+    bool hash_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * A hash whose move assignment throws while `hash_moves_throw` is true. `std::swap` of two of them
+     * move assigns, so it throws, too.
+     */
+    struct fragile_hash {
+        fragile_hash() = default;
+        fragile_hash(fragile_hash const &) = default;
+        fragile_hash(fragile_hash &&) = default;
+        fragile_hash &operator=(fragile_hash const &) = default;
+        ~fragile_hash() = default;
+
+        fragile_hash &operator=(fragile_hash && /*other*/) noexcept(false) {
+            if (hash_moves_throw) {
+                throw std::runtime_error("fragile_hash move assignment");
+            }
+            return *this;
+        }
+
+        std::size_t operator()(std::size_t key) const noexcept {
+            return std::hash<std::size_t>{}(key);
+        }
+    };
+
+    /// `map` holds the keys `first` to `first + count - 1`, each mapped to itself, and nothing else
+    template<typename Map>
+    void check_holds(Map const &map, std::size_t first, std::size_t count) {
+        CHECK(map.size() == count);
+        std::size_t found = 0;
+        for (std::size_t key = first; key < first + count; ++key) {
+            auto const it = map.find(key);
+            found += (it != map.end() && it->second == key) ? 1 : 0;
+        }
+        CHECK(found == count);
+        CHECK(static_cast<std::size_t>(std::distance(map.begin(), map.end())) == count);
+    }
+}  // namespace
+
+TEST_CASE("a move assignment whose hash throws leaves both maps usable") {
+    using map_t = sparse_map<std::size_t, std::size_t, fragile_hash>;
+    auto source = map_t{};
+    for (std::size_t key = 0; key < 100; ++key) {
+        source[key] = key;
+    }
+    auto target = map_t{};
+    for (std::size_t key = 1000; key < 1010; ++key) {
+        target[key] = key;
+    }
+
+    hash_moves_throw = true;
+    CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+    hash_moves_throw = false;
+
+    check_holds(target, 0, 0);
+    check_holds(source, 0, 100);  // NOLINT(bugprone-use-after-move)
+    target[5000] = 5000;
+    source[5000] = 5000;  // NOLINT(bugprone-use-after-move)
+    check_holds(target, 5000, 1);
+    CHECK(source.size() == 101);
+}
+
+TEST_CASE("a swap whose hash throws swaps neither the elements nor the allocators") {
+    using allocator_t = pocs_allocator<std::pair<std::size_t, std::size_t>>;
+    using map_t = sparse_map<std::size_t, std::size_t, fragile_hash, std::equal_to<std::size_t>, allocator_t>;
+    auto counts_1 = alloc_counts{};
+    auto counts_2 = alloc_counts{};
+    {
+        auto map_1 = map_t{allocator_t{1, &counts_1}};
+        auto map_2 = map_t{allocator_t{2, &counts_2}};
+        for (std::size_t key = 0; key < 100; ++key) {
+            map_1[key] = key;
+            map_2[key + 1000] = key + 1000;
+        }
+
+        hash_moves_throw = true;
+        CHECK_THROWS_AS(map_1.swap(map_2), std::runtime_error);
+        hash_moves_throw = false;
+
+        CHECK(map_1.get_allocator().id == 1);
+        CHECK(map_2.get_allocator().id == 2);
+        check_holds(map_1, 0, 100);
+        check_holds(map_2, 1000, 100);
+    }
+    // each allocator got back exactly the blocks it handed out
+    CHECK(counts_1.allocations == counts_1.deallocations);
+    CHECK(counts_2.allocations == counts_2.deallocations);
 }

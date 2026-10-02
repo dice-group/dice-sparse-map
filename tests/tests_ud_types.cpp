@@ -295,7 +295,7 @@ namespace {
                 counts("done");
             }
             counts("all destructed");
-            REQUIRE(counts.dtor() == counts.ctor() + counts.static_default_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
+            REQUIRE(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
         }
     }
 
@@ -357,7 +357,7 @@ TEST_CASE_MAP("vectormap", counter::obj, counter::obj) {
         REQUIRE(maps.size() == 30U);
     }
     counts("dtor");
-    REQUIRE(counts.dtor() == counts.ctor() + counts.static_default_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
+    REQUIRE(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
 }
 
 // set

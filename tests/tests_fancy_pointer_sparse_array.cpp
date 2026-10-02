@@ -117,7 +117,8 @@ template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map:
 struct custom_alloc {
     using allocator_type = dice::sparse_map::tests::offset_ptr_allocator<T>;
     using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, dice::sparse_map::tests::offset_ptr_allocator<T>, Sparsity>;
-    using const_iterator_type = boost::interprocess::offset_ptr<T const>;
+    // the iterators of a sparse_array are plain pointers, also with an allocator with fancy pointers
+    using const_iterator_type = T const *;
 };
 
 
