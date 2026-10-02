@@ -45,19 +45,14 @@ namespace dice::unordered_sparse {
      * mask. The hash of a hash function that is not avalanching is mixed with one
      * multiplication first, see `hash_is_avalanching`.
      *
-     * `ExceptionSafety` defines the exception guarantee provided by the class. By
-     * default only the basic exception safety is guaranteed which mean that all
-     * resources used by the hash map will be freed (no memory leaks) but the hash
-     * map may end-up in an undefined state if an exception is thrown (undefined
-     * here means that some elements may be missing). This can ONLY happen on rehash
-     * (either on insert or if `rehash` is called explicitly) and will occur if the
-     * Allocator can't allocate memory (`std::bad_alloc`) or if the copy constructor
-     * (when a nothrow move constructor is not available) throws an exception. This
-     * can be avoided by calling `reserve` beforehand. This basic guarantee is
-     * similar to the one of `google::sparse_hash_map` and `spp::sparse_hash_map`.
-     * It is possible to ask for the strong exception guarantee with
-     * `dice::unordered_sparse::exception_safety::strong`, the drawback is that the map will be
-     * slower on rehashes and will also need more memory on rehashes.
+     * If an insertion throws, the map holds the same elements as before, except in one case where it is empty. It
+     * comes from a rehash, which an insertion, `rehash` or `reserve` can do. `reserve` avoids rehashes. How a rehash
+     * transfers the elements depends on their type:
+     * - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old
+     *   buckets is freed while they are moved. If the hash function or the allocator throws while the elements are
+     *   moved, the map is empty. Any other exception leaves the map unchanged.
+     * - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and
+     *   the new buckets are in memory at the same time. An exception leaves the map unchanged.
      *
      * `Sparsity` defines how much the hash set will compromise between insertion
      * speed and memory usage. A high sparsity means less memory usage but longer
@@ -76,7 +71,7 @@ namespace dice::unordered_sparse {
      * insert, invalidate the iterators.
      *  - erase: always invalidate the iterators.
      */
-    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, dice::unordered_sparse::exception_safety ExceptionSafety = dice::unordered_sparse::exception_safety::basic, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
+    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, dice::unordered_sparse::sparsity Sparsity = dice::unordered_sparse::sparsity::medium>
     class sparse_map {
     private:
         class KeySelect {
@@ -114,7 +109,6 @@ namespace dice::unordered_sparse {
             Hash,
             KeyEqual,
             Allocator,
-            ExceptionSafety,
             Sparsity>;
 
     public:

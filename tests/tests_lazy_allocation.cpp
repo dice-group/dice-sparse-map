@@ -20,23 +20,19 @@ namespace {
     using dice::unordered_sparse::tests::counting_allocator;
     using dice::unordered_sparse::tests::num_allocations;
 
-    template<exception_safety ExceptionSafety, sparsity Sparsity>
-    using counted_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, ExceptionSafety, Sparsity>;
+    template<sparsity Sparsity>
+    using counted_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, Sparsity>;
 
-    template<exception_safety ExceptionSafety, sparsity Sparsity>
-    using counted_set = sparse_set<int, std::hash<int>, std::equal_to<int>, counting_allocator<int>, ExceptionSafety, Sparsity>;
-    constexpr auto basic = exception_safety::basic;
-    constexpr auto strong = exception_safety::strong;
+    template<sparsity Sparsity>
+    using counted_set = sparse_set<int, std::hash<int>, std::equal_to<int>, counting_allocator<int>, Sparsity>;
 
     /// the configurations of `TEST_CASE_MAP` and `TEST_CASE_SET` with an allocator that counts
-    using counted_containers = std::tuple<counted_map<basic, sparsity::high>,
-                                          counted_map<basic, sparsity::medium>,
-                                          counted_map<basic, sparsity::low>,
-                                          counted_map<strong, sparsity::medium>,
-                                          counted_set<basic, sparsity::high>,
-                                          counted_set<basic, sparsity::medium>,
-                                          counted_set<basic, sparsity::low>,
-                                          counted_set<strong, sparsity::medium>>;
+    using counted_containers = std::tuple<counted_map<sparsity::high>,
+                                          counted_map<sparsity::medium>,
+                                          counted_map<sparsity::low>,
+                                          counted_set<sparsity::high>,
+                                          counted_set<sparsity::medium>,
+                                          counted_set<sparsity::low>>;
 
     template<typename Container>
     void insert_one(Container &container, int key) {
@@ -49,14 +45,12 @@ namespace {
 
 }  // namespace
 
-TYPE_TO_STRING_AS("map<high>", counted_map<basic, sparsity::high>);
-TYPE_TO_STRING_AS("map<medium>", counted_map<basic, sparsity::medium>);
-TYPE_TO_STRING_AS("map<low>", counted_map<basic, sparsity::low>);
-TYPE_TO_STRING_AS("map<strong>", counted_map<strong, sparsity::medium>);
-TYPE_TO_STRING_AS("set<high>", counted_set<basic, sparsity::high>);
-TYPE_TO_STRING_AS("set<medium>", counted_set<basic, sparsity::medium>);
-TYPE_TO_STRING_AS("set<low>", counted_set<basic, sparsity::low>);
-TYPE_TO_STRING_AS("set<strong>", counted_set<strong, sparsity::medium>);
+TYPE_TO_STRING_AS("map<high>", counted_map<sparsity::high>);
+TYPE_TO_STRING_AS("map<medium>", counted_map<sparsity::medium>);
+TYPE_TO_STRING_AS("map<low>", counted_map<sparsity::low>);
+TYPE_TO_STRING_AS("set<high>", counted_set<sparsity::high>);
+TYPE_TO_STRING_AS("set<medium>", counted_set<sparsity::medium>);
+TYPE_TO_STRING_AS("set<low>", counted_set<sparsity::low>);
 
 TEST_CASE_TEMPLATE_DEFINE("a default constructed container allocates nothing", container_t, default_construction) {
     auto const before = num_allocations;
