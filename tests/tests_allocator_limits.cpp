@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -65,6 +66,14 @@ namespace {
 
     /// the largest power of two of a 16-bit `size_type`
     constexpr std::size_t largest_bucket_count = std::size_t{1} << 15U;
+
+    /// inserts the keys 0 to `nb_keys - 1`
+    template<typename Set>
+    void insert_keys(Set &set, std::size_t nb_keys) {
+        for (std::size_t key = 0; key < nb_keys; ++key) {
+            set.insert(static_cast<std::uint16_t>(key));
+        }
+    }
 }  // namespace
 
 // The allocator provides 65535 bytes per allocation. That is enough for 2047 groups of 64 buckets, so the bucket count
@@ -78,4 +87,23 @@ TEST_CASE("max_bucket_count counts 64 buckets for each group that the allocator 
 
     CHECK_THROWS_AS(set.rehash(static_cast<std::uint16_t>(set.max_bucket_count() + 1)), std::length_error);
     CHECK(set.bucket_count() == set.max_bucket_count());
+}
+
+// The allocator does not limit the size here. With `max_bucket_count()` buckets the set holds
+// `max_bucket_count() * max_load_factor()` elements, rounded down, and that is `max_size()`.
+TEST_CASE("a set holds max_size() elements and throws std::length_error for one more") {
+    for (float const max_load_factor : {0.5F, 0.8F}) {
+        CAPTURE(max_load_factor);
+        auto set = small_set<false>{};
+        set.max_load_factor(max_load_factor);
+        REQUIRE(set.max_bucket_count() == largest_bucket_count);
+
+        auto const max_size = set.max_size();
+        REQUIRE_NOTHROW(insert_keys(set, max_size));
+        CHECK(set.size() == max_size);
+        CHECK(set.bucket_count() == set.max_bucket_count());
+
+        CHECK_THROWS_AS(set.insert(static_cast<std::uint16_t>(max_size)), std::length_error);
+        CHECK(set.size() == max_size);
+    }
 }
