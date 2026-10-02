@@ -51,7 +51,6 @@ namespace {
                                       std::hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
-                                      sh::power_of_two_growth_policy<2>,
                                       sh::exception_safety::basic,
                                       Sparsity>;
 
@@ -60,7 +59,6 @@ namespace {
                                       std::hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::uint64_t>,
-                                      sh::power_of_two_growth_policy<2>,
                                       sh::exception_safety::basic,
                                       Sparsity>;
 

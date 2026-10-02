@@ -62,7 +62,6 @@ namespace {
                                    std::hash<counter::obj>,
                                    std::equal_to<counter::obj>,
                                    leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                   sh::power_of_two_growth_policy<2>,
                                    ExceptionSafety,
                                    Sparsity>;
 

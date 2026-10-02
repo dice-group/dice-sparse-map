@@ -298,3 +298,41 @@ TEST_CASE_MAP("a_hash_survives_rehashing", std::string, int) {
     auto moved = std::move(map);
     REQUIRE(moved.find(key, hash)->second == 7);
 }
+
+// A hash function that is not marked as avalanching is mixed before it picks a bucket. A precalculated hash is the
+// unmixed `hash_function()(key)`, so the lookups with a precalculated hash mix it the same way.
+namespace {
+    /**
+     * Hash that returns the key and is marked avalanching, so that a key picks its bucket directly.
+     */
+    struct identity_hash {
+        using is_avalanching = void;
+
+        [[nodiscard]] std::size_t operator()(int key) const noexcept {
+            return static_cast<std::size_t>(key);
+        }
+    };
+
+    static_assert(!dice::sparse_map::hash_is_avalanching_v<std::hash<int>>);
+    static_assert(dice::sparse_map::hash_is_avalanching_v<identity_hash>);
+}  // namespace
+
+TEST_CASE_MAP("a precalculated hash is the hash of the hash function", std::uint64_t, int) {
+    auto map = map_t{};
+    for (std::uint64_t i = 0; i < 1000; ++i) {
+        map[i * 1024] = static_cast<int>(i);
+    }
+
+    auto const hash = map.hash_function();
+    for (std::uint64_t i = 0; i < 1000; ++i) {
+        auto const key = i * 1024;
+        auto const it = map.find(key, hash(key));
+        REQUIRE(it != map.end());
+        CHECK(it->second == static_cast<int>(i));
+        CHECK(map.contains(key, hash(key)));
+        CHECK(map.count(key, hash(key)) == 1);
+    }
+    CHECK(!map.contains(1, hash(1)));
+    CHECK(map.erase(1024, hash(1024)) == 1);
+    CHECK(map.size() == 999);
+}

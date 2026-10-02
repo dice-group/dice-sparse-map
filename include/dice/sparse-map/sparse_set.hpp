@@ -41,13 +41,9 @@ namespace dice::sparse_map {
      * probing. The goal on the hash set is to be the most memory efficient
      * possible, even at low load factor, while keeping reasonable performances.
      *
-     * `GrowthPolicy` defines how the set grows and consequently how a hash value is
-     * mapped to a bucket. By default the set uses
-     * `dice::sh::power_of_two_growth_policy`. This policy keeps the number of
-     * buckets to a power of two and uses a mask to map the hash to a bucket instead
-     * of the slow modulo. Other growth policies are available and you may define
-     * your own growth policy, check `dice::sh::power_of_two_growth_policy` for the
-     * interface.
+     * The number of buckets is a power of two, and a hash picks its bucket with a
+     * mask. The hash of a hash function that is not avalanching is mixed with one
+     * multiplication first, see `hash_is_avalanching`.
      *
      * `ExceptionSafety` defines the exception guarantee provided by the class. By
      * default only the basic exception safety is guaranteed which mean that all
@@ -80,7 +76,7 @@ namespace dice::sparse_map {
      * the iterators.
      *  - erase: always invalidate the iterators.
      */
-    template<class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>, class GrowthPolicy = dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+    template<class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
     class sparse_set {
     private:
         class KeySelect {
@@ -96,7 +92,7 @@ namespace dice::sparse_map {
             }
         };
 
-        using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, void, Hash, KeyEqual, Allocator, GrowthPolicy, ExceptionSafety, Sparsity, dice::sparse_map::sh::probing::quadratic>;
+        using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, void, Hash, KeyEqual, Allocator, ExceptionSafety, Sparsity>;
 
     public:
         using key_type = typename ht::key_type;
@@ -628,13 +624,6 @@ namespace dice::sparse_map {
     private:
         ht ht_;
     };
-
-    /**
-     * Same as `dice::sparse_set<Key, Hash, KeyEqual, Allocator,
-     * dice::sh::prime_growth_policy>`.
-     */
-    template<class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>>
-    using sparse_pg_set = sparse_set<Key, Hash, KeyEqual, Allocator, dice::sparse_map::sh::prime_growth_policy>;
 
 }  // namespace dice::sparse_map
 
