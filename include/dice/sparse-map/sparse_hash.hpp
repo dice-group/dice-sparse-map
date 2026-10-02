@@ -1843,7 +1843,13 @@ namespace dice::sparse_map {
                     return 0;
                 }
 
-                auto count = rounded_bucket_count(static_cast<size_type>(ceil_to_size(static_cast<double>(nb_elements) / static_cast<double>(max_load_factor_))));
+                // checked before the conversion to `size_type`, which can be narrower than `std::size_t`
+                std::size_t const min_bucket_count = ceil_to_size(static_cast<double>(nb_elements) / static_cast<double>(max_load_factor_));
+                if (std::cmp_greater(min_bucket_count, max_bucket_count())) {
+                    throw std::length_error("The hash table exceeds its maximum size.");
+                }
+
+                auto count = rounded_bucket_count(static_cast<size_type>(min_bucket_count));
                 // the division rounds, so `count` can be one doubling too small
                 if (rehash_threshold(count) < nb_elements) {
                     if (count > max_bucket_count() / 2) {
@@ -1965,12 +1971,19 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Reserves room for `nb_elements_to_insert` more elements if the table does not have it.
+             * Reserves room for `nb_elements_to_insert` more elements if the table does not have it. The reservation
+             * is a hint, because the elements can have equal keys or keys that are in the table already. So it
+             * reserves nothing if `size() + nb_elements_to_insert` exceeds `max_size()`.
              */
             constexpr void reserve_for_insertion(std::size_t nb_elements_to_insert) {
-                // a lower max load factor can put the threshold below the size
+                // a lower max load factor can put the threshold below the size, and the size above `max_size()`
                 size_type const nb_free_buckets = load_threshold_rehash_ > size() ? load_threshold_rehash_ - size() : 0;
-                if (nb_elements_to_insert > 0 && nb_free_buckets < nb_elements_to_insert) {
+                if (nb_elements_to_insert == 0 || nb_free_buckets >= nb_elements_to_insert) {
+                    return;
+                }
+                size_type const max_nb_elements = max_size();
+                if (std::cmp_less_equal(nb_elements_to_insert, max_nb_elements)
+                    && size() <= max_nb_elements - static_cast<size_type>(nb_elements_to_insert)) {
                     reserve(size() + static_cast<size_type>(nb_elements_to_insert));
                 }
             }

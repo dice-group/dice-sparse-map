@@ -10,6 +10,8 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <ranges>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -61,6 +63,36 @@ namespace {
         }
     }
 
+    /// the element with key `key`, for the map with the mapped value `key`
+    template<typename Container>
+    typename Container::value_type value_of(std::uint32_t key) {
+        if constexpr (requires { typename Container::mapped_type; }) {
+            return {key, key};
+        } else {
+            return key;
+        }
+    }
+
+    /**
+     * A range of one element whose `size()` says that it has 2^31 elements.
+     */
+    template<typename T>
+    struct one_element_claiming_2_31 {
+        T element;
+
+        [[nodiscard]] T const *begin() const noexcept {
+            return &element;
+        }
+
+        [[nodiscard]] T const *end() const noexcept {
+            return &element + 1;
+        }
+
+        [[nodiscard]] std::uint32_t size() const noexcept {
+            return std::uint32_t{1} << 31U;
+        }
+    };
+
     constexpr std::uint32_t nb_keys = 1000;
 }  // namespace
 
@@ -93,4 +125,33 @@ TEST_CASE_TEMPLATE("a container whose allocator has a 32-bit size_type holds ele
 TEST_CASE_TEMPLATE("a container whose allocator has a 32-bit difference_type uses it for its iterators", container_t, map_t, set_t) {
     CHECK(std::is_same_v<typename container_t::difference_type, typename std::iterator_traits<typename container_t::iterator>::difference_type>);
     CHECK(std::is_same_v<typename container_t::difference_type, typename std::iterator_traits<typename container_t::const_iterator>::difference_type>);
+}
+
+// `reserve(n)` computes the bucket count for `n` elements as a `std::size_t`. For 2^31 elements at the default maximum
+// load factor of 0.5 that is 2^32, which a 32-bit `size_type` cannot hold. `reserve` throws instead of reserving fewer
+// buckets.
+TEST_CASE_TEMPLATE("reserve of more elements than a 32-bit size_type can count buckets for throws", container_t, map_t, set_t) {
+    auto container = container_t{};
+    insert_one(container, 1);
+    auto const bucket_count = container.bucket_count();
+
+    CHECK_THROWS_AS(container.reserve(std::uint32_t{1} << 31U), std::length_error);
+    CHECK(container.bucket_count() == bucket_count);
+    CHECK(container.size() == 1);
+    CHECK(container.contains(1));
+}
+
+// `insert_range` of a sized range reserves room for `std::ranges::size(range)` more elements. That is a hint: the
+// elements can have equal keys, so the range can be longer than `max_size()` and still fit. The range here has one
+// element and says that it has 2^31, more than `max_size()`. `insert_range` must not throw `std::length_error`.
+TEST_CASE_TEMPLATE("insert_range of a sized range longer than max_size() inserts its elements", container_t, map_t, set_t) {
+    auto const range = one_element_claiming_2_31<typename container_t::value_type>{value_of<container_t>(7)};
+    static_assert(std::ranges::sized_range<decltype(range)>);
+
+    auto container = container_t{};
+    REQUIRE(std::ranges::size(range) > container.max_size());
+
+    CHECK_NOTHROW(container.insert_range(range));
+    CHECK(container.size() == 1);
+    CHECK(container.contains(7));
 }
