@@ -54,6 +54,11 @@
 namespace dice::sparse_map {
 
     namespace sh {
+        /**
+         * The values of the `ExceptionSafety` template parameter of `sparse_map` and `sparse_set`. Both are
+         * accepted and have no effect. The exception guarantee follows from the type of the elements, see the
+         * class documentation of `sparse_map`.
+         */
         enum class exception_safety {
             basic,
             strong
@@ -785,8 +790,8 @@ namespace dice::sparse_map {
          * parameter and returns a reference to the value. `ValueSelect` should be void
          * if there is no value (in a set for example).
          *
-         * The strong exception guarantee only holds if `ExceptionSafety` is set to
-         * `dice::sh::exception_safety::strong`.
+         * A rehash that throws leaves the table unchanged or empty, depending on the type of the elements
+         * and on what throws. See `rehash_impl`.
          *
          * `ValueType` must be nothrow move constructible and/or copy constructible.
          * Behaviour is undefined if the destructor of `ValueType` throws.
@@ -810,7 +815,7 @@ namespace dice::sparse_map {
          * standard layout type whenever `Hash`, `KeyEqual`, `Allocator` and the bucket container are standard
          * layout themselves. The members are marked potentially overlapping, so empty ones still cost no space.
          */
-        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, dice::sparse_map::sh::exception_safety ExceptionSafety, dice::sparse_map::sh::sparsity Sparsity>
+        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, dice::sparse_map::sh::sparsity Sparsity>
         class sparse_hash {
         private:
             template<typename U>
@@ -1820,42 +1825,67 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(nb_deleted_buckets_ == 0);
             }
 
-            template<dice::sparse_map::sh::exception_safety U = ExceptionSafety,
-                     typename std::enable_if<U == dice::sparse_map::sh::exception_safety::basic>::type
-                         * = nullptr>
+            /**
+             * True if a rehash copies the elements and frees the old groups at the end, see `rehash_impl`.
+             */
+            static constexpr bool copy_on_rehash = !std::is_nothrow_move_constructible_v<value_type>;
+
+            /**
+             * Moves or copies all elements into a new table with at least `count` buckets. How depends on the type of
+             * the elements.
+             *
+             * An element whose move constructor cannot throw is moved, one old group after the other. Each old group
+             * is freed right after its elements are moved. If the hash function or the allocator throws while the
+             * elements are moved, the table is cleared, so it is empty afterwards. An exception of the allocator
+             * before, while the new table allocates its buckets, leaves the table unchanged.
+             *
+             * An element whose move constructor can throw is copied. The old groups are freed at the end, so the old
+             * and the new groups are in memory at the same time. The table stays untouched until all copies are made,
+             * so an exception leaves it unchanged.
+             *
+             * The table takes the new buckets with `swap_storage`, which cannot throw.
+             */
             void rehash_impl(size_type count) {
                 sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
 
-                for (auto &bucket : sparse_buckets_data_) {
-                    for (auto &val : bucket) {
-                        new_table.insert_on_rehash(std::move(val));
+                if constexpr (copy_on_rehash) {
+                    for (auto const &bucket : sparse_buckets_data_) {
+                        for (auto const &value : bucket) {
+                            new_table.insert_on_rehash(value);
+                        }
                     }
-
-                    // TODO try to reuse some of the memory
-                    bucket.clear(alloc_);
+                } else {
+                    try {
+                        for (auto &bucket : sparse_buckets_data_) {
+                            for (auto &value : bucket) {
+                                new_table.insert_on_rehash(std::move(value));
+                            }
+                            bucket.clear(alloc_);
+                        }
+                    } catch (...) {
+                        clear();
+                        throw;
+                    }
                 }
 
-                new_table.swap(*this);
+                swap_storage(new_table);
             }
 
             /**
-             * TODO: For now we copy each element into the new map. We could move
-             * them if they are nothrow_move_constructible without triggering
-             * any exception if we reserve enough space in the sparse arrays beforehand.
+             * Swaps the buckets and the counters with `other`, which has the same allocator, hash function, key
+             * equality and maximum load factor. Unlike `swap`, it cannot throw.
              */
-            template<dice::sparse_map::sh::exception_safety U = ExceptionSafety,
-                     typename std::enable_if<
-                         U == dice::sparse_map::sh::exception_safety::strong>::type * = nullptr>
-            void rehash_impl(size_type count) {
-                sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
-
-                for (auto const &bucket : sparse_buckets_data_) {
-                    for (auto const &val : bucket) {
-                        new_table.insert_on_rehash(val);
-                    }
-                }
-
-                new_table.swap(*this);
+            void swap_storage(sparse_hash &other) noexcept {
+                using std::swap;
+                swap(mask_, other.mask_);
+                swap(sparse_buckets_data_, other.sparse_buckets_data_);
+                sparse_buckets_ = sparse_buckets_data_.empty() ? static_empty_sparse_bucket_ptr() : sparse_buckets_data_.data();
+                other.sparse_buckets_ = other.sparse_buckets_data_.empty() ? static_empty_sparse_bucket_ptr() : other.sparse_buckets_data_.data();
+                swap(bucket_count_, other.bucket_count_);
+                swap(nb_elements_, other.nb_elements_);
+                swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
+                swap(load_threshold_rehash_, other.load_threshold_rehash_);
+                swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
             }
 
             template<typename K>

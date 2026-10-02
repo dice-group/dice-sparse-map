@@ -21,20 +21,6 @@
 
 using namespace dice::sparse_map::tests;
 
-/**
- * Like `TEST_CASE_MAP`, without the configuration with `sh::exception_safety::strong`. That configuration copies every
- * element on a rehash, so it does not compile with a mapped type that cannot be copied.
- */
-// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_MAP_MOVE_ONLY(name, ...)                                      \
-    TEST_CASE_TEMPLATE(name,                                                    \
-                       map_t,                                                   \
-                       ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,      \
-                       ::dice::sparse_map::tests::map_high<__VA_ARGS__>,        \
-                       ::dice::sparse_map::tests::map_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
-
 // not_copyable
 
 namespace {
@@ -65,7 +51,7 @@ namespace {
 
 }  // namespace
 
-TEST_CASE_MAP_MOVE_ONLY("not_copyable", std::size_t, no_copy) {
+TEST_CASE_MAP("not_copyable", std::size_t, no_copy) {
     map_t m;
     for (std::size_t i = 0; i < 100; ++i) {
         m[i];
@@ -125,7 +111,7 @@ TEST_CASE_MAP("not_moveable", std::size_t, no_move) {
 
 // unique_ptr
 
-TEST_CASE_MAP_MOVE_ONLY("unique_ptr", std::size_t, std::unique_ptr<int>) {
+TEST_CASE_MAP("unique_ptr", std::size_t, std::unique_ptr<int>) {
     map_t m;
     REQUIRE(m.end() == m.find(123));
     REQUIRE(m.end() == m.begin());
@@ -165,7 +151,7 @@ TEST_CASE_MAP_MOVE_ONLY("unique_ptr", std::size_t, std::unique_ptr<int>) {
 
 // emplace() builds the element before it looks up the key, so the second emplace of a key owns the pointer and
 // destroys it. Nothing leaks, which the leak checker of the sanitizer build checks.
-TEST_CASE_MAP_MOVE_ONLY("unique_ptr_fill", std::size_t, std::unique_ptr<int>) {
+TEST_CASE_MAP("unique_ptr_fill", std::size_t, std::unique_ptr<int>) {
     map_t m;
     for (int i = 0; i < 1000; ++i) {
         m.emplace(static_cast<std::size_t>(i), new int(i));  // NOLINT(cppcoreguidelines-owning-memory)

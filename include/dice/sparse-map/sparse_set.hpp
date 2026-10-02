@@ -50,19 +50,17 @@ namespace dice::sparse_map {
      * The number of buckets is 0 or a power of two and doubles when the table
      * grows. A hash picks its bucket with a mask.
      *
-     * `ExceptionSafety` defines the exception guarantee provided by the class. By
-     * default only the basic exception safety is guaranteed which mean that all
-     * resources used by the hash set will be freed (no memory leaks) but the hash
-     * set may end-up in an undefined state if an exception is thrown (undefined
-     * here means that some elements may be missing). This can ONLY happen on rehash
-     * (either on insert or if `rehash` is called explicitly) and will occur if the
-     * Allocator can't allocate memory (`std::bad_alloc`) or if the copy constructor
-     * (when a nothrow move constructor is not available) throws an exception. This
-     * can be avoided by calling `reserve` beforehand. This basic guarantee is
-     * similar to the one of `google::sparse_hash_map` and `spp::sparse_hash_map`.
-     * It is possible to ask for the strong exception guarantee with
-     * `dice::sh::exception_safety::strong`, the drawback is that the set will be
-     * slower on rehashes and will also need more memory on rehashes.
+     * `ExceptionSafety` is a placeholder. Both values of `dice::sparse_map::sh::exception_safety` are accepted
+     * and have no effect. The exception guarantee follows from the type of the elements.
+     *
+     * If the insertion of one element throws, the set holds the same elements as before, except in one case where it
+     * is empty. It comes from a rehash, which an insertion, `rehash` or `reserve` can do. `reserve` avoids rehashes.
+     * How a rehash transfers the elements depends on their type:
+     * - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old
+     *   buckets is freed while they are moved. If the hash function or the allocator throws while the elements are
+     *   moved, the set is empty. Any other exception leaves the set unchanged.
+     * - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and
+     *   the new buckets are in memory at the same time. An exception leaves the set unchanged.
      *
      * `Sparsity` defines how much the hash set will compromise between insertion
      * speed and memory usage. A high sparsity means less memory usage but longer
@@ -103,7 +101,7 @@ namespace dice::sparse_map {
             }
         };
 
-        using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, void, Hash, KeyEqual, Allocator, ExceptionSafety, Sparsity>;
+        using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, void, Hash, KeyEqual, Allocator, Sparsity>;
 
     public:
         using key_type = typename ht::key_type;

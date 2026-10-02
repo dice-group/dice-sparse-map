@@ -42,7 +42,6 @@ namespace details {
         dice::sparse_map::tests::test_hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::sparse_map::sh::exception_safety::basic,
         dice::sparse_map::sh::sparsity::medium>;
 
     template<typename T>
