@@ -926,6 +926,13 @@ namespace dice::sparse_map {
          * A rehash that throws leaves the table unchanged or empty, depending on what throws. See
          * `rehash_impl`.
          *
+         * `erase` does not throw unless the hash function or the key equality throws.
+         *
+         * `begin()` is constant time and writes nothing. The table keeps the index of its first group that holds an
+         * element (`first_nonempty_group_`), and every operation that changes the table keeps it exact. An erase that
+         * empties this group reads the headers of the groups after it, up to the next group with an element. So the
+         * loop `while (!empty()) { erase(begin()); }` reads every group header once in total.
+         *
          * The stored elements must be nothrow move constructible, or nothrow copy constructible without a move
          * constructor. The behaviour is undefined if their destructor throws. See `sparse_array` for the whole
          * requirement and for what a nothrow move needs from the allocator.
@@ -1162,6 +1169,7 @@ namespace dice::sparse_map {
                   key_equal_(other.key_equal_),
                   bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
+                  first_nonempty_group_(other.first_nonempty_group_),
                   nb_deleted_buckets_(other.nb_deleted_buckets_),
                   load_threshold_rehash_(other.load_threshold_rehash_),
                   load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
@@ -1179,6 +1187,7 @@ namespace dice::sparse_map {
                   nb_sparse_buckets_(std::exchange(other.nb_sparse_buckets_, 0)),
                   bucket_count_(std::exchange(other.bucket_count_, 0)),
                   nb_elements_(std::exchange(other.nb_elements_, 0)),
+                  first_nonempty_group_(std::exchange(other.first_nonempty_group_, 0)),
                   nb_deleted_buckets_(std::exchange(other.nb_deleted_buckets_, 0)),
                   load_threshold_rehash_(std::exchange(other.load_threshold_rehash_, 0)),
                   load_threshold_clear_deleted_(std::exchange(other.load_threshold_clear_deleted_, 0)),
@@ -1202,6 +1211,7 @@ namespace dice::sparse_map {
                   key_equal_(take_functor(other.key_equal_, alloc_, other.alloc_)),
                   bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
+                  first_nonempty_group_(other.first_nonempty_group_),
                   nb_deleted_buckets_(other.nb_deleted_buckets_),
                   load_threshold_rehash_(other.load_threshold_rehash_),
                   load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
@@ -1236,6 +1246,7 @@ namespace dice::sparse_map {
 
                 bucket_count_ = other.bucket_count_;
                 nb_elements_ = other.nb_elements_;
+                first_nonempty_group_ = other.first_nonempty_group_;
                 nb_deleted_buckets_ = other.nb_deleted_buckets_;
                 load_threshold_rehash_ = other.load_threshold_rehash_;
                 load_threshold_clear_deleted_ = other.load_threshold_clear_deleted_;
@@ -1277,6 +1288,7 @@ namespace dice::sparse_map {
 
                 bucket_count_ = other.bucket_count_;
                 nb_elements_ = other.nb_elements_;
+                first_nonempty_group_ = other.first_nonempty_group_;
                 nb_deleted_buckets_ = other.nb_deleted_buckets_;
                 load_threshold_rehash_ = other.load_threshold_rehash_;
                 load_threshold_clear_deleted_ = other.load_threshold_clear_deleted_;
@@ -1295,11 +1307,9 @@ namespace dice::sparse_map {
              * Iterators
              */
             [[nodiscard]] constexpr iterator begin() noexcept {
-                sparse_array *bucket = buckets_begin();
+                DICE_SPARSE_MAP_ASSERT(first_nonempty_group_is_plausible());
+                sparse_array *const bucket = buckets_begin() + first_nonempty_group_;
                 sparse_array *const last = buckets_end();
-                while (bucket != last && bucket->empty()) {
-                    ++bucket;
-                }
 
                 return iterator(bucket, bucket != last ? bucket->begin() : nullptr);
             }
@@ -1309,11 +1319,9 @@ namespace dice::sparse_map {
             }
 
             [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
-                sparse_array const *bucket = buckets_begin();
+                DICE_SPARSE_MAP_ASSERT(first_nonempty_group_is_plausible());
+                sparse_array const *const bucket = buckets_begin() + first_nonempty_group_;
                 sparse_array const *const last = buckets_end();
-                while (bucket != last && bucket->empty()) {
-                    ++bucket;
-                }
 
                 return const_iterator(bucket, bucket != last ? bucket->cbegin() : nullptr);
             }
@@ -1358,6 +1366,7 @@ namespace dice::sparse_map {
                 }
 
                 nb_elements_ = 0;
+                first_nonempty_group_ = nb_sparse_buckets_;
                 nb_deleted_buckets_ = 0;
             }
 
@@ -1505,10 +1514,21 @@ namespace dice::sparse_map {
                     return iterator(bucket, next_slot);
                 }
 
+                // no element follows the erased one in its group
+                if (nb_elements_ == 0) {
+                    first_nonempty_group_ = nb_sparse_buckets_;
+                    return end();
+                }
+                bool const emptied_first_group = group_index(bucket) == first_nonempty_group_ && bucket->empty();
+
                 sparse_array *const last = buckets_end();
                 do {
                     ++bucket;
                 } while (bucket != last && bucket->empty());
+
+                if (emptied_first_group) {
+                    first_nonempty_group_ = group_index(bucket);
+                }
 
                 return bucket == last ? end() : iterator(bucket, bucket->begin());
             }
@@ -1586,6 +1606,7 @@ namespace dice::sparse_map {
                 swap(nb_sparse_buckets_, other.nb_sparse_buckets_);
                 swap(bucket_count_, other.bucket_count_);
                 swap(nb_elements_, other.nb_elements_);
+                swap(first_nonempty_group_, other.first_nonempty_group_);
                 swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
                 swap(load_threshold_rehash_, other.load_threshold_rehash_);
                 swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
@@ -1782,6 +1803,41 @@ namespace dice::sparse_map {
                 return {buckets_begin(), buckets_end()};
             }
 
+            /**
+             * @return the index of the group `bucket` in the bucket array
+             */
+            [[nodiscard]] constexpr size_type group_index(sparse_array const *bucket) const noexcept {
+                return static_cast<size_type>(bucket - buckets_begin());
+            }
+
+            /**
+             * True if `first_nonempty_group_` is `nb_sparse_buckets_` for a table without elements, and otherwise the
+             * index of a group that holds an element. The groups before it are not checked, so that the check is
+             * constant time like `begin()`.
+             */
+            [[nodiscard]] constexpr bool first_nonempty_group_is_plausible() const noexcept {
+                if (nb_elements_ == 0) {
+                    return first_nonempty_group_ == nb_sparse_buckets_;
+                }
+                return first_nonempty_group_ < nb_sparse_buckets_ && !buckets_begin()[first_nonempty_group_].empty();
+            }
+
+            /**
+             * Moves `first_nonempty_group_` to the next group that holds an element, after an erase emptied the first
+             * one. Reads the headers of the groups in between. Without elements it is `nb_sparse_buckets_` at once.
+             */
+            constexpr void skip_empty_first_groups() noexcept {
+                if (nb_elements_ == 0) {
+                    first_nonempty_group_ = nb_sparse_buckets_;
+                    return;
+                }
+
+                sparse_array const *const raw_buckets = buckets_begin();
+                while (raw_buckets[first_nonempty_group_].empty()) {
+                    ++first_nonempty_group_;
+                }
+            }
+
             template<typename K1, typename K2>
             [[nodiscard]] constexpr bool compare_keys(K1 const &key1, K2 const &key2) const {
                 return key_equal_(key1, key2);
@@ -1946,6 +2002,7 @@ namespace dice::sparse_map {
 
                 buckets_ = new_buckets;
                 nb_sparse_buckets_ = nb_sparse_buckets;
+                first_nonempty_group_ = nb_sparse_buckets;
             }
 
             /**
@@ -1974,6 +2031,7 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(buckets_ == nullptr && nb_sparse_buckets_ == 0);
                 bucket_count_ = 0;
                 nb_elements_ = 0;
+                first_nonempty_group_ = 0;
                 nb_deleted_buckets_ = 0;
                 load_threshold_rehash_ = 0;
                 load_threshold_clear_deleted_ = 0;
@@ -2190,6 +2248,9 @@ namespace dice::sparse_map {
                 if (reuses_deleted_bucket) {
                     --nb_deleted_buckets_;
                 }
+                if (sparse_ibucket < first_nonempty_group_) {
+                    first_nonempty_group_ = static_cast<size_type>(sparse_ibucket);
+                }
 
                 return {iterator(&bucket, slot), true};
             }
@@ -2214,6 +2275,9 @@ namespace dice::sparse_map {
                             bucket.erase(alloc_, slot, index_in_sparse_bucket);
                             --nb_elements_;
                             ++nb_deleted_buckets_;
+                            if (sparse_ibucket == first_nonempty_group_ && bucket.empty()) {
+                                skip_empty_first_groups();
+                            }
 
                             return 1;
                         }
@@ -2319,6 +2383,7 @@ namespace dice::sparse_map {
                 swap(nb_sparse_buckets_, other.nb_sparse_buckets_);
                 swap(bucket_count_, other.bucket_count_);
                 swap(nb_elements_, other.nb_elements_);
+                swap(first_nonempty_group_, other.first_nonempty_group_);
                 swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
                 swap(load_threshold_rehash_, other.load_threshold_rehash_);
                 swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
@@ -2341,6 +2406,9 @@ namespace dice::sparse_map {
                     if (!bucket.has_value(index_in_sparse_bucket)) {
                         bucket.set(alloc_, index_in_sparse_bucket, std::forward<S>(slot_value));
                         ++nb_elements_;
+                        if (sparse_ibucket < first_nonempty_group_) {
+                            first_nonempty_group_ = static_cast<size_type>(sparse_ibucket);
+                        }
 
                         return;
                     }
@@ -2378,6 +2446,12 @@ namespace dice::sparse_map {
              */
             size_type bucket_count_ = 0;
             size_type nb_elements_ = 0;
+
+            /**
+             * The index of the first group that holds an element, or `nb_sparse_buckets_` if there is none. Every
+             * operation that changes the table keeps it exact, so that `begin()` is constant time and writes nothing.
+             */
+            size_type first_nonempty_group_ = 0;
 
             /**
              * Number of buckets that are marked as deleted.

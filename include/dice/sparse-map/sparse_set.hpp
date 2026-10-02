@@ -69,6 +69,11 @@ namespace dice::sparse_map {
      * are moved. If the hash function throws while the elements are moved, or the allocator with
      * `allocation_failure::throwing`, the set is empty. Any other exception leaves the set unchanged.
      *
+     * `begin()` is constant time: the set keeps the index of its first group of 64 buckets that holds an element.
+     * An erase that empties this group looks for the next group with an element, one group after the other. So the
+     * erase costs one step for every empty group in between, and erasing all elements in the order of iteration, as
+     * in `while (!set.empty()) { set.erase(set.begin()); }`, costs one step per group in total.
+     *
      * `Sparsity` trades insertion speed for memory. A group grows its storage by 2 (`sh::sparsity::high`),
      * 4 (`sh::sparsity::medium`, default) or 8 (`sh::sparsity::low`) elements at a time. High sparsity means
      * less memory and slower insertions. The lookup speed does not depend on it.
