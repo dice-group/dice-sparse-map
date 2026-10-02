@@ -50,6 +50,12 @@ namespace {
     template<typename Map, typename K>
     concept HasHeterogeneousTryEmplace = requires (Map map, K key) { map.try_emplace(key, 1); };
 
+    template<typename Container, typename K>
+    concept HasHeterogeneousFind = requires (Container container, K key) { container.find(key); };
+
+    template<typename Set, typename K>
+    concept HasHeterogeneousInsert = requires (Set set, K key) { set.insert(key); };
+
 }  // namespace
 
 TEST_SUITE("iterators") {
@@ -352,6 +358,14 @@ TEST_SUITE("erase_if and merge") {
 TEST_SUITE("heterogeneous insertion") {
     static_assert(HasHeterogeneousTryEmplace<string_map, std::string_view>);
     static_assert(!HasHeterogeneousTryEmplace<sparse_map<std::string, int>, std::string_view>);
+
+    // The heterogeneous overloads need `is_transparent` on the hash function and on the key equality.
+    static_assert(HasHeterogeneousFind<string_map, std::string_view>);
+    static_assert(HasHeterogeneousInsert<string_set, std::string_view>);
+    static_assert(!HasHeterogeneousTryEmplace<sparse_map<std::string, int, std::hash<std::string>, std::equal_to<>>, std::string_view>);
+    static_assert(!HasHeterogeneousFind<sparse_map<std::string, int, std::hash<std::string>, std::equal_to<>>, std::string_view>);
+    static_assert(!HasHeterogeneousFind<sparse_map<std::string, int, string_hash, std::equal_to<std::string>>, std::string_view>);
+    static_assert(!HasHeterogeneousInsert<sparse_set<std::string, std::hash<std::string>, std::equal_to<>>, std::string_view>);
 
     TEST_CASE("try_emplace, insert_or_assign, operator[] and erase with a string_view") {
         auto map = string_map{};

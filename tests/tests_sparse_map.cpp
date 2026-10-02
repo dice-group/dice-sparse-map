@@ -1037,6 +1037,8 @@ TEST_SUITE("test_sparse_map") {
 
     TEST_CASE("test_heterogeneous_lookups") {
         struct hash_ptr {
+            using is_transparent = void;
+
             std::size_t operator()(std::unique_ptr<int> const &p) const {
                 return std::hash<std::uintptr_t>()(
                     reinterpret_cast<std::uintptr_t>(p.get()));

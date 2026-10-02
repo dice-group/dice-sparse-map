@@ -55,8 +55,12 @@ namespace dice::unordered_sparse {
      *    the Cpp17InputIterator requirements, because its reference type is not `value_type &`.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - `emplace` constructs the element first and inserts it if its key is not in the map.
-     *  - Heterogeneous lookup and insertion are enabled by `KeyEqual::is_transparent` alone.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
+     *
+     * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
+     * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
+     * `KeyEqual::is_transparent` both exist, and the hash function and the key equality must accept the other type.
+     * Otherwise the argument is converted to `Key` first.
      *
      * If an insertion throws, the map holds the same elements as before, except in one case where it is empty. It
      * comes from a rehash, which an insertion, `merge`, `rehash` or `reserve` can do. `reserve` avoids rehashes. How
@@ -100,8 +104,8 @@ namespace dice::unordered_sparse {
         template<typename, typename, typename, typename, typename, unordered_sparse::sparsity>
         friend struct sparse_map;
 
-        /// heterogeneous lookup and insertion are enabled by `KeyEqual::is_transparent`
-        static constexpr bool is_transparent = detail::IsTransparent<KeyEqual>;
+        /// the heterogeneous overloads exist if `Hash::is_transparent` and `KeyEqual::is_transparent` exist
+        static constexpr bool is_transparent = detail::IsTransparent<Hash> && detail::IsTransparent<KeyEqual>;
 
     public:
         using key_type = Key;
@@ -366,8 +370,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `insert_or_assign` (C++26). Only if `KeyEqual::is_transparent` exists. `key_type` is
-         * constructed from `k` only if an element is inserted.
+         * Heterogeneous `insert_or_assign` (C++26). Only if `Hash::is_transparent` and `KeyEqual::is_transparent`
+         * exist. `key_type` is constructed from `k` only if an element is inserted.
          */
         template<typename K, typename M>
         requires (heterogeneous_key<K> && std::is_constructible_v<key_type, K &&>)
@@ -420,8 +424,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `try_emplace` (C++26). Only if `KeyEqual::is_transparent` exists. `key_type` is
-         * constructed from `k` only if an element is inserted.
+         * Heterogeneous `try_emplace` (C++26). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist.
+         * `key_type` is constructed from `k` only if an element is inserted.
          */
         template<typename K, typename... Args>
         requires (heterogeneous_key<K> && std::is_constructible_v<key_type, K &&>)
@@ -470,8 +474,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `erase` (C++23). Only if `KeyEqual::is_transparent` exists. `K` must be hashable and
-         * comparable to `Key`.
+         * Heterogeneous `erase` (C++23). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist. `K`
+         * must be hashable and comparable to `Key`.
          */
         template<typename K>
         requires heterogeneous_key<K>
@@ -542,8 +546,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `at`. Only if `KeyEqual::is_transparent` exists. `K` must be hashable and comparable to
-         * `Key`.
+         * Heterogeneous `at`. Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist. `K` must be
+         * hashable and comparable to `Key`.
          */
         template<typename K>
         requires is_transparent
@@ -578,8 +582,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `operator[]` (C++26). Only if `KeyEqual::is_transparent` exists. `key_type` is
-         * constructed from `key` only if an element is inserted.
+         * Heterogeneous `operator[]` (C++26). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist.
+         * `key_type` is constructed from `key` only if an element is inserted.
          */
         template<typename K>
         requires (heterogeneous_key<K> && std::is_constructible_v<key_type, K &&>)
@@ -600,7 +604,7 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `lookup`. Only if `KeyEqual::is_transparent` exists.
+         * Heterogeneous `lookup`. Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist.
          */
         template<typename K>
         requires is_transparent
