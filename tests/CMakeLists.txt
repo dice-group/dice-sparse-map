@@ -4,9 +4,9 @@ find_package(Metall REQUIRED)
 find_package(nanobench REQUIRED)
 
 # doctest main, the nanobench implementation and the counter fixture, compiled once and linked into every test
-add_library(dice_sparse_map_test_main OBJECT test_main.cpp fixtures/counter.cpp)
-target_include_directories(dice_sparse_map_test_main PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(dice_sparse_map_test_main PUBLIC
+add_library(dice_unordered_sparse_test_main OBJECT test_main.cpp fixtures/counter.cpp)
+target_include_directories(dice_unordered_sparse_test_main PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(dice_unordered_sparse_test_main PUBLIC
         doctest::doctest
         nanobench::nanobench
 )
@@ -20,8 +20,8 @@ foreach (test_source IN LISTS test_sources)
     add_executable(${test_name} "${test_source}")
     target_include_directories(${test_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(${test_name} PRIVATE
-            dice_sparse_map_test_main
-            dice-sparse-map::dice-sparse-map
+            dice_unordered_sparse_test_main
+            dice-unordered-sparse::dice-unordered-sparse
             doctest::doctest
             nanobench::nanobench
             Boost::headers

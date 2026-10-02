@@ -72,5 +72,5 @@ class Recipe(ConanFile):
         self.cpp_info.libdirs = []
 
         self.cpp_info.set_property("cmake_find_mode", "both")
-        self.cpp_info.set_property("cmake_target_name", "dice-sparse-map::dice-sparse-map")
-        self.cpp_info.set_property("cmake_file_name", "dice-sparse-map")
+        self.cpp_info.set_property("cmake_target_name", "dice-unordered-sparse::dice-unordered-sparse")
+        self.cpp_info.set_property("cmake_file_name", "dice-unordered-sparse")

@@ -1,6 +1,6 @@
 # Benchmarks
 
-One binary, `dice_sparse_map_benchmarks`, holds every benchmark. Each `bench_<name>.cpp` holds doctest
+One binary, `dice_unordered_sparse_benchmarks`, holds every benchmark. Each `bench_<name>.cpp` holds doctest
 test cases, and each test case runs one benchmark with [nanobench](https://github.com/martinus/nanobench)
 (or with its own clock, see below). Most workloads are ported from the benchmarks of
 [ankerl::unordered_dense](https://github.com/martinus/unordered_dense) (MIT license).
@@ -20,17 +20,17 @@ as for the tests. `conan_provider.cmake` is the dependency provider of
 ```sh
 cmake -G Ninja -B build-release -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCHMARKS=ON \
     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=conan_provider.cmake
-cmake --build build-release --target dice_sparse_map_benchmarks
+cmake --build build-release --target dice_unordered_sparse_benchmarks
 ```
 
 ## Run
 
 ```sh
-build-release/benchmarks/dice_sparse_map_benchmarks                       # everything
-build-release/benchmarks/dice_sparse_map_benchmarks -ltc                  # list the benchmarks
-build-release/benchmarks/dice_sparse_map_benchmarks -tc="quick_overall*"  # all quick overall scores
-build-release/benchmarks/dice_sparse_map_benchmarks -tc="*sparse_map high" -tce="*metall*"
-build-release/benchmarks/dice_sparse_map_benchmarks -d                    # print the time of each test case
+build-release/benchmarks/dice_unordered_sparse_benchmarks                       # everything
+build-release/benchmarks/dice_unordered_sparse_benchmarks -ltc                  # list the benchmarks
+build-release/benchmarks/dice_unordered_sparse_benchmarks -tc="quick_overall*"  # all quick overall scores
+build-release/benchmarks/dice_unordered_sparse_benchmarks -tc="*sparse_map high" -tce="*metall*"
+build-release/benchmarks/dice_unordered_sparse_benchmarks -d                    # print the time of each test case
 ```
 
 `-tc` selects test cases by name, `-tce` excludes them. Both take wildcards and comma separated lists.
@@ -41,10 +41,10 @@ with `taskset -c 2`. The numbers of different runs are only comparable on the sa
 
 ### Environment variables
 
-| variable                           | meaning                                                                                                                                                                                                                                                     |
-|------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `DICE_SPARSE_MAP_BENCH_QUICK=1`    | Quick mode for smoke tests: smaller sizes, and every nanobench benchmark runs exactly once. The whole binary takes well under a minute. The checks run with checksums for the small sizes. The timings of the quick mode mean nothing.                           |
-| `DICE_SPARSE_MAP_BENCH_METALL_DIR` | Directory for the metall datastores, default `/tmp/dice-sparse-map-bench-metall`. Every metall test case creates a fresh datastore in the subdirectory `datastore` and removes it at the end. Nothing else in the directory is touched. Use a local disk. |
+| variable                                 | meaning                                                                                                                                                                                                                                                         |
+|------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `DICE_UNORDERED_SPARSE_BENCH_QUICK=1`    | Quick mode for smoke tests: smaller sizes, and every nanobench benchmark runs exactly once. The whole binary takes well under a minute. The checks run with checksums for the small sizes. The timings of the quick mode mean nothing.                          |
+| `DICE_UNORDERED_SPARSE_BENCH_METALL_DIR` | Directory for the metall datastores, default `/tmp/dice-unordered-sparse-bench-metall`. Every metall test case creates a fresh datastore in the subdirectory `datastore` and removes it at the end. Nothing else in the directory is touched. Use a local disk. |
 
 ## Containers
 

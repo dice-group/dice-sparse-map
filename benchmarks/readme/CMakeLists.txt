@@ -33,7 +33,7 @@ function(dsm_readme_target variant key map kind)
     endif ()
     target_compile_definitions(${target} PRIVATE DSM_README_MAP=${map})
     target_link_libraries(${target} PRIVATE
-            dice-sparse-map::dice-sparse-map
+            dice-unordered-sparse::dice-unordered-sparse
             Boost::headers
             unordered_dense::unordered_dense
     )
@@ -75,7 +75,7 @@ add_executable(dsm_readme_relocate relocate.cpp)
 set_target_properties(dsm_readme_relocate PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${readme_bin_dir}/check")
 target_compile_definitions(dsm_readme_relocate PRIVATE DSM_README_METALL)
 target_link_libraries(dsm_readme_relocate PRIVATE
-        dice-sparse-map::dice-sparse-map
+        dice-unordered-sparse::dice-unordered-sparse
         Boost::headers
         Metall::Metall
         unordered_dense::unordered_dense

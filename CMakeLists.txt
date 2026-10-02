@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
-project(dice-sparse-map
+project(dice-unordered-sparse
         VERSION 0.4.0
-        DESCRIPTION "C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers.")
+        DESCRIPTION "Hash map and hash set for C++23 that need little more memory than a std::vector of the same elements. Interface of std::unordered_map, support for fancy pointers and metall. Based on tsl::sparse_map.")
 set(POBR_VERSION 3)  # Persisted Object Binary Representation Version
 
 include(cmake/boilerplate_init.cmake)
@@ -34,7 +34,7 @@ foreach(style_file ${style_files})
 endforeach()
 
 add_library(${PROJECT_NAME} INTERFACE)
-# Use dice-sparse-map::dice-sparse-map as target, more consistent with other libraries conventions (Boost, Qt, ...)
+# Use dice-unordered-sparse::dice-unordered-sparse as target, more consistent with other libraries conventions (Boost, Qt, ...)
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}

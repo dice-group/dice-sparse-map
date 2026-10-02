@@ -23,13 +23,13 @@
 namespace dice::unordered_sparse::bench {
 
     /**
-     * True if the environment variable `DICE_SPARSE_MAP_BENCH_QUICK` is set to anything but empty
+     * True if the environment variable `DICE_UNORDERED_SPARSE_BENCH_QUICK` is set to anything but empty
      * or `0`. The quick mode shrinks sizes and runs every benchmark once, so that the whole binary
      * finishes in well under a minute. It is a smoke test: its timings mean nothing.
      */
     [[nodiscard]] inline bool quick_mode() {
         static bool const quick = [] {
-            char const *value = std::getenv("DICE_SPARSE_MAP_BENCH_QUICK");
+            char const *value = std::getenv("DICE_UNORDERED_SPARSE_BENCH_QUICK");
             return value != nullptr && *value != '\0' && std::string_view{value} != "0";
         }();
         return quick;
