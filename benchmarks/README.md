@@ -6,6 +6,10 @@ test cases, and each test case runs one benchmark with [nanobench](https://githu
 [ankerl::unordered_dense](https://github.com/martinus/unordered_dense) (MIT license).
 `workloads.hpp` keeps the reasons upstream gives for the shape of each workload.
 
+The plots in the README come from a separate set of programs in [readme/](readme/README.md), with
+their own CMake option `BUILD_README_BENCHMARKS`. The results are in
+[doc/benchmarks.md](../doc/benchmarks.md).
+
 ## Build
 
 The benchmarks are built when the project is the top level project and `BUILD_BENCHMARKS` is on.

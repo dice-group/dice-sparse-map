@@ -1,0 +1,15 @@
+# Upgrading from 0.3
+
+[README](../README.md) · [Usage](usage.md) · [Design](design.md) · [Benchmarks](benchmarks.md) · **Upgrading from 0.3**
+
+What changes for code that uses dice-sparse-map 0.3.
+
+- The names and the headers are the same: `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set` from `<dice/sparse-map/sparse_map.hpp>` and `<dice/sparse-map/sparse_set.hpp>`, the other names in `dice::sparse_map::sh`, and `dice::sparse_map::pobr_version` from `<dice/sparse-map/version.hpp>`. The conan package and the CMake target are `dice-sparse-map` and `dice-sparse-map::dice-sparse-map` as before. The package requires [dice-hash](https://github.com/dice-group/dice-hash), a new dependency.
+- The hash function must be avalanching, a `static_assert` checks it (see [hash functions](usage.md#hash-functions)). `std::hash` is not. The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` instead of `std::hash<Key>`. Key types that it does not mark as avalanching need another hash function: enums, types with only a `std::hash` specialization, types with their own `dice::hash::dice_hash_overload` that does not declare `is_avalanching`, and types that contain such a type. Mark your own avalanching hash function with `using is_avalanching = void;`, or specialize `dice::sparse_map::sh::hash_is_avalanching` for it.
+- `GrowthPolicy` must be `sh::power_of_two_growth_policy<2>`, the default. `sh::prime_growth_policy`, `sh::mod_growth_policy`, `sparse_pg_map`, `sparse_pg_set` and `sh::probing` are gone. The bucket count is always a power of two.
+- `ExceptionSafety` is accepted and has no effect. The guarantee follows from the type of the elements. See [exception safety](usage.md#exception-safety).
+- The new last template parameter `AllocationFailure` is `sh::allocation_failure::terminating` by default: a failed allocation ends the process with `std::abort()` instead of throwing `std::bad_alloc`. Pass `sh::allocation_failure::throwing` to keep the exception. The parameter has a default, so code that names the eight template parameters of 0.3 compiles as before. See [allocation failure](usage.md#allocation-failure).
+- `iterator::value()` and `iterator::key()` are gone. Use `it->second` and `it->first`.
+- `*it` of a map iterator is a `std::pair` of references, not an lvalue. `auto &x = *it` and `for (auto &x : map)` do not compile. Use `auto &&` or `auto const &`.
+- The persisted format is different and the elements are placed differently, so containers that were persisted with 0.3 cannot be opened (`pobr_version` is 3). See [the persisted format](design.md#the-persisted-format).
+- `serialize` and `deserialize` are gone.
