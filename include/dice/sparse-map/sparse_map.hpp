@@ -95,13 +95,17 @@ namespace dice::sparse_map {
      * scoped or a polymorphic allocator, that is the allocator-extended move constructor of `Key` and `T`, which does
      * not throw when the allocators are equal. `std::vector` makes the same assumption.
      *
-     * Iterator invalidation:
-     *  - `clear`, `operator=`, `reserve`, `rehash`, `merge`: always invalidate the iterators.
-     *  - `insert_range`, and `insert` of a range or a list: may invalidate the iterators also if no element is
-     *    inserted, because they reserve room for the whole range first.
+     * Invalidation of iterators, references and pointers to elements: a group stores its elements densely and moves
+     * them when an element is inserted or erased. So, unlike with `std::unordered_map`, references and pointers to
+     * elements are invalidated like the iterators. For example, `map[a] = map[b]` reads a moved or freed element if
+     * `a` is not in the map.
+     *  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate the iterators, references and pointers.
+     *  - `merge`: always invalidates the iterators, references and pointers of both maps.
+     *  - `insert_range`, and `insert` of a range or a list: may invalidate the iterators, references and pointers
+     *    also if no element is inserted, because they reserve room for the whole range first.
      *  - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate the
-     *    iterators if an element is inserted.
-     *  - `erase`: always invalidates the iterators. Use the returned iterator.
+     *    iterators, references and pointers if an element is inserted.
+     *  - `erase`: always invalidates the iterators, references and pointers. Use the returned iterator.
      */
     template<typename Key,
              typename T,
