@@ -75,14 +75,14 @@ build-readme/benchmarks/readme/bin/dsm_readme_std_u64_sparse_medium find 1000000
 
 ## Allocation timeline
 
-The plot `allocated-memory.svg` follows the plot "allocated memory" of ankerl::unordered_dense: one
-process per map makes 10 million random 62 bit `uint64_t` keys, then constructs an empty map,
-inserts the keys one by one (nothing reserved) with `std::size_t` values and destroys the map. Every
-allocation and every free is one event, and the program records the time since the construction
-and the bytes allocated after the event. A block counts with its `malloc_usable_size`, without
-glibc's chunk header (the `memory` panel counts the header, 8 bytes more per live block). The maps
-are the maps of the README with `std::allocator` and `uint64_t` keys, plus
-`ankerl::unordered_dense::segmented_map`, which only the timeline has.
+The plot `doc/bench-readme-timeline.svg` follows the plot "allocated memory" of
+ankerl::unordered_dense: one process per map makes 10 million random 62 bit `uint64_t` keys, then
+constructs an empty map, inserts the keys one by one (nothing reserved) with `std::size_t` values
+and destroys the map. Every allocation and every free is one event, and the program records the
+time since the construction and the bytes allocated after the event. A block counts with its
+`malloc_usable_size`, without glibc's chunk header (the `memory` panel counts the header, 8 bytes
+more per live block). The maps are the maps of the README with `std::allocator` and `uint64_t`
+keys, plus `ankerl::unordered_dense::segmented_map`, which only the timeline has.
 
 The events go to a buffer from `mmap` that is faulted in before the start, with the time stamp
 counter of the CPU as the time. After the run, the program writes the timeline as CSV, reduced to
@@ -94,14 +94,15 @@ CORE=2 benchmarks/readme/timeline.sh -b build-readme/benchmarks/readme/bin/timel
 benchmarks/readme/plot_timeline.py results/timeline doc
 ```
 
-`timeline.sh` runs three rounds. Per round and map it runs the recording binary three times in
-different modes: every event recorded (writes `<map>-r<round>.csv`), only every 1000th event
-recorded (`DSM_README_TIMELINE_EVERY=1000`, the cost of the time stamps and the buffer), and the
-`_plain` binary without the replaced `malloc` (the runtime without any counting). It appends one
-line per process to `raw.txt`. `plot_timeline.py` draws per map the recording with the median total
-runtime, writes `allocated-memory.svg` and `allocated-memory.csv` (the plotted points), and prints a
-table: peak MB, MB at the end of the inserts, the runtime in the three modes with the spread over
-the rounds, the cost per event, and the order of the maps by runtime in each mode. MB are 10^6 bytes.
+`timeline.sh` runs three rounds. Per round and map it runs three processes: the recording binary
+with every event recorded (writes `<map>-r<round>.csv`), the recording binary with only every
+1000th event recorded (`DSM_README_TIMELINE_EVERY=1000`, the cost of the time stamps and the
+buffer), and the `_plain` binary without the replaced `malloc` (the runtime without any counting).
+It appends one line per process to `raw.txt`. `plot_timeline.py` draws per map the recording with
+the median total runtime, writes `bench-readme-timeline.svg` and `bench_readme_timeline.csv` (the
+plotted points), and prints a table: peak MB, MB at the end of the inserts, the runtime in the
+three modes with the spread over the rounds, the cost per event, and the order of the maps by
+runtime in each mode. MB are 10^6 bytes.
 
 A single run:
 

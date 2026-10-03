@@ -5,6 +5,8 @@ The long version of the plots in the [README](../README.md). `dice::sparse_map::
 `absl::flat_hash_map` and `absl::node_hash_map`, with `uint64_t` and `std::string` keys, once with
 `std::allocator` and once with metall's allocator. The panels and the way they are measured follow
 the README benchmark of [ankerl::unordered_dense](https://github.com/martinus/unordered_dense).
+The [last section](#allocated-memory-over-time) has one more plot, in MB and seconds: the memory
+that each map allocates over time while 10 million entries are inserted.
 
 Everything is relative to `dice::sparse_map::sparse_map<Key, std::size_t>` with the default sparsity medium:
 1.00 is level with it, 2.00 is twice the cost. Raw numbers are in
@@ -187,3 +189,101 @@ benchmarks/readme/plot.py doc/bench_readme.csv doc --not-relocatable=std
 - Every map is in its default configuration. No map got `reserve`, a better hash or a different load factor, which would change the numbers of some maps a lot.
 - `iterate` is a full pass over every element, which many programs never do.
 - One machine, one compiler, one standard library. A difference of a few percent between two maps is a tie: a cell moves by up to 7 % between rounds.
+
+## Allocated memory over time
+
+![allocated memory over time while 10 million uint64_t pairs are inserted](bench-readme-timeline.svg)
+
+The plot follows the plot "allocated memory" of `ankerl::unordered_dense`. Each map starts empty,
+gets 10 million `uint64_t -> uint64_t` pairs inserted one by one (nothing reserved) and is then
+destroyed. A line is the sum of the blocks that the map has allocated from the heap, each block
+counted at its malloc size, after every allocation and every free. The x axis is the time since
+the map was constructed. All maps use `std::allocator`, and the plot has
+`ankerl::unordered_dense::segmented_map` in addition to the maps of the panels. The plotted points
+are in [bench_readme_timeline.csv](bench_readme_timeline.csv). MB are 10^6 bytes.
+
+| map | peak | after the inserts | runtime of the plotted run | runtime without counting |
+|---|---:|---:|---:|---:|
+| `dice::sparse_map::sparse_map`, sparsity high | 185.5 MB | 185.5 MB | 2.364 s | 2.026 s |
+| `dice::sparse_map::sparse_map`, sparsity medium | 193.7 MB | 193.7 MB | 1.999 s | 1.822 s |
+| `dice::sparse_map::sparse_map`, sparsity low | 210.5 MB | 210.5 MB | 1.816 s | 1.730 s |
+| `ankerl::unordered_dense::map` | 494.9 MB | 360.7 MB | 0.560 s | 0.559 s |
+| `ankerl::unordered_dense::segmented_map` | 253.1 MB | 253.1 MB | 0.465 s | 0.459 s |
+| `boost::unordered_flat_map` | 402.7 MB | 268.4 MB | 0.460 s | 0.453 s |
+| `absl::flat_hash_map` | 427.8 MB | 285.2 MB | 0.551 s | 0.542 s |
+| `std::unordered_map` | 336.9 MB | 336.9 MB | 4.045 s | 3.095 s |
+| `absl::node_hash_map` | 402.7 MB | 391.0 MB | 1.815 s | 1.426 s |
+
+The program counts the bytes, and they are the same to the byte in all three rounds. The runtime
+of the plotted run includes the cost of the recording. The runtime without counting is the median
+of three runs of a binary without the counting.
+
+**`sparse_map` grows in small steps.** The values of a group of 64 buckets are in one array that
+holds only the occupied buckets. When the array is full, an insert allocates an array with more
+slots (2 more with sparsity high, 4 with medium, 8 with low), moves the values and frees the old
+array. So the line climbs in small steps, and the sparsity sets their size: smaller steps cost
+time, larger steps cost memory. A rehash first allocates the array of groups of the new table
+(16.8 MB at the last rehash). Then it moves one old group after the other and frees the values of
+each old group right after. At the end it frees the old array of groups (8.4 MB). So the values are
+never in memory twice, and a rehash is a small step in the line. At 10 million entries the peak is
+at the end of the inserts: 193.7 MB with sparsity medium, 19.4 bytes per entry for an entry of 16
+bytes.
+
+**The flat maps double one array.** `boost::unordered_flat_map` and `absl::flat_hash_map` keep
+their elements in one array. When it is full, they allocate an array of twice the size, move the
+elements and free the old array. While they move, both arrays are allocated, so the peak is at the
+last doubling: 1.50x of what they hold after the inserts. `ankerl::unordered_dense::map` keeps its
+values in a `std::vector` and its buckets in a second array, and both double. Its peak is at the
+last doubling of the vector, 1.37x of what it holds after the inserts. `segmented_map` keeps its
+values in segments that it never moves, so only its bucket array moves to a larger one, and its
+peak is at the end of the inserts.
+
+**The node maps allocate one node per element.** `std::unordered_map` and `absl::node_hash_map`
+allocate a node for every insert and free every node in the destructor: 20 million allocations and
+frees. Their array of buckets doubles too.
+
+**Runtime.** Without counting, `sparse_map` with sparsity medium takes 1.82 s for the 10 million
+inserts and the destructor. The flat maps take 0.45 to 0.56 s, `absl::node_hash_map` 1.43 s and
+`std::unordered_map` 3.09 s. The x axis of the plot is the runtime of the run that records every
+event, and the recording costs time per event. So the lines of `sparse_map` are 5 % (sparsity low)
+to 17 % (sparsity high) longer than its runtime without counting, and the lines of the node maps
+27 % (`absl::node_hash_map`) and 31 % (`std::unordered_map`). The flat maps make at most 78,198
+allocations and frees, and their two runtimes are within 2 %.
+
+How the timeline was taken:
+
+- One process per map and run. The 10 million keys are random 62 bit numbers, made before the map
+  is constructed and not counted. The mapped type is `std::size_t`.
+- The program replaces `malloc`, `calloc`, `realloc`, `free`, `aligned_alloc`, `posix_memalign`,
+  `mmap` and `munmap`. A block counts with `malloc_usable_size`: the size that glibc gives for the
+  request, without its chunk header of 8 bytes. The `memory` numbers of the panels count the header
+  too. A block that is mapped with `mmap` counts with its length.
+- For every allocation and every free, the program records the time stamp counter of the CPU and
+  the allocated bytes after the event. The buffer is mapped and faulted in before the start, so the
+  recording does not allocate from the heap it counts. The CSV keeps the first, the last, the
+  smallest and the largest value of each of 2000 time bins, so the peak in the plot is exact.
+- Three rounds, one container per round. Per round and map three processes run: every event
+  recorded (the plot), only every 1000th event recorded (the cost of the time stamps and the
+  buffer), and a binary without the replaced `malloc` (the runtime without counting). Odd rounds run
+  the maps in the order of their names, even rounds in reverse. The plot shows per map the run with
+  the median runtime of the three runs that record every event. Between the rounds, the runtime
+  without counting moved by 5.7 % for `segmented_map` and by at most 2.1 % for the other maps
+  (largest minus smallest, over the median).
+- The machine and the build of the panels (see
+  [How the numbers were taken](#how-the-numbers-were-taken)): AMD Ryzen Threadripper PRO 7965WX,
+  clang 20.1.8 with libstdc++ 14, `-O3 -DNDEBUG -march=x86-64-v2`, `M_MMAP_THRESHOLD` and
+  `M_TRIM_THRESHOLD` of glibc at 64 MiB. Every process pinned to CPU 2 with `docker run --cpuset-cpus=2`, load average at most 1.42
+  during the runs. Run on 3 October 2026.
+- One size. At 10 million entries every map is at another point between two doublings, so the
+  ratios change with the size. The panels use five sizes for this reason.
+- Bytes allocated, not resident memory. A freed block can stay resident in the heap of glibc, and
+  a block that is never written is not resident. The panels show the peak resident set.
+
+```sh
+# build-readme as in "How the numbers were taken", then one container per round, pinned to one core
+for round in 1 2 3; do
+    docker run --rm --cpuset-cpus=2 -v $PWD:/work tentris-dev-env bash /work/benchmarks/readme/timeline.sh \
+        -b /work/build-readme/benchmarks/readme/bin/timeline -o /work/results/timeline -r $round
+done
+benchmarks/readme/plot_timeline.py results/timeline doc
+```
