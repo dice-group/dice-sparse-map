@@ -110,7 +110,7 @@ All members are `constexpr`, so a map and a set can be used in a constant expres
   - `erase`: always invalidates the iterators. Use the returned iterator.
 - `emplace` constructs the element first, and inserts it if its key is not in the container yet. `try_emplace` constructs nothing if the key is there.
 - There is no bucket interface beyond `bucket_count`, and there are no node handles. `merge` moves the elements, or copies them if their move constructor can throw, instead of transferring nodes.
-- Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws. If they are nothrow move constructible, their move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption.
+- Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws. If they are nothrow move constructible, their move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption. If they are also nothrow move assignable, an insertion or an erasure moves the elements after it in its group of 64 buckets with their move assignment, as `std::vector::insert` and `std::vector::erase` do.
 
 ## Heterogeneous lookup
 
@@ -212,6 +212,7 @@ A type that keeps a raw pointer, like `std::string`, cannot live in persistent m
 ## Optimization
 
 - Make sure that `Key` and `T` have a `noexcept` move constructor. Without it the containers still work, but insertions copy elements and are much slower.
+- Make sure that `Key` and `T` also have a `noexcept` move assignment. Without it, an insertion or an erasure moves the elements of a group by construction and destruction through the allocator, which is slower, most of all with an allocator that has its own `construct` and `destroy`, like the allocator of metall.
 - The library uses `std::popcount`. Compile with `-mpopcnt` or `-march=native` (x86) so that it becomes one instruction.
 - Define `DICE_UNORDERED_SPARSE_DEBUG` (or `TSL_DEBUG`) to enable internal consistency checks.
 

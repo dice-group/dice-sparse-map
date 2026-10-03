@@ -6,6 +6,7 @@
 #include <memory>
 #include <new>
 #include <type_traits>
+#include <utility>
 
 /**
  * Allocators for tests that check how a container uses its allocator.
@@ -229,6 +230,57 @@ namespace dice::unordered_sparse::tests {
         }
 
         friend bool operator==(counting_allocator const & /*lhs*/, counting_allocator const & /*rhs*/) noexcept {
+            return true;
+        }
+    };
+
+    /**
+     * Calls of `construct` and `destroy` of `construct_counting_allocator`.
+     */
+    struct construct_counts {
+        std::size_t constructs = 0;
+        std::size_t destroys = 0;
+    };
+
+    /// the calls of `construct` and `destroy` of all `construct_counting_allocator`s
+    inline construct_counts construct_calls{};  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * Stateless allocator with its own `construct` and `destroy`, so that `std::allocator_traits` calls them for
+     * every element. They count their calls in `construct_calls`, and construct and destroy in place. All instances
+     * compare equal.
+     */
+    template<typename T>
+    struct construct_counting_allocator {
+        using value_type = T;
+
+        construct_counting_allocator() noexcept = default;
+
+        template<typename U>
+        construct_counting_allocator(construct_counting_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        }
+
+        T *allocate(std::size_t n) {
+            return std::allocator<T>{}.allocate(n);
+        }
+
+        void deallocate(T *p, std::size_t n) noexcept {
+            std::allocator<T>{}.deallocate(p, n);
+        }
+
+        template<typename U, typename... Args>
+        void construct(U *p, Args &&...args) {
+            ++construct_calls.constructs;
+            std::construct_at(p, std::forward<Args>(args)...);
+        }
+
+        template<typename U>
+        void destroy(U *p) noexcept {
+            ++construct_calls.destroys;
+            std::destroy_at(p);
+        }
+
+        friend bool operator==(construct_counting_allocator const & /*lhs*/, construct_counting_allocator const & /*rhs*/) noexcept {
             return true;
         }
     };

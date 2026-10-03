@@ -26,7 +26,12 @@ The table holds an array of groups. Bucket `i` is in group `i / 64`, at position
 
 ## Insertion and erasure in a group
 
-If the elements are nothrow move constructible, the values array grows by 2, 4 or 8 slots when it is full, depending on the [sparsity](usage.md#sparsity). The values after the position of the new value are moved one place to the back. An erasure destroys the value and moves the values after it one place to the front. When the last value of a group is erased, the capacity stays.
+If the elements are nothrow move constructible, the values array grows by 2, 4 or 8 slots when it is full, depending on the [sparsity](usage.md#sparsity). The values after the position of the new value are moved one place to the back. An erasure removes the value and moves the values after it one place to the front. When the last value of a group is erased, the capacity stays.
+
+How the values move depends on the move assignment of the elements:
+
+- Nothrow move assignable elements move by move assignment, as in `std::vector::insert` and `std::vector::erase`. An insertion moves the last value into a new slot behind it, moves the others one place to the back by assignment and assigns the new value into its place. An erasure moves the values after it one place to the front by assignment and destroys the last value. So, besides the new value in a temporary, only one value is constructed or destroyed through the allocator. For a trivially copyable element, libstdc++ does the assignments with one `memmove`.
+- Other elements are constructed at their new place and destroyed at their old place through the allocator, one by one.
 
 If the move constructor of the elements can throw, no value is moved inside the values array:
 
