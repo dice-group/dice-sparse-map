@@ -190,6 +190,8 @@ If `merge` throws, the element that was being merged is still in the source and 
 
 The containers work with allocators that use fancy pointers, for example the allocators of [metall](https://github.com/LLNL/metall) and `boost::interprocess::offset_ptr`, so they can live in persistent memory.
 
+The containers construct, move and destroy their elements through `std::allocator_traits`, so they call `construct` and `destroy` of an allocator that has them. If the elements are trivially copyable and nothrow move constructible, and the allocator has no `construct` and no `destroy` of its own, a group copies its elements as bytes, with `std::memcpy`: when its storage grows, when it is copied, and when it is moved into a container with an unequal allocator.
+
 The containers are standard layout types if the hash function, the key equality, the allocator and its pointer type are. The elements of a map are stored in a standard layout type, not in `std::pair`. This type supports uses-allocator construction: with a scoped or a polymorphic allocator, the key and the mapped value get the allocator as they would in a `std::pair`.
 
 A map in a metall datastore takes the allocator of the metall manager, as in `tests/tests_metall.cpp`:

@@ -30,6 +30,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -123,6 +124,15 @@ namespace dice::unordered_sparse {
          */
         template<typename K, typename Iterator, typename ConstIterator>
         concept NotIterator = !std::is_convertible_v<K, Iterator> && !std::is_convertible_v<K, ConstIterator>;
+
+        /**
+         * `Allocator` has its own `construct` or `destroy` for a `T`, so `std::allocator_traits` calls them and not
+         * `std::construct_at` and `std::destroy_at`.
+         */
+        template<typename Allocator, typename T>
+        concept HasConstructOrDestroy = requires (Allocator &alloc, T *p, T &value) { alloc.construct(p, std::move(value)); }
+                                        || requires (Allocator &alloc, T *p, T const &value) { alloc.construct(p, value); }
+                                        || requires (Allocator &alloc, T *p) { alloc.destroy(p); };
 
         /**
          * A type that meets the parts of the allocator requirements that the deduction guides check.
@@ -466,6 +476,17 @@ namespace dice::unordered_sparse {
              */
             static constexpr bool shifts_by_assignment = !has_holes && std::is_nothrow_move_assignable_v<value_type>;
 
+            /**
+             * True if a group copies its values as bytes, with `std::memcpy`, instead of one by one through the
+             * allocator, when it grows its storage and when it is copied or moved into new storage. That is the case
+             * if the group has no holes (`has_holes`), `value_type` is trivially copyable, and the allocator has no
+             * `construct` and no `destroy` of its own, so that `std::allocator_traits` constructs with
+             * `std::construct_at` and destroys with `std::destroy_at`. A constant evaluation copies one by one. An
+             * insertion or an erase in the middle of a group copies no bytes itself: for such a type, the standard
+             * library can do the move assignments of `shifts_by_assignment` with one `std::memmove` (libstdc++ does).
+             */
+            static constexpr bool copies_bytes = !has_holes && std::is_trivially_copyable_v<value_type> && !HasConstructOrDestroy<Allocator, value_type>;
+
         private:
             static constexpr size_type capacity_growth_step = (sparsity == unordered_sparse::sparsity::high)     ? 2
                                                               : (sparsity == unordered_sparse::sparsity::medium) ? 4
@@ -555,6 +576,13 @@ namespace dice::unordered_sparse {
                 Allocator alloc(const_alloc);
                 values_ = allocator_traits::allocate(alloc, capacity_);
                 DICE_UNORDERED_SPARSE_ASSERT(values_ != nullptr);
+                if constexpr (copies_bytes) {
+                    if !consteval {
+                        copy_values(values(), other.values(), other.nb_elements_);
+                        nb_elements_ = other.nb_elements_;
+                        return;
+                    }
+                }
                 try {
                     if constexpr (has_holes) {
                         other.copy_values_to(alloc, other.value_bitmap(), values(), nb_elements_);
@@ -600,6 +628,13 @@ namespace dice::unordered_sparse {
                 Allocator alloc(const_alloc);
                 values_ = allocator_traits::allocate(alloc, capacity_);
                 DICE_UNORDERED_SPARSE_ASSERT(values_ != nullptr);
+                if constexpr (copies_bytes) {
+                    if !consteval {
+                        copy_values(values(), other.values(), other.nb_elements_);
+                        nb_elements_ = other.nb_elements_;
+                        return;
+                    }
+                }
                 try {
                     if constexpr (has_holes) {
                         other.copy_values_to(alloc, other.value_bitmap(), values(), nb_elements_);
@@ -929,6 +964,27 @@ namespace dice::unordered_sparse {
                 return std::to_address(values_);
             }
 
+            /**
+             * Copies `count` values from `source` to `target` with `std::memcpy`. The ranges do not overlap.
+             */
+            static void copy_values(value_type *target, value_type const *source, size_type count) noexcept {
+                static_assert(copies_bytes);
+                if (count > 0) {
+                    std::memcpy(static_cast<void *>(target), static_cast<void const *>(source), count * sizeof(value_type));
+                }
+            }
+
+            /**
+             * Frees the storage of `capacity_values` values whose values were copied away as bytes. Their destructor
+             * is trivial, so nothing is destroyed.
+             */
+            static constexpr void deallocate_values(allocator_type &alloc, pointer values, size_type capacity_values) noexcept {
+                static_assert(copies_bytes);
+                if (capacity_values > 0) {
+                    allocator_traits::deallocate(alloc, values, capacity_values);
+                }
+            }
+
             template<typename... Args>
             static constexpr void construct_value(allocator_type &alloc, value_type *value, Args &&...value_args) {
                 allocator_traits::construct(alloc, value, std::forward<Args>(value_args)...);
@@ -1254,6 +1310,17 @@ namespace dice::unordered_sparse {
                 }
 
                 // does not throw from here on
+                if constexpr (copies_bytes) {
+                    if !consteval {
+                        copy_values(raw_new_values, raw_values, offset);
+                        copy_values(raw_new_values + offset + 1, raw_values + offset, static_cast<size_type>(nb_elements_ - offset));
+                        deallocate_values(alloc, values_, capacity_);
+                        values_ = new_values;
+                        capacity_ = new_capacity;
+                        return;
+                    }
+                }
+
                 for (size_type i = 0; i < offset; ++i) {
                     construct_value(alloc, raw_new_values + i, std::move(raw_values[i]));
                 }

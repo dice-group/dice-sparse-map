@@ -33,6 +33,8 @@ How the values move depends on the move assignment of the elements:
 - Nothrow move assignable elements move by move assignment, as in `std::vector::insert` and `std::vector::erase`. An insertion moves the last value into a new slot behind it, moves the others one place to the back by assignment and assigns the new value into its place. An erasure moves the values after it one place to the front by assignment and destroys the last value. So, besides the new value in a temporary, only one value is constructed or destroyed through the allocator. For a trivially copyable element, libstdc++ does the assignments with one `memmove`.
 - Other elements are constructed at their new place and destroyed at their old place through the allocator, one by one.
 
+When the values array is full, an insertion allocates one that is 2, 4 or 8 slots larger and moves the values into it, one by one through the allocator. If the elements are trivially copyable and the allocator has no `construct` and no `destroy` of its own, the group copies them as bytes with `std::memcpy` instead, also when the group is copied or moved into a new values array.
+
 If the move constructor of the elements can throw, no value is moved inside the values array:
 
 - An erasure destroys the value and leaves a hole. When the last value of a group is erased, the group frees its values array.
