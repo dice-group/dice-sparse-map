@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1132 318" width="1132" height="318" font-family="Roboto Condensed, Noto Sans Condensed, DejaVu Sans Condensed, Liberation Sans Narrow, Arial Narrow, Avenir Next Condensed, Inter, system-ui, sans-serif" font-size="12">
+  <rect fill="#ffffff" width="1132" height="318"/>
+  <text x="8" y="20" fill="#111827" font-size="13.5" font-weight="600">relative to dice::sparse_map (sparsity medium), std::string keys, every map with metall's allocator (offset_ptr)</text>
+  <text x="8" y="38" fill="#4b5563" font-size="12">geometric mean over one octave from 1,000,000 entries, mapped type size_t. Lower is better, 1.00 is level with dice::sparse_map.</text>
+  <text x="8" y="56" fill="#4b5563" font-size="12">The maps are in a metall datastore on a local NVMe disk. Hash and key equality are the defaults of each map. Disk usage counts the blocks of the files, not the holes.</text>
+  <text x="8" y="74" fill="#4b5563" font-size="12">Rows are sorted by the geomean of all five panels. A bar torn off at the right ran past the axis.</text>
+  <text x="294" y="92" fill="#1f2937" font-size="12.5" font-weight="600">build + destroy</text>
+  <line x1="294.0" y1="110" x2="294.0" y2="224" stroke="#e5e7eb"/>
+  <text x="294.0" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0</text>
+  <line x1="317.1" y1="110" x2="317.1" y2="224" stroke="#e5e7eb"/>
+  <text x="317.1" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.25</text>
+  <line x1="340.2" y1="110" x2="340.2" y2="224" stroke="#e5e7eb"/>
+  <text x="340.2" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.5</text>
+  <line x1="363.2" y1="110" x2="363.2" y2="224" stroke="#e5e7eb"/>
+  <text x="363.2" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.75</text>
+  <line x1="386.3" y1="110" x2="386.3" y2="224" stroke="#e5e7eb"/>
+  <text x="386.3" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1</text>
+  <line x1="409.4" y1="110" x2="409.4" y2="224" stroke="#e5e7eb"/>
+  <text x="409.4" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1.25</text>
+  <line x1="386.3" y1="110" x2="386.3" y2="224" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="294.0" y1="110" x2="294.0" y2="224" stroke="#9ca3af" stroke-width="1.2"/>
+  <path d="M294.0,124.0 L331.7,124.0 Q334.2,124.0 334.2,126.5 L334.2,133.5 Q334.2,136.0 331.7,136.0 L294.0,136.0 Z" fill="#0e8f60" opacity="0.8"/>
+  <text x="340.2" y="132" fill="#4b5563" font-size="11.5">0.43</text>
+  <path d="M294.0,141.0 L356.6,141.0 Q359.1,141.0 359.1,143.5 L359.1,150.5 Q359.1,153.0 356.6,153.0 L294.0,153.0 Z" fill="#2563c9" opacity="0.8"/>
+  <text x="365.1" y="149" fill="#4b5563" font-size="11.5">0.71</text>
+  <path d="M294.0,158.0 L379.5,158.0 Q382.0,158.0 382.0,160.5 L382.0,167.5 Q382.0,170.0 379.5,170.0 L294.0,170.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="388.0" y="166" fill="#4b5563" font-size="11.5">0.95</text>
+  <path d="M294.0,175.0 L383.8,175.0 Q386.3,175.0 386.3,177.5 L386.3,184.5 Q386.3,187.0 383.8,187.0 L294.0,187.0 Z" fill="#b45309" opacity="0.95"/>
+  <text x="392.3" y="183" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M294.0,192.0 L392.5,192.0 Q395.0,192.0 395.0,194.5 L395.0,201.5 Q395.0,204.0 392.5,204.0 L294.0,204.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="401.0" y="200" fill="#4b5563" font-size="11.5">1.09</text>
+  <path d="M294.0,209.0 L370.0,209.0 Q372.5,209.0 372.5,211.5 L372.5,218.5 Q372.5,221.0 370.0,221.0 L294.0,221.0 Z" fill="#a53393" opacity="0.8"/>
+  <text x="378.5" y="217" fill="#4b5563" font-size="11.5">0.85</text>
+  <text x="460" y="92" fill="#1f2937" font-size="12.5" font-weight="600">find, 50% hits</text>
+  <line x1="460.0" y1="110" x2="460.0" y2="224" stroke="#e5e7eb"/>
+  <text x="460.0" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0</text>
+  <line x1="498.5" y1="110" x2="498.5" y2="224" stroke="#e5e7eb"/>
+  <text x="498.5" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.5</text>
+  <line x1="536.9" y1="110" x2="536.9" y2="224" stroke="#e5e7eb"/>
+  <text x="536.9" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1</text>
+  <line x1="575.4" y1="110" x2="575.4" y2="224" stroke="#e5e7eb"/>
+  <text x="575.4" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1.5</text>
+  <line x1="536.9" y1="110" x2="536.9" y2="224" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="460.0" y1="110" x2="460.0" y2="224" stroke="#9ca3af" stroke-width="1.2"/>
+  <path d="M460.0,124.0 L537.6,124.0 Q540.1,124.0 540.1,126.5 L540.1,133.5 Q540.1,136.0 537.6,136.0 L460.0,136.0 Z" fill="#0e8f60" opacity="0.8"/>
+  <text x="546.1" y="132" fill="#4b5563" font-size="11.5">1.04</text>
+  <path d="M460.0,141.0 L522.6,141.0 Q525.1,141.0 525.1,143.5 L525.1,150.5 Q525.1,153.0 522.6,153.0 L460.0,153.0 Z" fill="#2563c9" opacity="0.8"/>
+  <text x="531.1" y="149" fill="#4b5563" font-size="11.5">0.85</text>
+  <path d="M460.0,158.0 L534.3,158.0 Q536.8,158.0 536.8,160.5 L536.8,167.5 Q536.8,170.0 534.3,170.0 L460.0,170.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="542.8" y="166" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M460.0,175.0 L534.4,175.0 Q536.9,175.0 536.9,177.5 L536.9,184.5 Q536.9,187.0 534.4,187.0 L460.0,187.0 Z" fill="#b45309" opacity="0.95"/>
+  <text x="542.9" y="183" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M460.0,192.0 L533.9,192.0 Q536.4,192.0 536.4,194.5 L536.4,201.5 Q536.4,204.0 533.9,204.0 L460.0,204.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="542.4" y="200" fill="#4b5563" font-size="11.5">0.99</text>
+  <path d="M460.0,209.0 L555.2,209.0 Q557.7,209.0 557.7,211.5 L557.7,218.5 Q557.7,221.0 555.2,221.0 L460.0,221.0 Z" fill="#a53393" opacity="0.8"/>
+  <text x="563.7" y="217" fill="#4b5563" font-size="11.5">1.27</text>
+  <text x="626" y="92" fill="#1f2937" font-size="12.5" font-weight="600">churn</text>
+  <line x1="626.0" y1="110" x2="626.0" y2="224" stroke="#e5e7eb"/>
+  <text x="626.0" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0</text>
+  <line x1="649.1" y1="110" x2="649.1" y2="224" stroke="#e5e7eb"/>
+  <text x="649.1" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.25</text>
+  <line x1="672.2" y1="110" x2="672.2" y2="224" stroke="#e5e7eb"/>
+  <text x="672.2" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.5</text>
+  <line x1="695.2" y1="110" x2="695.2" y2="224" stroke="#e5e7eb"/>
+  <text x="695.2" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.75</text>
+  <line x1="718.3" y1="110" x2="718.3" y2="224" stroke="#e5e7eb"/>
+  <text x="718.3" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1</text>
+  <line x1="741.4" y1="110" x2="741.4" y2="224" stroke="#e5e7eb"/>
+  <text x="741.4" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1.25</text>
+  <line x1="718.3" y1="110" x2="718.3" y2="224" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="626.0" y1="110" x2="626.0" y2="224" stroke="#9ca3af" stroke-width="1.2"/>
+  <path d="M626.0,124.0 L686.6,124.0 Q689.1,124.0 689.1,126.5 L689.1,133.5 Q689.1,136.0 686.6,136.0 L626.0,136.0 Z" fill="#0e8f60" opacity="0.8"/>
+  <text x="695.1" y="132" fill="#4b5563" font-size="11.5">0.68</text>
+  <path d="M626.0,141.0 L676.6,141.0 Q679.1,141.0 679.1,143.5 L679.1,150.5 Q679.1,153.0 676.6,153.0 L626.0,153.0 Z" fill="#2563c9" opacity="0.8"/>
+  <text x="685.1" y="149" fill="#4b5563" font-size="11.5">0.58</text>
+  <path d="M626.0,158.0 L715.4,158.0 Q717.9,158.0 717.9,160.5 L717.9,167.5 Q717.9,170.0 715.4,170.0 L626.0,170.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="723.9" y="166" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M626.0,175.0 L715.8,175.0 Q718.3,175.0 718.3,177.5 L718.3,184.5 Q718.3,187.0 715.8,187.0 L626.0,187.0 Z" fill="#b45309" opacity="0.95"/>
+  <text x="724.3" y="183" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M626.0,192.0 L717.1,192.0 Q719.6,192.0 719.6,194.5 L719.6,201.5 Q719.6,204.0 717.1,204.0 L626.0,204.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="725.6" y="200" fill="#4b5563" font-size="11.5">1.01</text>
+  <path d="M626.0,209.0 L733.0,209.0 Q735.5,209.0 735.5,211.5 L735.5,218.5 Q735.5,221.0 733.0,221.0 L626.0,221.0 Z" fill="#a53393" opacity="0.8"/>
+  <text x="741.5" y="217" fill="#4b5563" font-size="11.5">1.19</text>
+  <text x="792" y="92" fill="#1f2937" font-size="12.5" font-weight="600">iterate</text>
+  <line x1="792.0" y1="110" x2="792.0" y2="224" stroke="#e5e7eb"/>
+  <text x="792.0" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0</text>
+  <line x1="813.8" y1="110" x2="813.8" y2="224" stroke="#e5e7eb"/>
+  <text x="813.8" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">2</text>
+  <line x1="835.6" y1="110" x2="835.6" y2="224" stroke="#e5e7eb"/>
+  <text x="835.6" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">4</text>
+  <line x1="857.4" y1="110" x2="857.4" y2="224" stroke="#e5e7eb"/>
+  <text x="857.4" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">6</text>
+  <line x1="879.2" y1="110" x2="879.2" y2="224" stroke="#e5e7eb"/>
+  <text x="879.2" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">8</text>
+  <line x1="901.0" y1="110" x2="901.0" y2="224" stroke="#e5e7eb"/>
+  <text x="901.0" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">10</text>
+  <line x1="802.9" y1="110" x2="802.9" y2="224" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="792.0" y1="110" x2="792.0" y2="224" stroke="#9ca3af" stroke-width="1.2"/>
+  <path d="M792.0,124.0 L793.1,124.0 Q794.3,124.0 794.3,125.1 L794.3,134.9 Q794.3,136.0 793.1,136.0 L792.0,136.0 Z" fill="#0e8f60" opacity="0.8"/>
+  <text x="800.3" y="132" fill="#4b5563" font-size="11.5">0.21</text>
+  <path d="M792.0,141.0 L798.8,141.0 Q801.3,141.0 801.3,143.5 L801.3,150.5 Q801.3,153.0 798.8,153.0 L792.0,153.0 Z" fill="#2563c9" opacity="0.8"/>
+  <text x="807.3" y="149" fill="#4b5563" font-size="11.5">0.85</text>
+  <path d="M792.0,158.0 L800.4,158.0 Q802.9,158.0 802.9,160.5 L802.9,167.5 Q802.9,170.0 800.4,170.0 L792.0,170.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="808.9" y="166" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M792.0,175.0 L800.4,175.0 Q802.9,175.0 802.9,177.5 L802.9,184.5 Q802.9,187.0 800.4,187.0 L792.0,187.0 Z" fill="#b45309" opacity="0.95"/>
+  <text x="808.9" y="183" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M792.0,192.0 L800.3,192.0 Q802.8,192.0 802.8,194.5 L802.8,201.5 Q802.8,204.0 800.3,204.0 L792.0,204.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="808.8" y="200" fill="#4b5563" font-size="11.5">0.99</text>
+  <path d="M792.0,209.0 L901.0,209.0 L894.0,211.0 L901.0,213.0 L894.0,215.0 L901.0,217.0 L894.0,219.0 L901.0,221.0 L792.0,221.0 Z" fill="#a53393" opacity="0.8"/>
+  <text x="907.0" y="217" fill="#4b5563" font-size="11.5">12.58</text>
+  <text x="958" y="92" fill="#1f2937" font-size="12.5" font-weight="600">peak disk usage</text>
+  <line x1="958.0" y1="110" x2="958.0" y2="224" stroke="#e5e7eb"/>
+  <text x="958.0" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0</text>
+  <line x1="996.5" y1="110" x2="996.5" y2="224" stroke="#e5e7eb"/>
+  <text x="996.5" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">0.5</text>
+  <line x1="1034.9" y1="110" x2="1034.9" y2="224" stroke="#e5e7eb"/>
+  <text x="1034.9" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1</text>
+  <line x1="1073.4" y1="110" x2="1073.4" y2="224" stroke="#e5e7eb"/>
+  <text x="1073.4" y="108" fill="#4b5563" font-size="11.5" text-anchor="middle">1.5</text>
+  <line x1="1034.9" y1="110" x2="1034.9" y2="224" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="958.0" y1="110" x2="958.0" y2="224" stroke="#9ca3af" stroke-width="1.2"/>
+  <path d="M958.0,124.0 L1030.2,124.0 Q1032.7,124.0 1032.7,126.5 L1032.7,133.5 Q1032.7,136.0 1030.2,136.0 L958.0,136.0 Z" fill="#0e8f60" opacity="0.8"/>
+  <text x="1038.7" y="132" fill="#4b5563" font-size="11.5">0.97</text>
+  <path d="M958.0,141.0 L1062.5,141.0 Q1065.0,141.0 1065.0,143.5 L1065.0,150.5 Q1065.0,153.0 1062.5,153.0 L958.0,153.0 Z" fill="#2563c9" opacity="0.8"/>
+  <text x="1071.0" y="149" fill="#4b5563" font-size="11.5">1.39</text>
+  <path d="M958.0,158.0 L1034.5,158.0 Q1037.0,158.0 1037.0,160.5 L1037.0,167.5 Q1037.0,170.0 1034.5,170.0 L958.0,170.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="1043.0" y="166" fill="#4b5563" font-size="11.5">1.03</text>
+  <path d="M958.0,175.0 L1032.4,175.0 Q1034.9,175.0 1034.9,177.5 L1034.9,184.5 Q1034.9,187.0 1032.4,187.0 L958.0,187.0 Z" fill="#b45309" opacity="0.95"/>
+  <text x="1040.9" y="183" fill="#4b5563" font-size="11.5">1.00</text>
+  <path d="M958.0,192.0 L1030.5,192.0 Q1033.0,192.0 1033.0,194.5 L1033.0,201.5 Q1033.0,204.0 1030.5,204.0 L958.0,204.0 Z" fill="#b45309" opacity="0.8"/>
+  <text x="1039.0" y="200" fill="#4b5563" font-size="11.5">0.98</text>
+  <path d="M958.0,209.0 L1025.4,209.0 Q1027.9,209.0 1027.9,211.5 L1027.9,218.5 Q1027.9,221.0 1025.4,221.0 L958.0,221.0 Z" fill="#a53393" opacity="0.8"/>
+  <text x="1033.9" y="217" fill="#4b5563" font-size="11.5">0.91</text>
+  <text x="286" y="92" fill="#4b5563" font-size="11.5" text-anchor="end">geomean</text>
+  <text x="248" y="132" fill="#1f2937" font-size="12.5" text-anchor="end">unordered_dense 5.2.0, boost vector</text>
+  <text x="286" y="132" fill="#4b5563" font-size="11.5" text-anchor="end">0.57</text>
+  <text x="248" y="149" fill="#1f2937" font-size="12.5" text-anchor="end">boost flat</text>
+  <text x="286" y="149" fill="#4b5563" font-size="11.5" text-anchor="end">0.84</text>
+  <text x="248" y="166" fill="#1f2937" font-size="12.5" text-anchor="end">sparse_map low</text>
+  <text x="286" y="166" fill="#4b5563" font-size="11.5" text-anchor="end">0.99</text>
+  <text x="248" y="183" fill="#1f2937" font-size="12.5" text-anchor="end" font-weight="600">sparse_map medium</text>
+  <text x="286" y="183" fill="#4b5563" font-size="11.5" text-anchor="end">1.00</text>
+  <text x="248" y="200" fill="#1f2937" font-size="12.5" text-anchor="end">sparse_map high</text>
+  <text x="286" y="200" fill="#4b5563" font-size="11.5" text-anchor="end">1.01</text>
+  <text x="248" y="217" fill="#1f2937" font-size="12.5" text-anchor="end">std::unordered_map *</text>
+  <text x="286" y="217" fill="#4b5563" font-size="11.5" text-anchor="end">1.71</text>
+  <rect x="294" y="241" width="11" height="11" fill="#b45309" opacity="0.85"/>
+  <text x="310" y="250" fill="#4b5563" font-size="11.5">sparse</text>
+  <rect x="368" y="241" width="11" height="11" fill="#0e8f60" opacity="0.85"/>
+  <text x="384" y="250" fill="#4b5563" font-size="11.5">dense</text>
+  <rect x="442" y="241" width="11" height="11" fill="#2563c9" opacity="0.85"/>
+  <text x="458" y="250" fill="#4b5563" font-size="11.5">flat</text>
+  <rect x="516" y="241" width="11" height="11" fill="#a53393" opacity="0.85"/>
+  <text x="532" y="250" fill="#4b5563" font-size="11.5">node</text>
+  <text x="600" y="250" fill="#4b5563" font-size="11.5">time for the first four panels, peak bytes of the datastore on disk per entry for the last</text>
+  <text x="8" y="272" fill="#4b5563" font-size="11.5">* keeps raw pointers into the datastore: it runs, but the datastore cannot be opened again at another address.</text>
+  <text x="8" y="290" fill="#4b5563" font-size="11.5">std::string keeps raw pointers and its characters on the heap, so with string keys no map here can be opened again,</text>
+  <text x="8" y="308" fill="#4b5563" font-size="11.5">and the disk usage counts the table, not the characters of the keys.</text>
+</svg>
