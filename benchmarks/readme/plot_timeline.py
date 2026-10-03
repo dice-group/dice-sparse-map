@@ -24,10 +24,10 @@ from plot import FONT, INK, INK_HEAD, INK_MUTED, GRID, BASELINE, SURFACE, esc  #
 
 # CSV name -> (name of the struct in maps.hpp, legend, short label, color, line width, dash). The
 # three sparsity levels and the two maps of unordered_dense are full width lines, each in its own
-# hue. The other maps are thin, the node maps also dashed. The colors were checked as two sets
-# against white with the palette validator of the dataviz skill (all pairs): the five wide lines
-# have a CVD separation of 6.2 or more (sparse medium and low, also told apart by the labels at
-# the line ends) and a normal-vision separation of 15 or more, the four thin lines 10.3 and 21.7.
+# hue. The other maps are thin, the node maps also dashed. As two sets against white (all pairs),
+# the five wide lines have a CVD separation of 6.2 or more (sparse medium and low, also told apart
+# by the labels at the line ends) and a normal-vision separation of 15 or more, the four thin lines
+# 10.3 and 21.7.
 MAPS = {
     "sparse-high": ("sparse_high", "dice::sparse_map, sparsity high", "sparse high", "#4a3aa7", 2.6, None),
     "sparse-medium": ("sparse_medium", "dice::sparse_map, sparsity medium (default)", "sparse medium", "#e34948", 2.6, None),
