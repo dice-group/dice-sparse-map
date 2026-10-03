@@ -96,6 +96,33 @@ The sparsity changes the memory and the cost of an insertion, not a lookup. Rela
 
 With metall the picture is the same, except for the peak memory and the peak disk usage, which are within 3 % for all three.
 
+## At 10 million entries
+
+The plots start at 1 million entries. There the table of `sparse_map` with `uint64_t` keys is 19 to 33 MB, about the
+size of the L3 (32 MiB for 6 cores). The same benchmark at 10 to 17.4 million entries (`run.sh -n 10000000`, same
+machine and method, two rounds), where no table fits into the L3, with `std::allocator` and `uint64_t` keys, relative
+to `sparse_map` (in brackets the value of the plots, at 1 to 1.74 million entries):
+
+| panel | `unordered_dense` | `boost` | `absl` | `absl node` | `std::unordered_map` |
+|---|---:|---:|---:|---:|---:|
+| build + destroy | 0.33 (0.38) | 0.27 (0.39) | 0.27 (0.34) | 1.44 (1.89) | 2.32 (2.45) |
+| find | 0.95 (1.00) | 0.71 (0.75) | 0.74 (0.84) | 0.91 (1.09) | 1.56 (1.97) |
+| churn | 0.56 (0.47) | 0.29 (0.29) | 0.38 (0.43) | 0.98 (1.18) | 1.58 (2.06) |
+| iterate | 0.11 (0.14) | 0.44 (1.25) | 0.79 (1.76) | 2.14 (4.33) | 18.4 (16.3) |
+| peak memory | 1.52 (2.20) | 1.84 (2.64) | 1.95 (2.45) | 2.26 (2.17) | 2.02 (2.06) |
+| bytes requested | 2.26 (2.21) | 2.07 (2.28) | 2.20 (2.11) | 2.55 (2.50) | 2.28 (2.35) |
+
+`sparse_map` needs 3.7 ns per element for a full pass instead of 1.47 ns. Every group keeps its values in its own
+block on the heap, and above the L3 the pass waits for memory at every group: about 3 loads from DRAM and one page
+walk per group, measured with the PMU counters of the CPU. A flat map reads one array from front to back, and the
+prefetcher hides that. So `boost` and `absl`, which iterate slower than `sparse_map` at 1 million, are faster at 10
+million. One insert with its share of the destructor takes 177 ns instead of 63 ns, the flat maps slow down less.
+A lookup takes 1.8 to 1.9 times as long in `sparse_map`, `unordered_dense` and `boost`, and 1.6 times as long in
+`absl`. The bytes requested do not change. The peak resident set of the flat maps is smaller at 10 million, because
+their arrays are larger than the 64 MiB `M_MMAP_THRESHOLD` of the harness and `free` gives them back to the kernel at
+once. With metall the picture is the same. The peak disk usage of `unordered_dense` is 1.03 of `sparse_map` (1.12 at
+1 million), of `boost` 1.26 (1.38). All numbers are in [bench_readme_10m.csv](bench_readme_10m.csv).
+
 ## How the numbers were taken
 
 - Every map is in the configuration you get by typing its type name, its own default hash
@@ -182,7 +209,7 @@ benchmarks/readme/plot.py doc/bench_readme.csv doc --not-relocatable=std
 ## What the numbers do not say
 
 - `find` is throughput, not latency. The keys come from a random generator, so several lookups are in flight at the same time. In a chain of lookups where each key depends on the result of the one before, the ranking can be different.
-- One million to two million entries. On this CPU six cores share 32 MiB of L3, and a million `uint64_t` entries take 22 MB in `sparse_map` and 49 to 59 MB in the flat maps. At other sizes the ratios can be different, and many small maps are a different workload again (the `small_maps` benchmark in [benchmarks/](../benchmarks/README.md)).
+- One million to two million entries. On this CPU six cores share 32 MiB of L3, and a million `uint64_t` entries take 22 MB in `sparse_map` and 49 to 59 MB in the flat maps. At other sizes the ratios can be different (see [At 10 million entries](#at-10-million-entries)), and many small maps are a different workload again (the `small_maps` benchmark in [benchmarks/](../benchmarks/README.md)).
 - Peak memory is resident pages, which depends on the allocator and on the thresholds the harness sets for glibc. The bytes requested are in the CSV under `memory`. With metall, the plots show the peak disk usage of the datastore instead. It does not count the heap: metall's own bookkeeping and the characters of the `std::string` keys. The peak resident set, which counts both, is in the CSV under `rss`.
 - With metall, a timed panel includes page faults on a file mapping and the work of the kernel to write dirty pages to the disk. That depends on the disk, the file system and the settings of the kernel. Every size starts with an empty datastore.
 - With `std::string` keys every map uses another hash. Part of a difference between two maps with string keys is the hash, not the table.
