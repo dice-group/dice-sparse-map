@@ -3,6 +3,7 @@
  * per process.
  *
  *   dsm_readme_<variant>_<key>_<map> <build|buildfree|find|churn|iterate|rss|memory|disk> <base>
+ *   dsm_readme_timeline_std_<key>_<map>[_plain] timeline <n> [<csv>]
  *
  * The map is chosen at compile time (`DSM_README_MAP`, a struct of maps.hpp), the key type with
  * `DSM_README_STRING_KEYS` and the allocator with `DSM_README_METALL`. A binary that holds many maps
@@ -39,6 +40,13 @@
  *       use, and the live objects, each rounded up to its size class. The numbers of the empty
  *       datastore are subtracted.
  *    The summary of a `disk` line is the arithmetic mean if one of the five values is not positive.
+ *  - `timeline`: not a panel. Builds one map of `n` entries (the second argument is `n`, not a
+ *    base) and destroys it, and records the bytes allocated from the heap after every allocation
+ *    and every free (see alloc_timeline.hpp). Only the binaries built with
+ *    `DSM_README_ALLOC_TIMELINE` record, the `_plain` binaries only measure the time. The CSV of
+ *    the timeline goes to the third argument. `DSM_README_TIMELINE_EVERY=<k>` records only every
+ *    k-th event, `DSM_README_TIMELINE_BINS` sets the time bins of the CSV (default 2000). It prints
+ *    one line: allocator, key type, map, `timeline`, `n`, then pairs of name and value.
  *
  * Every timed panel does about 10 million operations per size (`DSM_README_OPS` changes that), after
  * one run that is not timed.
@@ -48,6 +56,7 @@
  * (scripts/ab/bench_readme.cpp and scripts/ab/maps.h, MIT license).
  */
 
+#include "alloc_timeline.hpp"
 #include "count_alloc.hpp"
 #include "disk_usage.hpp"
 #include "max_rss.hpp"
@@ -551,6 +560,75 @@ namespace {
     }
 #endif
 
+    /// a positive number from the environment variable `name`, or `fallback`
+    std::size_t env_size(char const *name, std::size_t fallback) {
+        char const *value = std::getenv(name);
+        if (value != nullptr && *value != '\0') {
+            return static_cast<std::size_t>(std::strtoull(value, nullptr, 10));
+        }
+        return fallback;
+    }
+
+    /**
+     * The `timeline` workload: an empty map, `n` inserts one by one (nothing reserved), the
+     * destructor. The keys are made before the recording starts. Writes the timeline to `csv` if
+     * this binary records and `csv` is not null, and prints one line.
+     */
+    [[maybe_unused]] void print_timeline(std::size_t n, char const *csv) {
+        std::vector<key_type> const keys = pools::make_keys(0, n, 1);
+        std::size_t const every = env_size("DSM_README_TIMELINE_EVERY", 1);
+        std::size_t const bins = env_size("DSM_README_TIMELINE_BINS", 2000);
+        // Up to 2.8 events per insert (`sparse_map` with sparsity high, two for a node map). Mapped and
+        // faulted in now.
+        std::size_t const capacity = env_size("DSM_README_TIMELINE_CAPACITY", 3 * n + 1'000'000) / (every > 0 ? every : 1) + 16;
+        alloc_timeline::recorder recorder{capacity, every};
+        context ctx{fresh_datastore_path()};
+
+        std::size_t size = 0;
+        std::uint64_t inserted_at = 0;
+        std::size_t inserted_bytes = 0;
+        recorder.start();
+        {
+            auto map = ctx.make<map_t>();
+            fill(map, keys);
+            size = map.size();
+            keep(size);
+            inserted_at = alloc_timeline::ticks();
+            inserted_bytes = alloc_timeline::live;
+        }
+        recorder.stop();
+
+        if (size != n) {
+            fail("size after fill");
+        }
+        if (alloc_timeline::available() && (alloc_timeline::live != 0 || alloc_timeline::unmatched != 0)) {
+            fail("bytes left after the destructor, or freed bytes that were not allocated");
+        }
+        if (alloc_timeline::overflow) {
+            fail("timeline buffer too small (DSM_README_TIMELINE_CAPACITY)");
+        }
+        double const total = recorder.seconds();
+        double const insert = recorder.seconds_at(inserted_at);
+        std::printf("%s %s %s timeline %zu insert_s %.6f destroy_s %.6f total_s %.6f every %zu events %zu recorded %zu "
+                    "peak_bytes %zu inserted_bytes %zu\n",
+                    variant_name,
+                    key_name,
+                    map_desc::name,
+                    n,
+                    insert,
+                    total - insert,
+                    total,
+                    alloc_timeline::available() ? every : 0,
+                    alloc_timeline::seen,
+                    alloc_timeline::recorded,
+                    alloc_timeline::peak,
+                    inserted_bytes);
+        std::fflush(stdout);
+        if (alloc_timeline::available() && csv != nullptr && !recorder.write(csv, bins)) {
+            fail("cannot write the timeline CSV");
+        }
+    }
+
     /// nanoseconds per operation at size `n`, or bytes per entry for `rss` and `memory`
     double one_size(std::string_view work, std::size_t n) {
         pools p{n};
@@ -706,12 +784,13 @@ int main(int argc, char **argv) {
     tame_allocator();
     if (argc < 3) {
         std::fprintf(stderr, "usage: %s <build|buildfree|find|churn|iterate|rss|memory|disk> <base>\n", argv[0]);
+        std::fprintf(stderr, "       %s timeline <n> [<csv>]\n", argv[0]);
         return 1;
     }
     std::string_view const work{argv[1]};
     current_work = work;
     std::size_t const base = std::strtoull(argv[2], nullptr, 10);
-    static constexpr std::array<std::string_view, 8> known{"build", "buildfree", "find", "churn", "iterate", "rss", "memory", "disk"};
+    static constexpr std::array<std::string_view, 9> known{"build", "buildfree", "find", "churn", "iterate", "rss", "memory", "disk", "timeline"};
     bool is_known = false;
     for (auto const &name : known) {
         is_known = is_known || name == work;
@@ -723,6 +802,15 @@ int main(int argc, char **argv) {
     if (work == "memory" && !count_alloc::available()) {
         std::fprintf(stderr, "this binary was built without DSM_README_COUNT_ALLOC and cannot count bytes\n");
         return 2;
+    }
+    if (work == "timeline") {
+#if defined(DSM_README_METALL)
+        std::fprintf(stderr, "timeline counts the heap and runs with std::allocator only\n");
+        return 2;
+#else
+        print_timeline(base, argc > 3 ? argv[3] : nullptr);
+        return 0;
+#endif
     }
     if (work == "disk") {
 #if defined(DSM_README_DISK_USAGE)
