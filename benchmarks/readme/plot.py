@@ -23,10 +23,9 @@ import csv
 import math
 import os
 
-# family -> fill. Four hues, checked as a categorical set against white with the palette validator
-# of the dataviz skill: adjacent CVD separation 8.5 (deuteranopia), 6.5 (tritanopia), every hue at
-# 3:1 or more against the background. The row name next to each bar names the map, so the color is
-# never the only way to tell two rows apart.
+# family -> fill. Four hues, a categorical set against white: adjacent CVD separation 8.5
+# (deuteranopia), 6.5 (tritanopia), every hue at 3:1 or more against the background. The row name
+# next to each bar names the map, so the color is never the only way to tell two rows apart.
 FAMILY = {
     "sparse": "#b45309",
     "dense": "#0e8f60",
