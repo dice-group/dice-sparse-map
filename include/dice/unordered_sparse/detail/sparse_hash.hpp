@@ -327,6 +327,12 @@ namespace dice::unordered_sparse {
         };
 
         /**
+         * The type of a data member that a configuration does not need. With `[[no_unique_address]]` it takes no
+         * space.
+         */
+        struct unused_member {};
+
+        /**
          * Element access of `sparse_hash` for a map. The elements are stored as `map_slot<Key, T>`.
          * The public element type is `std::pair<Key, T>`, the reference type is `std::pair<Key const &, T &>`.
          */
@@ -381,13 +387,34 @@ namespace dice::unordered_sparse {
         };
 
         /**
-         * A group of `bitmap_nb_bits` (64) buckets of the table. Only the occupied buckets have storage: the
-         * values are kept densely in `values_`, in bucket order, and a bitmap marks which buckets are occupied.
-         * A second bitmap marks the buckets whose value was erased (deleted buckets), so that probing goes on
-         * past them.
+         * A group of `bitmap_nb_bits` (64) buckets of the table. Only the occupied buckets have storage: their slots
+         * are kept densely in `values_`, in bucket order, and a bitmap (`bitmap_vals_`) marks which buckets are
+         * occupied. A second bitmap (`bitmap_deleted_vals_`) marks the buckets whose value was erased (deleted
+         * buckets), so that probing goes on past them.
          *
          * An index is a position in [0, bitmap_nb_bits), like a position in a `std::vector`. An offset is the
-         * position of the value of an index in `values_`: the number of occupied buckets before the index.
+         * position of the slot of an index in `values_`: the number of occupied buckets before the index.
+         *
+         * If `T` is nothrow move constructible, every occupied bucket holds a value. An erase destroys the value and
+         * moves the values after it one slot to the front, and an insertion moves them one slot to the back. The
+         * storage grows by `capacity_growth_step` slots when it is full and does not shrink.
+         *
+         * Otherwise a move could throw halfway and could not be undone, so the values are never moved, and the group
+         * has holes (`has_holes`). An erase destroys the value in place and keeps its slot: the bucket becomes a hole,
+         * occupied and deleted at once. So an erase moves nothing, allocates nothing and does not throw. An insertion
+         * into a hole constructs the value in the slot of the hole. An insertion into any other bucket copies the
+         * values into new storage of the exact size, without the holes, and the holes become deleted buckets without
+         * a slot. When the last value of a group is erased, the group frees its storage. A copy of a group has no
+         * holes.
+         *
+         * The two bitmaps give four states of a bucket:
+         * - not occupied, not deleted: empty.
+         * - occupied, not deleted: holds a value.
+         * - not occupied, deleted: deleted, without a slot.
+         * - occupied and deleted: a hole, a slot without a value (only with `has_holes`).
+         *
+         * `nb_elements_` counts the values. The number of slots in use is the number of occupied buckets, which is
+         * larger by the number of holes.
          *
          * `sparse_array` does not store an allocator, so that groups do not grow with a stateful allocator. Every
          * function that allocates or frees takes the allocator as an argument. `clear(Allocator &)` must be
@@ -417,6 +444,12 @@ namespace dice::unordered_sparse {
              * The number of buckets of a `sparse_array`.
              */
             static constexpr std::size_t bitmap_nb_bits = 64;
+
+            /**
+             * True if a bucket can be a hole: an erased value whose slot stays in `values_`. That is the case if the
+             * move constructor of `value_type` can throw, see the class documentation.
+             */
+            static constexpr bool has_holes = !std::is_nothrow_move_constructible_v<value_type>;
 
         private:
             static constexpr size_type capacity_growth_step = (sparsity == unordered_sparse::sparsity::high)     ? 2
@@ -488,7 +521,8 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * Copies `other` into storage from `const_alloc`.
+             * Copies `other` into storage from `const_alloc`. The holes of `other` become deleted buckets without a
+             * slot.
              */
             constexpr sparse_array(sparse_array const &other, Allocator const &const_alloc)
                 : bitmap_vals_(other.bitmap_vals_),
@@ -496,6 +530,9 @@ namespace dice::unordered_sparse {
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
                 DICE_UNORDERED_SPARSE_ASSERT(other.capacity_ >= other.nb_elements_);
+                if constexpr (has_holes) {
+                    bitmap_vals_ = other.value_bitmap();
+                }
                 if (capacity_ == 0) {
                     return;
                 }
@@ -504,9 +541,13 @@ namespace dice::unordered_sparse {
                 values_ = allocator_traits::allocate(alloc, capacity_);
                 DICE_UNORDERED_SPARSE_ASSERT(values_ != nullptr);
                 try {
-                    for (size_type i = 0; i < other.nb_elements_; ++i) {
-                        construct_value(alloc, values() + i, other.values()[i]);
-                        ++nb_elements_;
+                    if constexpr (has_holes) {
+                        other.copy_values_to(alloc, other.value_bitmap(), values(), nb_elements_);
+                    } else {
+                        for (size_type i = 0; i < other.nb_elements_; ++i) {
+                            construct_value(alloc, values() + i, other.values()[i]);
+                            ++nb_elements_;
+                        }
                     }
                 } catch (...) {
                     clear(alloc);
@@ -525,7 +566,8 @@ namespace dice::unordered_sparse {
 
             /**
              * Moves the values of `other` into storage from `const_alloc`, or copies them if their move constructor
-             * can throw. `other` keeps its values, the moved ones in a moved-from state.
+             * can throw. `other` keeps its values, the moved ones in a moved-from state. The holes of `other` become
+             * deleted buckets without a slot.
              */
             constexpr sparse_array(sparse_array &&other, Allocator const &const_alloc)
                 : bitmap_vals_(other.bitmap_vals_),
@@ -533,6 +575,9 @@ namespace dice::unordered_sparse {
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
                 DICE_UNORDERED_SPARSE_ASSERT(other.capacity_ >= other.nb_elements_);
+                if constexpr (has_holes) {
+                    bitmap_vals_ = other.value_bitmap();
+                }
                 if (capacity_ == 0) {
                     return;
                 }
@@ -541,9 +586,13 @@ namespace dice::unordered_sparse {
                 values_ = allocator_traits::allocate(alloc, capacity_);
                 DICE_UNORDERED_SPARSE_ASSERT(values_ != nullptr);
                 try {
-                    for (size_type i = 0; i < other.nb_elements_; ++i) {
-                        construct_value(alloc, values() + i, std::move_if_noexcept(other.values()[i]));
-                        ++nb_elements_;
+                    if constexpr (has_holes) {
+                        other.copy_values_to(alloc, other.value_bitmap(), values(), nb_elements_);
+                    } else {
+                        for (size_type i = 0; i < other.nb_elements_; ++i) {
+                            construct_value(alloc, values() + i, std::move_if_noexcept(other.values()[i]));
+                            ++nb_elements_;
+                        }
                     }
                 } catch (...) {
                     clear(alloc);
@@ -562,11 +611,20 @@ namespace dice::unordered_sparse {
                 DICE_UNORDERED_SPARSE_ASSERT(capacity_ == 0 && nb_elements_ == 0 && values_ == nullptr);
             }
 
+            /*
+             * The values as a range of slots. A group with holes is such a range only while it has no holes.
+             */
             [[nodiscard]] constexpr iterator begin() noexcept {
+                if constexpr (has_holes) {
+                    DICE_UNORDERED_SPARSE_ASSERT(!has_hole());
+                }
                 return values();
             }
 
             [[nodiscard]] constexpr iterator end() noexcept {
+                if constexpr (has_holes) {
+                    DICE_UNORDERED_SPARSE_ASSERT(!has_hole());
+                }
                 return values() + nb_elements_;
             }
 
@@ -579,17 +637,29 @@ namespace dice::unordered_sparse {
             }
 
             [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
+                if constexpr (has_holes) {
+                    DICE_UNORDERED_SPARSE_ASSERT(!has_hole());
+                }
                 return values();
             }
 
             [[nodiscard]] constexpr const_iterator cend() const noexcept {
+                if constexpr (has_holes) {
+                    DICE_UNORDERED_SPARSE_ASSERT(!has_hole());
+                }
                 return values() + nb_elements_;
             }
 
+            /**
+             * True if no bucket holds a value.
+             */
             [[nodiscard]] constexpr bool empty() const noexcept {
                 return nb_elements_ == 0;
             }
 
+            /**
+             * @return the number of values, without the holes
+             */
             [[nodiscard]] constexpr size_type size() const noexcept {
                 return nb_elements_;
             }
@@ -598,7 +668,11 @@ namespace dice::unordered_sparse {
              * Destroys all values and frees the storage.
              */
             constexpr void clear(allocator_type &alloc) noexcept {
-                destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
+                if constexpr (has_holes) {
+                    destroy_values_and_deallocate(alloc);
+                } else {
+                    destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
+                }
 
                 values_ = nullptr;
                 bitmap_vals_ = 0;
@@ -618,14 +692,112 @@ namespace dice::unordered_sparse {
                 last_array_ = true;
             }
 
+            /**
+             * True if the bucket at `index` holds a value. A hole holds none.
+             */
             [[nodiscard]] constexpr bool has_value(size_type index) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
+                if constexpr (has_holes) {
+                    // the occupied bit first, as without holes, so that a lookup reads the deleted bitmap only for an
+                    // occupied bucket
+                    bitmap_type const bit = bitmap_type{1} << index;
+                    return (bitmap_vals_ & bit) != 0 && (bitmap_deleted_vals_ & bit) == 0;
+                }
                 return (bitmap_vals_ & (bitmap_type{1} << index)) != 0;
             }
 
+            /**
+             * True if the bucket at `index` is deleted, with or without a slot (a hole or not).
+             */
             [[nodiscard]] constexpr bool has_deleted_value(size_type index) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
                 return (bitmap_deleted_vals_ & (bitmap_type{1} << index)) != 0;
+            }
+
+            /**
+             * @return the index of the first bucket that holds a value, or `bitmap_nb_bits` if there is none
+             */
+            [[nodiscard]] constexpr size_type first_value_index() const noexcept {
+                bitmap_type const bitmap = value_bitmap();
+                return bitmap == 0 ? static_cast<size_type>(bitmap_nb_bits) : static_cast<size_type>(std::countr_zero(bitmap));
+            }
+
+            /**
+             * @return the index of the first bucket after `index` that holds a value, or `bitmap_nb_bits` if there is
+             * none
+             */
+            [[nodiscard]] constexpr size_type next_value_index(size_type index) const noexcept {
+                DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
+                bitmap_type const after = value_bitmap() & ((~bitmap_type{0} << index) << 1U);
+                return after == 0 ? static_cast<size_type>(bitmap_nb_bits) : static_cast<size_type>(std::countr_zero(after));
+            }
+
+            /**
+             * True if a bucket of the group is a hole.
+             */
+            [[nodiscard]] constexpr bool has_hole() const noexcept {
+                return (bitmap_vals_ & bitmap_deleted_vals_) != 0;
+            }
+
+            /**
+             * Values in consecutive slots, without a hole between them, starting at a value of a group with holes.
+             * The iterator of a table with holes steps through a run slot by slot, as through a group without holes,
+             * and asks the group for the next run at its end.
+             */
+            struct run_type {
+                /// the number of values in the slots right after the current one, up to the next hole
+                std::uint32_t nb_following = 0;
+                /// the next run starts at the first value after this index, if it is not `bitmap_nb_bits`
+                std::uint32_t next_after = 0;
+            };
+
+            /**
+             * With holes: the slot of the first value at or after `index`, and the run that starts there, as a pair.
+             * A group without holes is one run. A value at or after `index` must exist.
+             */
+            template<typename Self>
+            [[nodiscard]] constexpr auto run_from(this Self &self, size_type index) noexcept {
+                static_assert(has_holes);
+                DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
+                return self.run_of_lowest(self.value_bitmap() & (~bitmap_type{0} << index));
+            }
+
+            /**
+             * True if a bucket after `index` holds a value, for an `index` below `bitmap_nb_bits`.
+             */
+            [[nodiscard]] constexpr bool has_value_after(size_type index) const noexcept {
+                DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
+                return (value_bitmap() & ((~bitmap_type{0} << index) << 1U)) != 0;
+            }
+
+            /**
+             * With holes: `run_from(index + 1)`, for an `index` below `bitmap_nb_bits`. A value must follow
+             * (`has_value_after(index)`).
+             */
+            template<typename Self>
+            [[nodiscard]] constexpr auto run_after(this Self &self, size_type index) noexcept {
+                static_assert(has_holes);
+                DICE_UNORDERED_SPARSE_ASSERT(index < bitmap_nb_bits);
+                return self.run_of_lowest(self.value_bitmap() & ((~bitmap_type{0} << index) << 1U));
+            }
+
+            /**
+             * With holes.
+             * @return the index of the bucket whose value is in the slot `slot`
+             */
+            [[nodiscard]] constexpr size_type index_of(value_type const *slot) const noexcept {
+                static_assert(has_holes);
+                auto const offset = static_cast<size_type>(slot - values());
+                DICE_UNORDERED_SPARSE_ASSERT(offset < popcount(bitmap_vals_));
+
+                bitmap_type bitmap = bitmap_vals_;
+                for (size_type i = 0; i < offset; ++i) {
+                    bitmap &= bitmap - 1;  // clears the lowest set bit
+                }
+
+                auto const index = static_cast<size_type>(std::countr_zero(bitmap));
+                DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
+                return index;
             }
 
             [[nodiscard]] constexpr iterator value(size_type index) noexcept {
@@ -639,34 +811,69 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * Constructs a value at `index` from `value_args`.
+             * Constructs a value at `index` from `value_args`. With holes, see `set_with_holes`.
              * @return iterator to the new value
              */
             template<typename... Args>
             constexpr iterator set(allocator_type &alloc, size_type index, Args &&...value_args) {
                 DICE_UNORDERED_SPARSE_ASSERT(!has_value(index));
+                if constexpr (has_holes) {
+                    return set_with_holes(alloc, index, std::forward<Args>(value_args)...);
+                } else {
+                    size_type const offset = index_to_offset(index);
+                    insert_at_offset(alloc, offset, std::forward<Args>(value_args)...);
 
-                size_type const offset = index_to_offset(index);
-                insert_at_offset(alloc, offset, std::forward<Args>(value_args)...);
+                    bitmap_vals_ = (bitmap_vals_ | (bitmap_type{1} << index));
+                    bitmap_deleted_vals_ = (bitmap_deleted_vals_ & ~(bitmap_type{1} << index));
 
-                bitmap_vals_ = (bitmap_vals_ | (bitmap_type{1} << index));
-                bitmap_deleted_vals_ = (bitmap_deleted_vals_ & ~(bitmap_type{1} << index));
+                    ++nb_elements_;
 
-                ++nb_elements_;
+                    DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
+                    DICE_UNORDERED_SPARSE_ASSERT(!has_deleted_value(index));
 
+                    return values() + offset;
+                }
+            }
+
+            /**
+             * Erases the value at `index` of a group with holes: destroys the value and keeps its slot as a hole.
+             * Moves nothing and allocates nothing. If it was the last value of the group, the group frees its storage,
+             * and its holes become deleted buckets without a slot.
+             */
+            constexpr void erase_in_place(allocator_type &alloc, size_type index) noexcept {
+                static_assert(has_holes);
                 DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
                 DICE_UNORDERED_SPARSE_ASSERT(!has_deleted_value(index));
 
-                return values() + offset;
+                destroy_value(alloc, values() + index_to_offset(index));
+                bitmap_deleted_vals_ = (bitmap_deleted_vals_ | (bitmap_type{1} << index));
+                --nb_elements_;
+
+                if (nb_elements_ == 0) {
+                    // every occupied bucket is a hole, so there is no value to destroy
+                    DICE_UNORDERED_SPARSE_ASSERT((bitmap_vals_ & ~bitmap_deleted_vals_) == 0);
+                    allocator_traits::deallocate(alloc, values_, capacity_);
+                    values_ = nullptr;
+                    capacity_ = 0;
+                    bitmap_vals_ = 0;
+                }
+
+                DICE_UNORDERED_SPARSE_ASSERT(!has_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(has_deleted_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(nb_elements_ == popcount(value_bitmap()));
             }
 
+            /**
+             * Without holes only.
+             */
             constexpr iterator erase(allocator_type &alloc, iterator position) {
                 auto const offset = static_cast<size_type>(position - begin());
                 return erase(alloc, position, offset_to_index(offset));
             }
 
             /**
-             * Erases the value at `position`, which is at `index`, and marks the bucket as deleted.
+             * Erases the value at `position`, which is at `index`, and marks the bucket as deleted. Without holes
+             * only, a group with holes erases with `erase_in_place`.
              * @return iterator to the next value, or `end()`
              */
             constexpr iterator erase(allocator_type &alloc, iterator position, size_type index) {
@@ -758,26 +965,218 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * Insertion
+             * @return the buckets that hold a value: the occupied buckets without the holes
+             */
+            [[nodiscard]] constexpr bitmap_type value_bitmap() const noexcept {
+                if constexpr (has_holes) {
+                    return bitmap_vals_ & ~bitmap_deleted_vals_;
+                }
+                return bitmap_vals_;
+            }
+
+            /**
+             * With holes: the slot of the value in the lowest bucket of `values_from`, a part of the value bitmap that is
+             * not 0, and the run that starts there, as a pair. The masks are derived from `values_from` and from the
+             * first hole after the value, so that nothing is shifted by a variable amount.
+             */
+            template<typename Self>
+            [[nodiscard]] constexpr auto run_of_lowest(this Self &self, bitmap_type values_from) noexcept {
+                static_assert(has_holes);
+                using result_type = std::pair<decltype(self.values()), run_type>;
+                DICE_UNORDERED_SPARSE_ASSERT(values_from != 0 && (values_from & ~self.value_bitmap()) == 0);
+
+                bitmap_type const occupied = self.bitmap_vals_;
+                bitmap_type const before = (values_from - 1) & ~values_from;
+                bitmap_type const after = ~(values_from ^ (values_from - 1));
+                size_type const offset = popcount(occupied & before);
+                bitmap_type const holes_after = occupied & self.bitmap_deleted_vals_ & after;
+                if (holes_after == 0) {
+                    // the run ends with the last slot
+                    return result_type{self.values() + offset, {static_cast<std::uint32_t>(popcount(occupied) - offset - 1), static_cast<std::uint32_t>(bitmap_nb_bits)}};
+                }
+
+                bitmap_type const before_hole = (holes_after - 1) & ~holes_after;
+                return result_type{self.values() + offset, {static_cast<std::uint32_t>(popcount(occupied & before_hole) - offset - 1), static_cast<std::uint32_t>(std::countr_zero(holes_after))}};
+            }
+
+            /**
+             * Copies the values of the buckets in `buckets`, in bucket order, to `target + nb_copied`,
+             * `target + nb_copied + 1` and so on. Counts each copy in `nb_copied` right after it, so that the count is
+             * right when a copy throws.
+             */
+            constexpr void copy_values_to(allocator_type &alloc, bitmap_type buckets, value_type *target, size_type &nb_copied) const {
+                DICE_UNORDERED_SPARSE_ASSERT((buckets & ~value_bitmap()) == 0);
+                value_type const *const raw_values = values();
+                for (; buckets != 0; buckets &= buckets - 1) {
+                    auto const index = static_cast<size_type>(std::countr_zero(buckets));
+                    construct_value(alloc, target + nb_copied, raw_values[index_to_offset(index)]);
+                    ++nb_copied;
+                }
+            }
+
+            /**
+             * Destroys the values of a group with holes and frees its storage. Visits the buckets that hold a value in
+             * bucket order and stops after `nb_elements_` values. So it also frees storage whose first `nb_elements_`
+             * slots hold values and whose other slots hold none, as after a copy that threw. Without a hole these are
+             * the first `nb_elements_` slots.
+             */
+            constexpr void destroy_values_and_deallocate(allocator_type &alloc) noexcept {
+                static_assert(has_holes);
+                if (!has_hole()) {
+                    destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
+                    return;
+                }
+
+                value_type *const raw_values = values();
+                bitmap_type buckets = value_bitmap();
+                for (size_type i = 0; i < nb_elements_; ++i) {
+                    DICE_UNORDERED_SPARSE_ASSERT(buckets != 0);
+                    destroy_value(alloc, raw_values + index_to_offset(static_cast<size_type>(std::countr_zero(buckets))));
+                    buckets &= buckets - 1;
+                }
+                allocator_traits::deallocate(alloc, values_, capacity_);
+            }
+
+            /**
+             * `set` for a group with holes. A hole has a slot, so the value is constructed in it, and nothing else
+             * moves or allocates. If the construction throws, the hole stays. Any other bucket gets a slot from
+             * `insert_without_holes` or, if the group has a hole, from `insert_compacting`.
+             */
+            template<typename... Args>
+            constexpr iterator set_with_holes(allocator_type &alloc, size_type index, Args &&...value_args) {
+                static_assert(has_holes);
+                bitmap_type const bit = bitmap_type{1} << index;
+                if ((bitmap_vals_ & bit) != 0) {
+                    DICE_UNORDERED_SPARSE_ASSERT((bitmap_deleted_vals_ & bit) != 0);
+                    value_type *const slot = values() + index_to_offset(index);
+                    construct_value(alloc, slot, std::forward<Args>(value_args)...);
+                    bitmap_deleted_vals_ = (bitmap_deleted_vals_ & ~bit);
+                    ++nb_elements_;
+
+                    DICE_UNORDERED_SPARSE_ASSERT(nb_elements_ == popcount(value_bitmap()));
+                    return slot;
+                }
+
+                value_type *const slot = has_hole() ? insert_compacting(alloc, index, std::forward<Args>(value_args)...)
+                                                    : insert_without_holes(alloc, index, std::forward<Args>(value_args)...);
+
+                DICE_UNORDERED_SPARSE_ASSERT(has_value(index) && !has_deleted_value(index));
+                DICE_UNORDERED_SPARSE_ASSERT(nb_elements_ == popcount(value_bitmap()) && !has_hole());
+                DICE_UNORDERED_SPARSE_ASSERT(slot == values() + index_to_offset(index));
+                return slot;
+            }
+
+            /**
+             * Inserts a value at `index`, a bucket without a slot, into a group that can have holes but has none.
+             * Allocates storage for `nb_elements_ + 1` values, copies the slots before the new value, constructs the
+             * new value and copies the slots after it. If a copy or the construction throws, the group is unchanged.
              *
-             * If `value_type` is nothrow move constructible, `values_` grows by `capacity_growth_step` when it is
-             * full, and otherwise the new value is moved into its place. Moving values is safe, so this keeps the
-             * strong exception guarantee.
+             * The arguments may refer to a value of this group: the old storage stays as it is until the new one is
+             * complete.
+             * @return the slot of the new value
+             */
+            template<typename... Args>
+            constexpr value_type *insert_without_holes(allocator_type &alloc, size_type index, Args &&...value_args) {
+                static_assert(has_holes);
+                DICE_UNORDERED_SPARSE_ASSERT(!has_hole() && (bitmap_vals_ & (bitmap_type{1} << index)) == 0);
+
+                auto const new_capacity = static_cast<size_type>(nb_elements_ + 1);
+                pointer const new_values = allocator_traits::allocate(alloc, new_capacity);
+                DICE_UNORDERED_SPARSE_ASSERT(new_values != nullptr);
+                value_type *const raw_new_values = std::to_address(new_values);
+                value_type const *const raw_values = values();
+                size_type const offset = index_to_offset(index);
+
+                size_type nb_new_values = 0;
+                try {
+                    for (size_type i = 0; i < offset; ++i) {
+                        construct_value(alloc, raw_new_values + i, raw_values[i]);
+                        ++nb_new_values;
+                    }
+
+                    construct_value(alloc, raw_new_values + offset, std::forward<Args>(value_args)...);
+                    ++nb_new_values;
+
+                    for (size_type i = offset; i < nb_elements_; ++i) {
+                        construct_value(alloc, raw_new_values + i + 1, raw_values[i]);
+                        ++nb_new_values;
+                    }
+                } catch (...) {
+                    destroy_and_deallocate_values(alloc, new_values, nb_new_values, new_capacity);
+                    throw;
+                }
+                DICE_UNORDERED_SPARSE_ASSERT(nb_new_values == new_capacity);
+
+                destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
+
+                bitmap_type const bit = bitmap_type{1} << index;
+                values_ = new_values;
+                capacity_ = new_capacity;
+                bitmap_vals_ = (bitmap_vals_ | bit);
+                bitmap_deleted_vals_ = (bitmap_deleted_vals_ & ~bit);
+                ++nb_elements_;
+                return raw_new_values + offset;
+            }
+
+            /**
+             * Inserts a value at `index`, a bucket without a slot, into a group with holes. Allocates storage for
+             * `nb_elements_ + 1` values, copies the values into it in bucket order and constructs the new value at its
+             * place. The new storage has no holes, so the holes become deleted buckets without a slot. If a copy or
+             * the construction throws, the group is unchanged.
              *
-             * Otherwise every insertion allocates new storage for `nb_elements_ + 1` values, copies the values
-             * into it and constructs the new value there. On success, `values_` becomes the new storage. This is
-             * slower, but it is the only way to keep the strong exception guarantee.
+             * The arguments may refer to a value of this group: the old storage stays as it is until the new one is
+             * complete.
+             * @return the slot of the new value
+             */
+            template<typename... Args>
+            constexpr value_type *insert_compacting(allocator_type &alloc, size_type index, Args &&...value_args) {
+                static_assert(has_holes);
+                bitmap_type const bit = bitmap_type{1} << index;
+                bitmap_type const before = bit - 1;
+                DICE_UNORDERED_SPARSE_ASSERT((bitmap_vals_ & bit) == 0);
+
+                auto const new_capacity = static_cast<size_type>(nb_elements_ + 1);
+                pointer const new_values = allocator_traits::allocate(alloc, new_capacity);
+                DICE_UNORDERED_SPARSE_ASSERT(new_values != nullptr);
+                value_type *const raw_new_values = std::to_address(new_values);
+
+                size_type nb_new_values = 0;
+                size_type new_offset = 0;
+                try {
+                    copy_values_to(alloc, value_bitmap() & before, raw_new_values, nb_new_values);
+                    new_offset = nb_new_values;
+                    construct_value(alloc, raw_new_values + new_offset, std::forward<Args>(value_args)...);
+                    ++nb_new_values;
+                    copy_values_to(alloc, value_bitmap() & ~before & ~bit, raw_new_values, nb_new_values);
+                } catch (...) {
+                    destroy_and_deallocate_values(alloc, new_values, nb_new_values, new_capacity);
+                    throw;
+                }
+                DICE_UNORDERED_SPARSE_ASSERT(nb_new_values == new_capacity);
+
+                destroy_values_and_deallocate(alloc);
+
+                values_ = new_values;
+                capacity_ = new_capacity;
+                bitmap_vals_ = value_bitmap() | bit;
+                bitmap_deleted_vals_ = (bitmap_deleted_vals_ & ~bit);
+                ++nb_elements_;
+                return raw_new_values + new_offset;
+            }
+
+            /**
+             * Insertion without holes
+             *
+             * `values_` grows by `capacity_growth_step` when it is full, and otherwise the new value is moved into its
+             * place. Moving values is safe, so this keeps the strong exception guarantee.
              */
             template<typename... Args>
             constexpr void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
-                if constexpr (std::is_nothrow_move_constructible_v<value_type>) {
-                    if (nb_elements_ < capacity_) {
-                        insert_at_offset_no_realloc(alloc, offset, std::forward<Args>(value_args)...);
-                    } else {
-                        insert_at_offset_realloc(alloc, offset, next_capacity(), std::forward<Args>(value_args)...);
-                    }
+                static_assert(!has_holes);
+                if (nb_elements_ < capacity_) {
+                    insert_at_offset_no_realloc(alloc, offset, std::forward<Args>(value_args)...);
                 } else {
-                    insert_at_offset_realloc(alloc, offset, static_cast<size_type>(nb_elements_ + 1), std::forward<Args>(value_args)...);
+                    insert_at_offset_realloc(alloc, offset, next_capacity(), std::forward<Args>(value_args)...);
                 }
             }
 
@@ -815,6 +1214,7 @@ namespace dice::unordered_sparse {
 
             template<typename... Args>
             constexpr void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
+                static_assert(!has_holes);
                 DICE_UNORDERED_SPARSE_ASSERT(new_capacity > nb_elements_);
 
                 pointer const new_values = allocator_traits::allocate(alloc, new_capacity);
@@ -822,43 +1222,20 @@ namespace dice::unordered_sparse {
                 value_type *const raw_new_values = std::to_address(new_values);
                 value_type *const raw_values = values();
 
-                if constexpr (std::is_nothrow_move_constructible_v<value_type>) {
-                    try {
-                        construct_value(alloc, raw_new_values + offset, std::forward<Args>(value_args)...);
-                    } catch (...) {
-                        allocator_traits::deallocate(alloc, new_values, new_capacity);
-                        throw;
-                    }
+                try {
+                    construct_value(alloc, raw_new_values + offset, std::forward<Args>(value_args)...);
+                } catch (...) {
+                    allocator_traits::deallocate(alloc, new_values, new_capacity);
+                    throw;
+                }
 
-                    // does not throw from here on
-                    for (size_type i = 0; i < offset; ++i) {
-                        construct_value(alloc, raw_new_values + i, std::move(raw_values[i]));
-                    }
+                // does not throw from here on
+                for (size_type i = 0; i < offset; ++i) {
+                    construct_value(alloc, raw_new_values + i, std::move(raw_values[i]));
+                }
 
-                    for (size_type i = offset; i < nb_elements_; ++i) {
-                        construct_value(alloc, raw_new_values + i + 1, std::move(raw_values[i]));
-                    }
-                } else {
-                    size_type nb_new_values = 0;
-                    try {
-                        for (size_type i = 0; i < offset; ++i) {
-                            construct_value(alloc, raw_new_values + i, raw_values[i]);
-                            ++nb_new_values;
-                        }
-
-                        construct_value(alloc, raw_new_values + offset, std::forward<Args>(value_args)...);
-                        ++nb_new_values;
-
-                        for (size_type i = offset; i < nb_elements_; ++i) {
-                            construct_value(alloc, raw_new_values + i + 1, raw_values[i]);
-                            ++nb_new_values;
-                        }
-                    } catch (...) {
-                        destroy_and_deallocate_values(alloc, new_values, nb_new_values, new_capacity);
-                        throw;
-                    }
-
-                    DICE_UNORDERED_SPARSE_ASSERT(nb_new_values == nb_elements_ + 1);
+                for (size_type i = offset; i < nb_elements_; ++i) {
+                    construct_value(alloc, raw_new_values + i + 1, std::move(raw_values[i]));
                 }
 
                 destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
@@ -868,59 +1245,18 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * Erasure
-             *
-             * If `value_type` is nothrow move constructible, the value is destroyed and the values after it are
-             * moved one place to the front.
-             *
-             * Otherwise all values except the erased one are copied into new storage. On success, `values_`
-             * becomes the new storage. This is slower, but it is the only way to keep the strong exception
-             * guarantee.
+             * Erasure without holes: the value is destroyed and the values after it are moved one place to the front.
              */
-            constexpr void erase_at_offset(allocator_type &alloc, size_type offset) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
+            constexpr void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
+                static_assert(!has_holes);
                 DICE_UNORDERED_SPARSE_ASSERT(offset < nb_elements_);
                 value_type *const raw_values = values();
 
-                if constexpr (std::is_nothrow_move_constructible_v<value_type>) {
-                    destroy_value(alloc, raw_values + offset);
+                destroy_value(alloc, raw_values + offset);
 
-                    for (size_type i = offset + 1; i < nb_elements_; ++i) {
-                        construct_value(alloc, raw_values + i - 1, std::move(raw_values[i]));
-                        destroy_value(alloc, raw_values + i);
-                    }
-                } else {
-                    // the last value is erased without a reallocation, the capacity stays
-                    if (offset + 1 == nb_elements_) {
-                        destroy_value(alloc, raw_values + offset);
-                        return;
-                    }
-
-                    DICE_UNORDERED_SPARSE_ASSERT(nb_elements_ > 1);
-                    auto const new_capacity = static_cast<size_type>(nb_elements_ - 1);
-
-                    pointer const new_values = allocator_traits::allocate(alloc, new_capacity);
-                    DICE_UNORDERED_SPARSE_ASSERT(new_values != nullptr);
-                    value_type *const raw_new_values = std::to_address(new_values);
-
-                    size_type nb_new_values = 0;
-                    try {
-                        for (size_type i = 0; i < nb_elements_; ++i) {
-                            if (i != offset) {
-                                construct_value(alloc, raw_new_values + nb_new_values, raw_values[i]);
-                                ++nb_new_values;
-                            }
-                        }
-                    } catch (...) {
-                        destroy_and_deallocate_values(alloc, new_values, nb_new_values, new_capacity);
-                        throw;
-                    }
-
-                    DICE_UNORDERED_SPARSE_ASSERT(nb_new_values == nb_elements_ - 1);
-
-                    destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
-
-                    values_ = new_values;
-                    capacity_ = new_capacity;
+                for (size_type i = offset + 1; i < nb_elements_; ++i) {
+                    construct_value(alloc, raw_values + i - 1, std::move(raw_values[i]));
+                    destroy_value(alloc, raw_values + i);
                 }
             }
 
@@ -942,6 +1278,18 @@ namespace dice::unordered_sparse {
          *
          * A rehash that throws leaves the table unchanged or empty, depending on the type of the elements
          * and on what throws. See `rehash_impl`.
+         *
+         * `erase` does not throw unless the hash function or the key equality throws. If the move constructor of the
+         * stored elements can throw, the groups have holes (`has_holes`, see `sparse_array`): an erase destroys the
+         * element in place and leaves a hole, which keeps the memory of the element until the group is compacted by
+         * an insertion into another bucket of the group or by a rehash, or until its last element is erased. A copy
+         * of the table has no holes. A hole counts as a deleted bucket in `nb_deleted_buckets_`, so the clean-up
+         * rehash bounds the holes as it bounds the other deleted buckets.
+         *
+         * `begin()` is constant time and writes nothing. The table keeps the index of its first group that holds an
+         * element (`first_nonempty_group_`), and every operation that changes the table keeps it exact. An erase that
+         * empties this group reads the headers of the groups after it, up to the next group with an element. So the
+         * loop `while (!empty()) { erase(begin()); }` reads every group header once in total.
          *
          * The stored elements must be nothrow move constructible and/or copy constructible. The behaviour is
          * undefined if their destructor throws. See `sparse_array` for what a nothrow move needs from the allocator.
@@ -995,9 +1343,17 @@ namespace dice::unordered_sparse {
             using value_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<value_type>;
             using sparse_array = detail::sparse_array<slot_type, slot_allocator_type, sparsity>;
             using array_size_type = typename sparse_array::size_type;
+            using run_type = typename sparse_array::run_type;
             using bucket_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<sparse_array>;
             using bucket_allocator_traits = std::allocator_traits<bucket_allocator_type>;
             using bucket_pointer = typename bucket_allocator_traits::pointer;
+
+            /**
+             * True if a group can have holes (see `sparse_array`): the move constructor of the stored elements can
+             * throw. Then `erase` destroys an element in place and moves no other element, and a rehash copies the
+             * elements (`copy_on_rehash`).
+             */
+            static constexpr bool has_holes = sparse_array::has_holes;
 
             static constexpr bool propagate_on_copy_assignment = slot_allocator_traits::propagate_on_container_copy_assignment::value;
             static constexpr bool propagate_on_move_assignment = slot_allocator_traits::propagate_on_container_move_assignment::value;
@@ -1012,8 +1368,14 @@ namespace dice::unordered_sparse {
              * `const_iterator`): the key is const, the mapped value is mutable through `iterator`. `operator->`
              * returns a proxy, so `it->second` works. A set iterator dereferences to `Key const &`.
              *
-             * The iterator holds plain pointers, also with an allocator that uses fancy pointers: the group, the
-             * element and the end of the elements of the group. An insertion or an erasure can invalidate it.
+             * The iterator holds plain pointers, also with an allocator that uses fancy pointers: the group and the
+             * element. The third member depends on the groups. Without holes it is the end of the elements of the
+             * group, and `++` steps to the next slot. With holes it is the run of the element (`sparse_array::run_type`):
+             * the number of values in the slots right after it, up to the next hole, and the index after which the next
+             * run starts. `++` steps to the next slot while the run has values, and otherwise asks the group for the
+             * next run. In a group without holes this is one run from the first slot to the last. An iterator that a
+             * lookup, an insertion, an erasure or `begin()` returns knows only the index of its element, so its first
+             * `++` asks the group. An insertion or an erasure can invalidate it.
              */
             template<bool is_const>
             struct sparse_iterator {
@@ -1029,7 +1391,7 @@ namespace dice::unordered_sparse {
                 using slot_pointer = std::conditional_t<is_const, slot_type const *, slot_type *>;
 
                 /**
-                 * `slot_` is nullptr if `bucket_` is the end of the bucket array.
+                 * Without holes. `slot_` is nullptr if `bucket_` is the end of the bucket array.
                  */
                 constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot) noexcept
                     : bucket_(bucket),
@@ -1037,10 +1399,40 @@ namespace dice::unordered_sparse {
                       slot_end_(slot == nullptr ? nullptr : bucket->end()) {
                 }
 
+                /**
+                 * Without holes.
+                 */
                 constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot, slot_pointer slot_end) noexcept
                     : bucket_(bucket),
                       slot_(slot),
                       slot_end_(slot_end) {
+                }
+
+                /**
+                 * With holes. `slot` is the element at `index` of `*bucket`, or nullptr if `bucket` is the end of the
+                 * bucket array. The run is not known yet: the first `++` looks for the next value after `index`.
+                 */
+                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot, array_size_type index) noexcept
+                    : bucket_(bucket),
+                      slot_(slot),
+                      run_{0, index} {
+                }
+
+                /**
+                 * With holes. `slot` is an element of `*bucket` and `run` its run. The run is copied field by field, as
+                 * everywhere in the iterator, so that the compiler keeps the two counters apart in registers.
+                 */
+                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot, run_type run) noexcept
+                    : bucket_(bucket),
+                      slot_(slot),
+                      run_{run.nb_following, run.next_after} {
+                }
+
+                /**
+                 * With holes. The element at `index` of `*bucket`.
+                 */
+                constexpr sparse_iterator(bucket_type *bucket, array_size_type index) noexcept
+                    : sparse_iterator(bucket, bucket->value(index), index) {
                 }
 
             public:
@@ -1066,6 +1458,10 @@ namespace dice::unordered_sparse {
                     : bucket_(other.bucket_),
                       slot_(other.slot_),
                       slot_end_(other.slot_end_) {
+                    if constexpr (has_holes) {
+                        run_.nb_following = other.run_.nb_following;
+                        run_.next_after = other.run_.next_after;
+                    }
                 }
 
                 [[nodiscard]] constexpr reference operator*() const noexcept {
@@ -1085,11 +1481,31 @@ namespace dice::unordered_sparse {
                 }
 
                 constexpr sparse_iterator &operator++() noexcept {
-                    DICE_UNORDERED_SPARSE_ASSERT(slot_ != nullptr && slot_end_ == bucket_->end());
-                    ++slot_;
+                    if constexpr (has_holes) {
+                        DICE_UNORDERED_SPARSE_ASSERT(slot_ != nullptr && run_is_plausible());
+                        if (run_.nb_following != 0) [[likely]] {
+                            --run_.nb_following;
+                            ++slot_;
+                            return *this;
+                        }
 
-                    if (slot_ == slot_end_) [[unlikely]] {
-                        to_next_group();
+                        if (run_.next_after != sparse_array::bitmap_nb_bits && bucket_->has_value_after(static_cast<array_size_type>(run_.next_after))) {
+                            auto const [slot, run] = bucket_->run_after(static_cast<array_size_type>(run_.next_after));
+                            slot_ = slot;
+                            run_.nb_following = run.nb_following;
+                            run_.next_after = run.next_after;
+                            return *this;
+                        }
+
+                        // a new iterator, so that this one stays in registers if the call is not inlined
+                        *this = next_group(bucket_);
+                    } else {
+                        DICE_UNORDERED_SPARSE_ASSERT(slot_ != nullptr && slot_end_ == bucket_->end());
+                        ++slot_;
+
+                        if (slot_ == slot_end_) [[unlikely]] {
+                            to_next_group();
+                        }
                     }
 
                     return *this;
@@ -1111,7 +1527,38 @@ namespace dice::unordered_sparse {
 
             private:
                 /**
-                 * Moves to the first element of the next group that is not empty, or to the end.
+                 * With holes: an iterator to the first value of the group after `*bucket` that is not empty, or the end.
+                 */
+                [[nodiscard]] static constexpr sparse_iterator next_group(bucket_type *bucket) noexcept {
+                    do {
+                        if (bucket->last()) {
+                            return sparse_iterator(bucket + 1, nullptr, array_size_type{0});
+                        }
+
+                        ++bucket;
+                    } while (bucket->empty());
+
+                    if (!bucket->has_hole()) {
+                        // one run from the first slot to the last
+                        return sparse_iterator(bucket, bucket->begin(), run_type{static_cast<std::uint32_t>(bucket->size() - 1), sparse_array::bitmap_nb_bits});
+                    }
+                    auto const [slot, run] = bucket->run_from(0);
+                    return sparse_iterator(bucket, slot, run);
+                }
+
+                /**
+                 * With holes: true if the iterator holds the run of its element (`sparse_array::run_from`), or if it
+                 * knows only the index of the element, as after a lookup. For the debug checks.
+                 */
+                [[nodiscard]] constexpr bool run_is_plausible() const noexcept {
+                    auto const index = bucket_->index_of(slot_);
+                    auto const run = bucket_->run_from(index).second;
+                    return (run_.nb_following == run.nb_following && run_.next_after == run.next_after)
+                           || (run_.nb_following == 0 && run_.next_after == index);
+                }
+
+                /**
+                 * Without holes: moves to the first element of the next group that is not empty, or to the end.
                  */
                 constexpr void to_next_group() noexcept {
                     do {
@@ -1131,8 +1578,10 @@ namespace dice::unordered_sparse {
 
                 bucket_type *bucket_ = nullptr;
                 slot_pointer slot_ = nullptr;
-                /// the end of the elements of `*bucket_`, nullptr if `slot_` is nullptr
-                slot_pointer slot_end_ = nullptr;
+                /// without holes: the end of the elements of `*bucket_`, nullptr if `slot_` is nullptr
+                [[no_unique_address]] std::conditional_t<has_holes, unused_member, slot_pointer> slot_end_ = {};
+                /// with holes: the run of the element in `*bucket_`
+                [[no_unique_address]] std::conditional_t<has_holes, run_type, unused_member> run_ = {};
             };
 
             /**
@@ -1176,6 +1625,7 @@ namespace dice::unordered_sparse {
                   key_equal_(other.key_equal_),
                   bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
+                  first_nonempty_group_(other.first_nonempty_group_),
                   nb_deleted_buckets_(other.nb_deleted_buckets_),
                   load_threshold_rehash_(other.load_threshold_rehash_),
                   load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
@@ -1193,6 +1643,7 @@ namespace dice::unordered_sparse {
                   nb_sparse_buckets_(std::exchange(other.nb_sparse_buckets_, 0)),
                   bucket_count_(std::exchange(other.bucket_count_, 0)),
                   nb_elements_(std::exchange(other.nb_elements_, 0)),
+                  first_nonempty_group_(std::exchange(other.first_nonempty_group_, 0)),
                   nb_deleted_buckets_(std::exchange(other.nb_deleted_buckets_, 0)),
                   load_threshold_rehash_(std::exchange(other.load_threshold_rehash_, 0)),
                   load_threshold_clear_deleted_(std::exchange(other.load_threshold_clear_deleted_, 0)),
@@ -1213,6 +1664,7 @@ namespace dice::unordered_sparse {
                   key_equal_(other.key_equal_),
                   bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
+                  first_nonempty_group_(other.first_nonempty_group_),
                   nb_deleted_buckets_(other.nb_deleted_buckets_),
                   load_threshold_rehash_(other.load_threshold_rehash_),
                   load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
@@ -1247,6 +1699,7 @@ namespace dice::unordered_sparse {
 
                 bucket_count_ = other.bucket_count_;
                 nb_elements_ = other.nb_elements_;
+                first_nonempty_group_ = other.first_nonempty_group_;
                 nb_deleted_buckets_ = other.nb_deleted_buckets_;
                 load_threshold_rehash_ = other.load_threshold_rehash_;
                 load_threshold_clear_deleted_ = other.load_threshold_clear_deleted_;
@@ -1287,6 +1740,7 @@ namespace dice::unordered_sparse {
 
                 bucket_count_ = other.bucket_count_;
                 nb_elements_ = other.nb_elements_;
+                first_nonempty_group_ = other.first_nonempty_group_;
                 nb_deleted_buckets_ = other.nb_deleted_buckets_;
                 load_threshold_rehash_ = other.load_threshold_rehash_;
                 load_threshold_clear_deleted_ = other.load_threshold_clear_deleted_;
@@ -1305,13 +1759,15 @@ namespace dice::unordered_sparse {
              * Iterators
              */
             [[nodiscard]] constexpr iterator begin() noexcept {
-                sparse_array *bucket = buckets_begin();
+                DICE_UNORDERED_SPARSE_ASSERT(first_nonempty_group_is_plausible());
+                sparse_array *const bucket = buckets_begin() + first_nonempty_group_;
                 sparse_array *const last = buckets_end();
-                while (bucket != last && bucket->empty()) {
-                    ++bucket;
-                }
 
-                return iterator(bucket, bucket != last ? bucket->begin() : nullptr);
+                if constexpr (has_holes) {
+                    return bucket != last ? iterator(bucket, bucket->first_value_index()) : end();
+                } else {
+                    return iterator(bucket, bucket != last ? bucket->begin() : nullptr);
+                }
             }
 
             [[nodiscard]] constexpr const_iterator begin() const noexcept {
@@ -1319,17 +1775,23 @@ namespace dice::unordered_sparse {
             }
 
             [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
-                sparse_array const *bucket = buckets_begin();
+                DICE_UNORDERED_SPARSE_ASSERT(first_nonempty_group_is_plausible());
+                sparse_array const *const bucket = buckets_begin() + first_nonempty_group_;
                 sparse_array const *const last = buckets_end();
-                while (bucket != last && bucket->empty()) {
-                    ++bucket;
-                }
 
-                return const_iterator(bucket, bucket != last ? bucket->cbegin() : nullptr);
+                if constexpr (has_holes) {
+                    return bucket != last ? const_iterator(bucket, bucket->first_value_index()) : cend();
+                } else {
+                    return const_iterator(bucket, bucket != last ? bucket->cbegin() : nullptr);
+                }
             }
 
             [[nodiscard]] constexpr iterator end() noexcept {
-                return iterator(buckets_end(), nullptr);
+                if constexpr (has_holes) {
+                    return iterator(buckets_end(), nullptr, array_size_type{0});
+                } else {
+                    return iterator(buckets_end(), nullptr);
+                }
             }
 
             [[nodiscard]] constexpr const_iterator end() const noexcept {
@@ -1337,7 +1799,11 @@ namespace dice::unordered_sparse {
             }
 
             [[nodiscard]] constexpr const_iterator cend() const noexcept {
-                return const_iterator(buckets_end(), nullptr);
+                if constexpr (has_holes) {
+                    return const_iterator(buckets_end(), nullptr, array_size_type{0});
+                } else {
+                    return const_iterator(buckets_end(), nullptr);
+                }
             }
 
             /*
@@ -1368,6 +1834,7 @@ namespace dice::unordered_sparse {
                 }
 
                 nb_elements_ = 0;
+                first_nonempty_group_ = nb_sparse_buckets_;
                 nb_deleted_buckets_ = 0;
             }
 
@@ -1484,26 +1951,59 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * Erases the element at `pos`.
+             * Erases the element at `pos`. Does not throw: with holes the element is destroyed in place, and otherwise
+             * the elements after it in its group are moved, which does not throw.
              * @return iterator to the element after the erased one
              */
             constexpr iterator erase(iterator pos) {
                 DICE_UNORDERED_SPARSE_ASSERT(pos != end() && nb_elements_ > 0);
                 sparse_array *bucket = pos.bucket_;
-                slot_type *const next_slot = bucket->erase(alloc_, pos.slot_);
-                --nb_elements_;
-                ++nb_deleted_buckets_;
+                if constexpr (has_holes) {
+                    // An iterator that a lookup, an insertion, `begin()` or an erasure returned knows the index of its
+                    // element. Otherwise the index is counted from the slot.
+                    auto const known = static_cast<array_size_type>(pos.run_.next_after);
+                    auto const index = known != sparse_array::bitmap_nb_bits && bucket->has_value(known) && bucket->value(known) == pos.slot_
+                                           ? known
+                                           : bucket->index_of(pos.slot_);
+                    bucket->erase_in_place(alloc_, index);
+                    --nb_elements_;
+                    ++nb_deleted_buckets_;
 
-                if (next_slot != bucket->end()) {
-                    return iterator(bucket, next_slot);
+                    auto const next_index = bucket->next_value_index(index);
+                    if (next_index != sparse_array::bitmap_nb_bits) {
+                        return iterator(bucket, next_index);
+                    }
+                } else {
+                    slot_type *const next_slot = bucket->erase(alloc_, pos.slot_);
+                    --nb_elements_;
+                    ++nb_deleted_buckets_;
+
+                    if (next_slot != bucket->end()) {
+                        return iterator(bucket, next_slot);
+                    }
                 }
+
+                // no element follows the erased one in its group
+                if (nb_elements_ == 0) {
+                    first_nonempty_group_ = nb_sparse_buckets_;
+                    return end();
+                }
+                bool const emptied_first_group = group_index(bucket) == first_nonempty_group_ && bucket->empty();
 
                 sparse_array *const last = buckets_end();
                 do {
                     ++bucket;
                 } while (bucket != last && bucket->empty());
 
-                return bucket == last ? end() : iterator(bucket, bucket->begin());
+                if (emptied_first_group) {
+                    first_nonempty_group_ = group_index(bucket);
+                }
+
+                if constexpr (has_holes) {
+                    return bucket == last ? end() : iterator(bucket, bucket->first_value_index());
+                } else {
+                    return bucket == last ? end() : iterator(bucket, bucket->begin());
+                }
             }
 
             constexpr iterator erase(const_iterator pos) {
@@ -1540,8 +2040,9 @@ namespace dice::unordered_sparse {
             /**
              * Moves every element of `source` whose key is not in this table into this table, and erases it from
              * `source`. An element is copied instead if its move constructor can throw. If an exception is thrown,
-             * the element that was being merged is still in `source`. A rehash of this table that throws can leave
-             * this table empty, see `rehash_impl`.
+             * the element that was being merged is still in `source` and not in this table: the erase from `source`
+             * comes last and does not throw. A rehash of this table that throws can leave this table empty, see
+             * `rehash_impl`.
              */
             template<typename OtherHash>
             constexpr void merge(OtherHash &source) {
@@ -1590,6 +2091,7 @@ namespace dice::unordered_sparse {
                 swap(nb_sparse_buckets_, other.nb_sparse_buckets_);
                 swap(bucket_count_, other.bucket_count_);
                 swap(nb_elements_, other.nb_elements_);
+                swap(first_nonempty_group_, other.first_nonempty_group_);
                 swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
                 swap(load_threshold_rehash_, other.load_threshold_rehash_);
                 swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
@@ -1741,7 +2243,11 @@ namespace dice::unordered_sparse {
              * Other
              */
             [[nodiscard]] constexpr iterator mutable_iterator(const_iterator pos) noexcept {
-                return iterator(const_cast<sparse_array *>(pos.bucket_), const_cast<slot_type *>(pos.slot_), const_cast<slot_type *>(pos.slot_end_));
+                if constexpr (has_holes) {
+                    return iterator(const_cast<sparse_array *>(pos.bucket_), const_cast<slot_type *>(pos.slot_), pos.run_);
+                } else {
+                    return iterator(const_cast<sparse_array *>(pos.bucket_), const_cast<slot_type *>(pos.slot_), const_cast<slot_type *>(pos.slot_end_));
+                }
             }
 
         private:
@@ -1792,6 +2298,41 @@ namespace dice::unordered_sparse {
 
             [[nodiscard]] constexpr std::ranges::subrange<sparse_array const *> buckets() const noexcept {
                 return {buckets_begin(), buckets_end()};
+            }
+
+            /**
+             * @return the index of the group `bucket` in the bucket array
+             */
+            [[nodiscard]] constexpr size_type group_index(sparse_array const *bucket) const noexcept {
+                return static_cast<size_type>(bucket - buckets_begin());
+            }
+
+            /**
+             * True if `first_nonempty_group_` is `nb_sparse_buckets_` for a table without elements, and otherwise the
+             * index of a group that holds an element. The groups before it are not checked, so that the check is
+             * constant time like `begin()`.
+             */
+            [[nodiscard]] constexpr bool first_nonempty_group_is_plausible() const noexcept {
+                if (nb_elements_ == 0) {
+                    return first_nonempty_group_ == nb_sparse_buckets_;
+                }
+                return first_nonempty_group_ < nb_sparse_buckets_ && !buckets_begin()[first_nonempty_group_].empty();
+            }
+
+            /**
+             * Moves `first_nonempty_group_` to the next group that holds an element, after an erase emptied the first
+             * one. Reads the headers of the groups in between. Without elements it is `nb_sparse_buckets_` at once.
+             */
+            constexpr void skip_empty_first_groups() noexcept {
+                if (nb_elements_ == 0) {
+                    first_nonempty_group_ = nb_sparse_buckets_;
+                    return;
+                }
+
+                sparse_array const *const raw_buckets = buckets_begin();
+                while (raw_buckets[first_nonempty_group_].empty()) {
+                    ++first_nonempty_group_;
+                }
             }
 
             template<typename K1, typename K2>
@@ -1906,6 +2447,7 @@ namespace dice::unordered_sparse {
 
                 buckets_ = new_buckets;
                 nb_sparse_buckets_ = nb_sparse_buckets;
+                first_nonempty_group_ = nb_sparse_buckets;
             }
 
             /**
@@ -1934,6 +2476,7 @@ namespace dice::unordered_sparse {
                 DICE_UNORDERED_SPARSE_ASSERT(buckets_ == nullptr && nb_sparse_buckets_ == 0);
                 bucket_count_ = 0;
                 nb_elements_ = 0;
+                first_nonempty_group_ = 0;
                 nb_deleted_buckets_ = 0;
                 load_threshold_rehash_ = 0;
                 load_threshold_clear_deleted_ = 0;
@@ -2088,7 +2631,11 @@ namespace dice::unordered_sparse {
                     if (bucket.has_value(index_in_sparse_bucket)) {
                         slot_type *const slot = bucket.value(index_in_sparse_bucket);
                         if (compare_keys(key, Policy::key(*slot))) {
-                            return {iterator(&bucket, slot), false};
+                            if constexpr (has_holes) {
+                                return {iterator(&bucket, slot, index_in_sparse_bucket), false};
+                            } else {
+                                return {iterator(&bucket, slot), false};
+                            }
                         }
                     } else if (bucket.has_deleted_value(index_in_sparse_bucket) && probe < bucket_count_) {
                         if (!found_first_deleted_bucket) {
@@ -2133,8 +2680,15 @@ namespace dice::unordered_sparse {
                 if (reuses_deleted_bucket) {
                     --nb_deleted_buckets_;
                 }
+                if (sparse_ibucket < first_nonempty_group_) {
+                    first_nonempty_group_ = static_cast<size_type>(sparse_ibucket);
+                }
 
-                return {iterator(&bucket, slot), true};
+                if constexpr (has_holes) {
+                    return {iterator(&bucket, slot, index_in_sparse_bucket), true};
+                } else {
+                    return {iterator(&bucket, slot), true};
+                }
             }
 
             template<typename K>
@@ -2153,9 +2707,16 @@ namespace dice::unordered_sparse {
                     if (bucket.has_value(index_in_sparse_bucket)) {
                         slot_type *const slot = bucket.value(index_in_sparse_bucket);
                         if (compare_keys(key, Policy::key(*slot))) {
-                            bucket.erase(alloc_, slot, index_in_sparse_bucket);
+                            if constexpr (has_holes) {
+                                bucket.erase_in_place(alloc_, index_in_sparse_bucket);
+                            } else {
+                                bucket.erase(alloc_, slot, index_in_sparse_bucket);
+                            }
                             --nb_elements_;
                             ++nb_deleted_buckets_;
+                            if (sparse_ibucket == first_nonempty_group_ && bucket.empty()) {
+                                skip_empty_first_groups();
+                            }
 
                             return 1;
                         }
@@ -2184,7 +2745,11 @@ namespace dice::unordered_sparse {
                     if (bucket.has_value(index_in_sparse_bucket)) {
                         slot_type const *const slot = bucket.value(index_in_sparse_bucket);
                         if (compare_keys(key, Policy::key(*slot))) {
-                            return const_iterator(&bucket, slot);
+                            if constexpr (has_holes) {
+                                return const_iterator(&bucket, slot, index_in_sparse_bucket);
+                            } else {
+                                return const_iterator(&bucket, slot);
+                            }
                         }
                     } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= bucket_count_) {
                         return cend();
@@ -2204,9 +2769,10 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * True if a rehash copies the elements and frees the old groups at the end, see `rehash_impl`.
+             * True if a rehash copies the elements and frees the old groups at the end, see `rehash_impl`. These are
+             * the elements whose move constructor can throw, so their groups have holes.
              */
-            static constexpr bool copy_on_rehash = !std::is_nothrow_move_constructible_v<slot_type>;
+            static constexpr bool copy_on_rehash = has_holes;
 
             /**
              * Moves or copies all elements into a new table with at least `count` buckets. How depends on the type of
@@ -2219,7 +2785,7 @@ namespace dice::unordered_sparse {
              *
              * An element whose move constructor can throw is copied. The old groups are freed at the end, so the old
              * and the new groups are in memory at the same time. The table stays untouched until all copies are made,
-             * so an exception leaves it unchanged.
+             * so an exception leaves it unchanged. The new groups have no holes.
              *
              * The table takes the new buckets with `swap_storage`, which cannot throw.
              */
@@ -2228,8 +2794,14 @@ namespace dice::unordered_sparse {
 
                 if constexpr (copy_on_rehash) {
                     for (sparse_array const &bucket : buckets()) {
-                        for (slot_type const &slot : bucket) {
-                            new_table.insert_on_rehash(slot);
+                        if (!bucket.has_hole()) {
+                            for (slot_type const &slot : bucket) {
+                                new_table.insert_on_rehash(slot);
+                            }
+                        } else {
+                            for (auto index = bucket.first_value_index(); index != sparse_array::bitmap_nb_bits; index = bucket.next_value_index(index)) {
+                                new_table.insert_on_rehash(*bucket.value(index));
+                            }
                         }
                     }
                 } else {
@@ -2260,6 +2832,7 @@ namespace dice::unordered_sparse {
                 swap(nb_sparse_buckets_, other.nb_sparse_buckets_);
                 swap(bucket_count_, other.bucket_count_);
                 swap(nb_elements_, other.nb_elements_);
+                swap(first_nonempty_group_, other.first_nonempty_group_);
                 swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
                 swap(load_threshold_rehash_, other.load_threshold_rehash_);
                 swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
@@ -2281,6 +2854,9 @@ namespace dice::unordered_sparse {
                     if (!bucket.has_value(index_in_sparse_bucket)) {
                         bucket.set(alloc_, index_in_sparse_bucket, std::forward<S>(slot_value));
                         ++nb_elements_;
+                        if (sparse_ibucket < first_nonempty_group_) {
+                            first_nonempty_group_ = static_cast<size_type>(sparse_ibucket);
+                        }
 
                         return;
                     }
@@ -2320,7 +2896,13 @@ namespace dice::unordered_sparse {
             size_type nb_elements_ = 0;
 
             /**
-             * Number of buckets that are marked as deleted.
+             * The index of the first group that holds an element, or `nb_sparse_buckets_` if there is none. Every
+             * operation that changes the table keeps it exact, so that `begin()` is constant time and writes nothing.
+             */
+            size_type first_nonempty_group_ = 0;
+
+            /**
+             * Number of buckets that are marked as deleted, holes included.
              */
             size_type nb_deleted_buckets_ = 0;
 

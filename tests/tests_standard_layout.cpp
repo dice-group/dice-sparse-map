@@ -130,8 +130,40 @@ TEST_CASE("map_slot is standard layout") {
     CHECK(std::is_standard_layout_v<dice::unordered_sparse::detail::map_slot<std::uint64_t, std::uint64_t>>);
 }
 
+namespace {
+    /// a value whose move constructor can throw, so that the groups of a map of it have holes
+    struct copied_value {
+        int value = 0;
+
+        copied_value() = default;
+        copied_value(copied_value const &) = default;
+
+        copied_value(copied_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
+            : value(other.value) {
+        }
+
+        copied_value &operator=(copied_value const &) = default;
+        copied_value &operator=(copied_value &&) noexcept(false) = default;
+        ~copied_value() = default;
+    };
+}  // namespace
+
 TEST_CASE("sizes") {
-    MESSAGE("sizeof(sparse_map<int, int>) = " << sizeof(dice::sparse_map<int, int>));
+    using map_t = dice::sparse_map<int, int>;
+    using holes_map_t = dice::sparse_map<int, copied_value>;
+    MESSAGE("sizeof(sparse_map<int, int>) = " << sizeof(map_t));
     MESSAGE("sizeof(sparse_set<int>) = " << sizeof(dice::sparse_set<int>));
-    CHECK(sizeof(dice::sparse_map<int, int>) == 64);
+    // eight members of 8 bytes: the bucket array, the number of groups, the bucket count, the number of elements, the
+    // first group with an element, the number of deleted buckets and two load thresholds. Then the maximum load
+    // factor, a float, with 4 bytes of padding.
+    CHECK(sizeof(map_t) == 72);
+    // the pointer to the values, two bitmaps, the number of values, the capacity and the flag of the last group
+    CHECK(sizeof(dice::unordered_sparse::detail::sparse_array<entry_t, std::allocator<entry_t>, sparsity::medium>) == 32);
+    // the group, the element, and the end of the elements of the group or, with holes, the run of the element (two
+    // 32 bit counters)
+    static_assert(!std::is_nothrow_move_constructible_v<dice::unordered_sparse::detail::map_slot<int, copied_value>>);
+    CHECK(sizeof(map_t::iterator) == 24);
+    CHECK(sizeof(map_t::const_iterator) == 24);
+    CHECK(sizeof(holes_map_t::iterator) == 24);
+    CHECK(sizeof(holes_map_t::const_iterator) == 24);
 }

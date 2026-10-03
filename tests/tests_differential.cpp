@@ -7,10 +7,13 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -21,6 +24,7 @@
  * `std::unordered_map` or `std::unordered_set`, and the two must agree after every step. The
  * sequences come from fixed seeds, so every run does the same. Keys and mapped values are
  * `counter::obj`, so a container that loses, duplicates or leaks an element is noticed. The
+ * configurations with `copied_obj`, whose move constructor can throw, have groups with holes. The
  * reference holds plain numbers.
  *
  * Partly ported from the API fuzz test of ankerl::unordered_dense (MIT license).
@@ -84,6 +88,8 @@ namespace {
         weighted_op{"copy_assign", 4},
         weighted_op{"move_assign", 4},
         weighted_op{"swap", 4},
+        weighted_op{"merge", 4},
+        weighted_op{"erase_if", 2},
         weighted_op{"fill_side", 30},
     };
 
@@ -103,6 +109,8 @@ namespace {
         weighted_op{"copy_assign", 4},
         weighted_op{"move_assign", 4},
         weighted_op{"swap", 4},
+        weighted_op{"merge", 4},
+        weighted_op{"erase_if", 2},
         weighted_op{"fill_side", 30},
     };
 
@@ -154,7 +162,7 @@ namespace {
             return false;
         }
         for (auto const &[key, value] : reference) {
-            auto const it = map.find(counter::obj{key, counts});
+            auto const it = map.find(typename Map::key_type{key, counts});
             if (it == map.end() || it->second.get() != value) {
                 return false;
             }
@@ -178,7 +186,7 @@ namespace {
             return false;
         }
         for (auto const key : reference) {
-            if (set.find(counter::obj{key, counts}) == set.end()) {
+            if (set.find(typename Set::key_type{key, counts}) == set.end()) {
                 return false;
             }
         }
@@ -192,6 +200,20 @@ namespace {
             return it->first.get();
         } else {
             return it->get();
+        }
+    }
+
+    /// key of an element of a container under test, or of a reference container
+    template<typename Element>
+    std::size_t key_of(Element const &element) {
+        if constexpr (requires { element.first.get(); }) {
+            return element.first.get();
+        } else if constexpr (requires { element.first; }) {
+            return element.first;
+        } else if constexpr (requires { element.get(); }) {
+            return element.get();
+        } else {
+            return element;
         }
     }
 
@@ -212,7 +234,7 @@ namespace {
                        Reference &side_reference,
                        Insert const &insert_into) {
         if (op == "erase_key") {
-            REQUIRE(container.erase(counter::obj{key, counts}) == reference.erase(key));
+            REQUIRE(container.erase(typename Container::key_type{key, counts}) == reference.erase(key));
         } else if (op == "erase_iterator") {
             if (!container.empty()) {
                 auto const index = static_cast<std::ptrdiff_t>(random.below(container.size()));
@@ -252,9 +274,9 @@ namespace {
                 REQUIRE(key_at(returned) == last_key);
             }
         } else if (op == "count") {
-            REQUIRE(container.count(counter::obj{key, counts}) == reference.count(key));
+            REQUIRE(container.count(typename Container::key_type{key, counts}) == reference.count(key));
         } else if (op == "contains") {
-            REQUIRE(container.contains(counter::obj{key, counts}) == reference.contains(key));
+            REQUIRE(container.contains(typename Container::key_type{key, counts}) == reference.contains(key));
         } else if (op == "rehash") {
             container.rehash(random.below(2048));
         } else if (op == "reserve") {
@@ -302,6 +324,17 @@ namespace {
                 swap(container, side);
             }
             reference.swap(side_reference);
+        } else if (op == "merge") {
+            // the elements of `side` whose keys are not in `container` move over, the others stay in `side`
+            container.merge(side);
+            reference.merge(side_reference);
+            REQUIRE(side.size() == side_reference.size());
+        } else if (op == "erase_if") {
+            auto const divisor = random.below(4) + 2;
+            auto const pred = [divisor](auto const &element) {
+                return key_of(element) % divisor == 0;
+            };
+            REQUIRE(erase_if(container, pred) == std::erase_if(reference, pred));
         } else if (op == "fill_side") {
             auto const num = random.below(8) + 1;
             for (std::size_t i = 0; i < num; ++i) {
@@ -328,7 +361,7 @@ namespace {
             std::size_t key_range = key_ranges.front();
 
             auto const obj = [&counts](std::size_t data) {
-                return counter::obj{data, counts};
+                return typename Map::key_type{data, counts};
             };
             auto const insert_into = [&obj](Map &target, reference_map &target_reference, std::size_t key, std::size_t value) {
                 target.insert_or_assign(obj(key), obj(value));
@@ -427,7 +460,7 @@ namespace {
             std::size_t key_range = key_ranges.front();
 
             auto const insert_into = [&counts](Set &target, reference_set &target_reference, std::size_t key, std::size_t /*value*/) {
-                target.insert(counter::obj{key, counts});
+                target.insert(typename Set::key_type{key, counts});
                 target_reference.insert(key);
             };
 
@@ -440,7 +473,7 @@ namespace {
                 INFO("seed ", seed, ", step ", step, ", operation ", std::string{op}, ", key ", key);
 
                 if (op == "insert") {
-                    auto const [it, inserted] = set.insert(counter::obj{key, counts});
+                    auto const [it, inserted] = set.insert(typename Set::key_type{key, counts});
                     REQUIRE(inserted == reference.insert(key).second);
                     REQUIRE(it->get() == key);
                 } else if (op == "emplace") {
@@ -450,14 +483,14 @@ namespace {
                 } else if (op == "find") {
                     bool const in_reference = reference.contains(key);
                     if (random.below(2) == 0) {
-                        auto const it = set.find(counter::obj{key, counts});
+                        auto const it = set.find(typename Set::key_type{key, counts});
                         REQUIRE((it != set.end()) == in_reference);
                         if (it != set.end()) {
                             REQUIRE(it->get() == key);
                         }
                     } else {
                         auto const &const_set = set;
-                        auto const it = const_set.find(counter::obj{key, counts});
+                        auto const it = const_set.find(typename Set::key_type{key, counts});
                         REQUIRE((it != const_set.end()) == in_reference);
                         if (it != const_set.end()) {
                             REQUIRE(it->get() == key);
@@ -503,5 +536,48 @@ TEST_CASE_SET("a set agrees with std::unordered_set, with std::hash", counter::o
 TEST_CASE_SET("a set agrees with std::unordered_set, with a colliding hash", counter::obj, colliding_hash) {
     for (auto const seed : seeds) {
         run_set_test<set_t>(seed, colliding_key_ranges);
+    }
+}
+
+namespace {
+    /// a map whose elements have a move constructor that can throw, so that its groups have holes
+    template<dice::unordered_sparse::sparsity Sparsity, typename Hash = std::hash<counter::obj>>
+    using copied_map = dice::sparse_map<copied_obj, copied_obj, Hash, std::equal_to<counter::obj>, std::allocator<std::pair<copied_obj, copied_obj>>, Sparsity>;
+
+    /// a set whose elements have a move constructor that can throw, so that its groups have holes
+    template<dice::unordered_sparse::sparsity Sparsity, typename Hash = std::hash<counter::obj>>
+    using copied_set = dice::sparse_set<copied_obj, Hash, std::equal_to<counter::obj>, std::allocator<copied_obj>, Sparsity>;
+
+    using dice::unordered_sparse::sparsity;
+}  // namespace
+
+TEST_CASE_TEMPLATE("a map of elements whose move constructor can throw agrees with std::unordered_map, with std::hash",
+                   map_t,
+                   copied_map<sparsity::high>,
+                   copied_map<sparsity::medium>,
+                   copied_map<sparsity::low>) {
+    for (auto const seed : seeds) {
+        run_map_test<map_t>(seed, spread_key_ranges);
+    }
+}
+
+TEST_CASE_TEMPLATE("a map of elements whose move constructor can throw agrees with std::unordered_map, with a colliding hash",
+                   map_t,
+                   copied_map<sparsity::medium, colliding_hash>) {
+    for (auto const seed : seeds) {
+        run_map_test<map_t>(seed, colliding_key_ranges);
+    }
+}
+
+TEST_CASE_TEMPLATE("a set of elements whose move constructor can throw agrees with std::unordered_set",
+                   set_t,
+                   copied_set<sparsity::medium>,
+                   copied_set<sparsity::medium, colliding_hash>) {
+    for (auto const seed : seeds) {
+        if constexpr (std::is_same_v<typename set_t::hasher, colliding_hash>) {
+            run_set_test<set_t>(seed, colliding_key_ranges);
+        } else {
+            run_set_test<set_t>(seed, spread_key_ranges);
+        }
     }
 }

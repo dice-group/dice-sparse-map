@@ -64,6 +64,20 @@ namespace dice::unordered_sparse {
      * - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and
      *   the new buckets are in memory at the same time. An exception leaves the set unchanged.
      *
+     * `erase` does not throw unless the hash function or the key equality throws, as for `std::unordered_set`.
+     *
+     * The set never moves an element whose move constructor can throw. It copies it. An erase of such an element
+     * destroys it in place and leaves a hole: the memory of the element stays with its group of 64 buckets. A new
+     * element in the bucket of a hole takes that memory without an allocation. The group gives the memory of its
+     * holes back when it gets a new element in another bucket (it then copies its elements into new memory of the
+     * exact size), when it is rehashed, and when its last element is erased. A copy of the set has no holes. The
+     * clean-up rehash, which also removes the marks of erased elements, bounds the number of holes.
+     *
+     * `begin()` is constant time: the set keeps the index of its first group of 64 buckets that holds an element.
+     * An erase that empties this group looks for the next group with an element, one group after the other. So the
+     * erase costs one step for every empty group in between, and erasing all elements in the order of iteration, as
+     * in `while (!set.empty()) { set.erase(set.begin()); }`, costs one step per group in total.
+     *
      * `sparsity` trades insertion speed for memory. A group grows its storage by 2 (`unordered_sparse::sparsity::high`),
      * 4 (`unordered_sparse::sparsity::medium`, default) or 8 (`unordered_sparse::sparsity::low`) elements at a time. High sparsity means
      * less memory and slower insertions. The lookup speed does not depend on it.
@@ -74,9 +88,9 @@ namespace dice::unordered_sparse {
      * polymorphic allocator, that is the allocator-extended move constructor of `Key`, which does not throw when the
      * allocators are equal. `std::vector` makes the same assumption.
      *
-     * Invalidation of iterators, references and pointers to elements: a group stores its elements densely and moves
-     * them when an element is inserted or erased. So, unlike with `std::unordered_set`, references and pointers to
-     * elements are invalidated like the iterators.
+     * Invalidation of iterators, references and pointers to elements: a group stores its elements densely, and an
+     * insertion or an erasure can move them in the group or to new memory. So, unlike with `std::unordered_set`,
+     * references and pointers to elements are invalidated like the iterators.
      *  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate the iterators, references and pointers.
      *  - `merge`: always invalidates the iterators, references and pointers of both sets.
      *  - `insert`, `emplace`, `emplace_hint`: invalidate the iterators, references and pointers if an element is

@@ -114,6 +114,23 @@ namespace dice::unordered_sparse::bench {
         });
     }
 
+    /**
+     * The scored workloads for `uint64_t -> throwing_move_value`, a mapped type whose move constructor can throw.
+     * Not part of the score. `Family::map<Key, T>` is the map type, `source` makes the empty maps.
+     */
+    template<typename Family, typename Source = default_source>
+    void throwing_move(std::string_view container, Source const &source = Source{}) {
+        with_sizes<overall_full, overall_quick>([&]<typename Sizes>() {
+            ankerl::nanobench::Bench bench;
+            bench.title(std::format("throwing_move {}", container));
+            configure(bench);
+            bench_all<typename Family::template map<std::uint64_t, throwing_move_value>, Sizes>(
+                bench,
+                std::format("{} uint64_t -> throwing_move_value", container),
+                source);
+        });
+    }
+
     struct find_all_full {
         static constexpr std::size_t table_elements = 50000;
         static constexpr std::size_t lookups = 1000000;
