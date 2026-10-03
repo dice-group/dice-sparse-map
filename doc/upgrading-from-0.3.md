@@ -13,3 +13,4 @@ What changes for code that uses dice-sparse-map 0.3.
 - `*it` of a map iterator is a `std::pair` of references, not an lvalue. `auto &x = *it` and `for (auto &x : map)` do not compile. Use `auto &&` or `auto const &`.
 - The persisted format is different and the elements are placed differently, so containers that were persisted with 0.3 cannot be opened (`pobr_version` is 3). See [the persisted format](design.md#the-persisted-format).
 - `serialize` and `deserialize` are gone.
+- Heterogeneous overloads need `is_transparent` in the hash function as well as in the key equality, as for `std::unordered_map`. 0.3 needed it only in the key equality. Without it, the argument is converted to `Key`, and an argument that does not convert implicitly (for example `std::string_view` for a `std::string` key) does not compile. Add `using is_transparent = void;` to the hash function.
