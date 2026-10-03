@@ -97,7 +97,9 @@ namespace dice::unordered_sparse {
      * nothrow move assignable, an insertion or an erase moves the elements after it in its group of 64 buckets with
      * their move assignment, as `std::vector::insert` and `std::vector::erase` do. Then an insertion constructs two
      * elements through the allocator (the new element in a temporary, and one at the end of the group) and destroys
-     * one (the temporary), and an erase destroys one.
+     * one (the temporary), and an erase destroys one. An allocator whose `construct` and `destroy` only construct and
+     * destroy in place can opt in with `allocator_constructs_in_place`: then trivially copyable elements are copied
+     * and moved as bytes, without its `construct` and `destroy`.
      *
      * Invalidation of iterators, references and pointers to elements: a group stores its elements densely, and an
      * insertion or an erasure can move them in the group or to new memory. So, unlike with `std::unordered_map`,

@@ -76,6 +76,37 @@ namespace dice::unordered_sparse {
     template<typename Hash>
     inline constexpr bool hash_is_avalanching_v = hash_is_avalanching<Hash>::value;
 
+    /**
+     * An opt-in for an allocator whose `construct` and `destroy` only construct and destroy the object in place, like
+     * `std::construct_at` and `std::destroy_at`, for every type. A check that changes nothing, like the check for null
+     * in the `destroy` of metall's allocator, is fine. False by default.
+     *
+     * For an allocator without `construct` and `destroy` of its own, `sparse_map` and `sparse_set` copy trivially
+     * copyable, nothrow move constructible elements as bytes. With this opt-in, they do the same for an allocator
+     * that has them, and leave out the calls of `construct` and `destroy` for these copies. An insertion or an erase
+     * in the middle of a group of 64 buckets then moves the elements after it with `std::memmove`, and the erase calls
+     * no `destroy`.
+     *
+     * Specialize it only for an allocator that meets this, for example for the allocator of metall, whose
+     * `construct` is placement new:
+     *
+     *     template<typename T, typename Kernel>
+     *     struct dice::unordered_sparse::allocator_constructs_in_place<metall::stl_allocator<T, Kernel>>
+     *         : std::true_type {};
+     *
+     * The containers look the trait up for their allocator rebound to the type of the stored elements, not for the
+     * allocator they are given. So specialize it for every value type of the allocator, as in the example. A
+     * specialization only for `metall::stl_allocator<std::pair<Key, T>, Kernel>` has no effect.
+     *
+     * Declare the specialization before the first use of a container with this allocator, in every translation unit
+     * that uses one.
+     */
+    template<typename Allocator>
+    struct allocator_constructs_in_place : std::false_type {};
+
+    template<typename Allocator>
+    inline constexpr bool allocator_constructs_in_place_v = allocator_constructs_in_place<Allocator>::value;
+
     namespace detail {
 
         /**
@@ -481,11 +512,22 @@ namespace dice::unordered_sparse {
              * allocator, when it grows its storage and when it is copied or moved into new storage. That is the case
              * if the group has no holes (`has_holes`), `value_type` is trivially copyable, and the allocator has no
              * `construct` and no `destroy` of its own, so that `std::allocator_traits` constructs with
-             * `std::construct_at` and destroys with `std::destroy_at`. A constant evaluation copies one by one. An
-             * insertion or an erase in the middle of a group copies no bytes itself: for such a type, the standard
-             * library can do the move assignments of `shifts_by_assignment` with one `std::memmove` (libstdc++ does).
+             * `std::construct_at` and destroys with `std::destroy_at`, or if the allocator opts in with
+             * `allocator_constructs_in_place`. A constant evaluation copies one by one.
              */
-            static constexpr bool copies_bytes = !has_holes && std::is_trivially_copyable_v<value_type> && !HasConstructOrDestroy<Allocator, value_type>;
+            static constexpr bool copies_bytes = !has_holes && std::is_trivially_copyable_v<value_type>
+                                                 && (!HasConstructOrDestroy<Allocator, value_type> || unordered_sparse::allocator_constructs_in_place_v<Allocator>);
+
+            /**
+             * True if an insertion or an erase in the middle of a group moves the values after its position as bytes,
+             * with `std::memmove`: the values are copied as bytes (`copies_bytes`), and the allocator has its own
+             * `construct` and `destroy` and opts in with `allocator_constructs_in_place`. Then an insertion calls
+             * `construct` twice, for the new value in its holder and at its place, and `destroy` once, for the holder.
+             * An erase calls no `destroy`. Without `construct` and `destroy` of the allocator, the standard library
+             * can do the move assignments of `shifts_by_assignment` with one `std::memmove` already (libstdc++
+             * does).
+             */
+            static constexpr bool shifts_bytes = copies_bytes && HasConstructOrDestroy<Allocator, value_type>;
 
         private:
             static constexpr size_type capacity_growth_step = (sparsity == unordered_sparse::sparsity::high)     ? 2
@@ -975,6 +1017,16 @@ namespace dice::unordered_sparse {
             }
 
             /**
+             * Copies `count` values from `source` to `target` with `std::memmove`. The ranges may overlap.
+             */
+            static void move_values(value_type *target, value_type const *source, size_type count) noexcept {
+                static_assert(shifts_bytes);
+                if (count > 0) {
+                    std::memmove(static_cast<void *>(target), static_cast<void const *>(source), count * sizeof(value_type));
+                }
+            }
+
+            /**
              * Frees the storage of `capacity_values` values whose values were copied away as bytes. Their destructor
              * is trivial, so nothing is destroyed.
              */
@@ -1268,6 +1320,14 @@ namespace dice::unordered_sparse {
                 // constructed before the shift.
                 value_holder<value_type, allocator_type> new_value(alloc, std::forward<Args>(value_args)...);
 
+                if constexpr (shifts_bytes) {
+                    if !consteval {
+                        move_values(raw_values + offset + 1, raw_values + offset, static_cast<size_type>(nb_elements_ - offset));
+                        construct_value(alloc, raw_values + offset, std::move(new_value.get()));
+                        return;
+                    }
+                }
+
                 if constexpr (shifts_by_assignment) {
                     // as `std::vector::insert`: the last value is moved into a new slot behind it, the others move one
                     // place to the back by assignment, and the new value is assigned into its place
@@ -1343,6 +1403,13 @@ namespace dice::unordered_sparse {
                 static_assert(!has_holes);
                 DICE_UNORDERED_SPARSE_ASSERT(offset < nb_elements_);
                 value_type *const raw_values = values();
+
+                if constexpr (shifts_bytes) {
+                    if !consteval {
+                        move_values(raw_values + offset, raw_values + offset + 1, static_cast<size_type>(nb_elements_ - offset - 1));
+                        return;
+                    }
+                }
 
                 if constexpr (shifts_by_assignment) {
                     // as `std::vector::erase`: the values after `offset` move one place to the front by assignment,

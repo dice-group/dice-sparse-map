@@ -21,10 +21,18 @@
 #include <optional>
 #include <string_view>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 
 using namespace dice::unordered_sparse::bench;
 using dice::unordered_sparse::sparsity;
+
+/**
+ * The `construct` of metall's allocator is placement new, so the maps copy trivially copyable elements as bytes (see
+ * `allocator_constructs_in_place`).
+ */
+template<typename T, typename Kernel>
+struct dice::unordered_sparse::allocator_constructs_in_place<metall::stl_allocator<T, Kernel>> : std::true_type {};
 
 /*
  * The map benchmarks with fancy pointers. With the metall allocator, the maps live in a metall

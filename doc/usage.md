@@ -192,6 +192,15 @@ The containers work with allocators that use fancy pointers, for example the all
 
 The containers construct, move and destroy their elements through `std::allocator_traits`, so they call `construct` and `destroy` of an allocator that has them. If the elements are trivially copyable and nothrow move constructible, and the allocator has no `construct` and no `destroy` of its own, a group copies its elements as bytes, with `std::memcpy`: when its storage grows, when it is copied, and when it is moved into a container with an unequal allocator.
 
+The allocator of metall has a `construct` and a `destroy`, which construct and destroy in place (placement new, and a destructor call after a check for null). An allocator like that can opt in to the copies as bytes with a specialization of `dice::unordered_sparse::allocator_constructs_in_place`:
+
+```c++
+template<typename T, typename Kernel>
+struct dice::unordered_sparse::allocator_constructs_in_place<metall::stl_allocator<T, Kernel>> : std::true_type {};
+```
+
+Then a group copies trivially copyable elements as bytes also with this allocator, and an insertion or an erasure in the middle of a group moves the elements after it with `std::memmove`. The calls of `construct` and `destroy` for these copies are left out. Specialize it only for an allocator whose `construct` and `destroy` do nothing else with the object (a check for null, as in metall, is fine), and declare the specialization before the first use of a container with this allocator, in every translation unit that uses one. The containers look the trait up for their allocator rebound to the type of the stored elements, so specialize it for every value type of the allocator, as above. A specialization only for `metall::stl_allocator<std::pair<Key, T>, Kernel>` has no effect. The persisted format does not change.
+
 The containers are standard layout types if the hash function, the key equality, the allocator and its pointer type are. The elements of a map are stored in a standard layout type, not in `std::pair`. This type supports uses-allocator construction: with a scoped or a polymorphic allocator, the key and the mapped value get the allocator as they would in a `std::pair`.
 
 A map in a metall datastore takes the allocator of the metall manager, as in `tests/tests_metall.cpp`:
