@@ -2,7 +2,7 @@
 
 `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set` are hash tables for C++23 that need little more memory than a `std::vector` of the same elements.
 
-- **Memory efficient:** only about 10 % more memory than a `std::vector` of the same elements (8 to 14 % measured with the default sparsity, see the [sparsity table](doc/usage.md#sparsity)). The peak during a build is the same.
+- **Memory efficient:** only about 20 % more memory than a `std::vector` of the same elements (15 to 26 % measured for elements of 16 bytes, less for larger ones, see the [benchmarks](#benchmarks)). The peak during a build is at most about 5 % higher.
 - **mmap-able to disk:** supports persistent allocators like [metall](https://github.com/LLNL/metall) through fancy pointers. The map, the set and their elements are standard layout.
 - **Rich C++26 interface** like `std::unordered_map` and `std::unordered_set` (see the [differences](doc/usage.md#differences-compared-to-stdunordered_map)).
 
@@ -15,7 +15,7 @@ Compromises:
 
 ## Usage
 
-`#include <dice/sparse-map/sparse_map.hpp>` gives `dice::sparse_map::sparse_map`, `#include <dice/sparse-map/sparse_set.hpp>` gives `dice::sparse_map::sparse_set`. The library is header-only and needs C++23 (tested with GCC 14 and Clang 19 and 20) and the headers of [dice-hash](https://github.com/dice-group/dice-hash).
+The library is header-only and needs C++23 (tested with GCC 14 and Clang 19 and 20) and the headers of [dice-hash](https://github.com/dice-group/dice-hash).
 
 ```c++
 #include <dice/sparse-map/sparse_map.hpp>
@@ -60,7 +60,7 @@ Relative to `dice::sparse_map::sparse_map` (1.00), lower is better. The first tw
 
 ![benchmark results, std::string keys, metall allocator](doc/bench-readme-str-metall.svg)
 
-<!-- BENCHMARK SUMMARY -->
+With `uint64_t` keys, `dice::sparse_map::sparse_map` needs less than half the peak memory of every other map in the plots. Its lookups are as fast as in `unordered_dense` (the other flat maps need 0.75 to 0.84 of its time), and its inserts and erases take 2 to 3.5 times as long as in the flat maps. With `std::string` keys the other maps need 15 % to 41 % more peak memory. With metall's allocator the last panel is the peak disk usage of the datastore, and the gap is smaller: `unordered_dense` needs 12 % and `boost::unordered_flat_map` 38 % more (`uint64_t` keys).
 
 ## Documentation
 

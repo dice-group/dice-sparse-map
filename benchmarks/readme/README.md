@@ -25,6 +25,7 @@ The binaries are in `build-readme/benchmarks/readme/bin`:
 |---|---|
 | `dsm_readme_<allocator>_<key>_<map>` | the timed panels and the peak resident set of one map |
 | `dsm_readme_std_<key>_<map>_memory` | the bytes requested from the heap. It replaces `malloc` and its relatives, which costs time, so the timed binaries do not have it. |
+| `dsm_readme_metall_<key>_<map>_disk` | the disk usage of the metall datastore: the blocks of its files after the build and the peak during the build, and metall's own numbers. It replaces `madvise` to take a sample right before every hole that metall punches, so the timed binaries do not have it. |
 | `check/dsm_readme_api_<allocator>_<key>_<map>` | uses the rest of the map interface once (`operator[]`, `at`, `operator->` of the iterator, copy, move). Shows whether a map compiles with an allocator. |
 | `check/dsm_readme_relocate` | builds every map in a metall datastore, then opens the datastore again at another address in a new process and checks the maps |
 
@@ -50,7 +51,16 @@ per map and panel to the raw file. Set `CORE` to pin every process with `taskset
 
 `collect.py` takes the median over the rounds and writes the CSV. It prints the noise between the
 rounds per panel. `plot.py` draws the four SVGs from the CSV. Both need only the Python standard
-library.
+library. The panel `disk` runs the `_disk` binaries and writes nine lines per map: `disk` (after the
+build), `diskpeak` (peak during the build), four checks (`diskflushed`, `diskclear`, `diskfreed`,
+`diskempty`) and metall's own numbers (`metallsegment`, `metallchunks`, `metallobjects`), see
+`bench_readme.cpp`. The metall plots show `diskpeak` in their last panel. `collect.py --merge` adds
+the cells of a new raw file to an existing CSV:
+
+```sh
+benchmarks/readme/run.sh -b build-readme/benchmarks/readme/bin -o results/disk.txt -w disk -m metall
+benchmarks/readme/collect.py results/disk.txt --csv doc/bench_readme.csv --merge
+```
 
 A single binary:
 
@@ -69,6 +79,7 @@ build-readme/benchmarks/readme/bin/dsm_readme_std_u64_sparse_medium find 1000000
 | `bench_readme.cpp` | the panels, the keys and the sizes |
 | `max_rss.hpp` | peak resident set of a piece of work, in a forked child |
 | `count_alloc.hpp` | bytes requested from the heap, by replacing `malloc` and its relatives |
+| `disk_usage.hpp` | blocks of the files of a metall datastore, sampled right before every hole punch by replacing `madvise` |
 | `api_check.cpp` | the rest of the map interface, to see what compiles with an allocator |
 | `relocate.cpp` | opens a metall datastore at another address and checks the maps in it |
 | `run.sh`, `collect.py`, `plot.py` | run the binaries, make the CSV, draw the plots |
