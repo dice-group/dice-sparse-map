@@ -42,13 +42,6 @@ target_include_directories(${PROJECT_NAME}
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         )
 
-if(MSVC)
-    target_sources(${PROJECT_NAME}
-            INTERFACE
-            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tsl-sparse-map.natvis>"
-            "$<INSTALL_INTERFACE:${CMAKE_INSTALL_DATAROOTDIR}/tsl-sparse-map.natvis>")
-endif()
-
 if (PROJECT_IS_TOP_LEVEL)
     if (BUILD_TESTING)
         message("Tests are configured to be build.")
