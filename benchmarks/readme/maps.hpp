@@ -133,6 +133,23 @@ namespace dice::sparse_map::bench::readme {
 #endif
     };
 
+#if !defined(DSM_README_METALL)
+    /**
+     * `ankerl::unordered_dense::segmented_map<Key, std::size_t>`: the values are in a segmented
+     * vector, which grows by adding a segment instead of moving the values to a larger array. Only
+     * the allocation timeline uses it, with `std::allocator`.
+     */
+    struct unordered_dense_segmented {
+        static constexpr char const *name = "udm-segmented";
+
+        template<typename Key>
+        using plain = ankerl::unordered_dense::segmented_map<Key, mapped_t>;
+
+        template<typename Key>
+        using type = plain<Key>;
+    };
+#endif
+
     /// `ankerl::unordered_dense::map` with metall's allocator, which does not compile (see above)
     struct unordered_dense_allocator {
         static constexpr char const *name = "udm-allocator";
@@ -196,6 +213,7 @@ namespace dice::sparse_map::bench::readme {
     static_assert(std::is_same_v<std_unordered_map::type<int>, std::unordered_map<int, mapped_t>>);
     static_assert(std::is_same_v<boost_flat::type<int>, boost::unordered_flat_map<int, mapped_t>>);
     static_assert(std::is_same_v<unordered_dense::type<int>, ankerl::unordered_dense::map<int, mapped_t>>);
+    static_assert(std::is_same_v<unordered_dense_segmented::type<int>, ankerl::unordered_dense::segmented_map<int, mapped_t>>);
 #if defined(DSM_README_ABSL)
     static_assert(std::is_same_v<absl_flat::type<int>, absl::flat_hash_map<int, mapped_t>>);
     static_assert(std::is_same_v<absl_node::type<int>, absl::node_hash_map<int, mapped_t>>);
