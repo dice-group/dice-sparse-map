@@ -244,7 +244,7 @@ frees. Their array of buckets doubles too.
 
 **Runtime.** Without counting, `sparse_map` with sparsity medium takes 1.82 s for the 10 million
 inserts and the destructor. The flat maps take 0.45 to 0.56 s, `absl::node_hash_map` 1.43 s and
-`std::unordered_map` 3.10 s. The x axis of the plot is the runtime of the run that records every
+`std::unordered_map` 3.09 s. The x axis of the plot is the runtime of the run that records every
 event, and the recording costs time per event. So the lines of `sparse_map` are 5 % (sparsity low)
 to 17 % (sparsity high) longer than its runtime without counting, and the lines of the node maps
 27 % (`absl::node_hash_map`) and 31 % (`std::unordered_map`). The flat maps make at most 78,198
