@@ -6,10 +6,10 @@
 Reads <timeline dir>/raw.txt and the CSVs of the recordings. Per map it picks the recording with
 the median total runtime (of the rounds with every event recorded) and draws it as a step line:
 x is the time since the map was constructed, y the bytes allocated from the heap, in MB (10^6
-bytes). Writes <out dir>/allocated-memory.svg and <out dir>/allocated-memory.csv (the plotted runs,
-columns map, round, seconds, bytes), and prints a table per map: peak MB, MB at the end of the
-inserts, the runtime of the three modes (median and spread over the rounds) and the cost of the
-recording per event.
+bytes). Writes <out dir>/bench-readme-timeline.svg and <out dir>/bench_readme_timeline.csv (the
+plotted runs, columns map, round, seconds, bytes), and prints a table per map: peak MB, MB at the
+end of the inserts, the runtime of the three modes (median and spread over the rounds) and the cost
+of the recording per event.
 
 The fonts and the text colors are the ones of plot.py. Standard library only.
 """
@@ -213,14 +213,14 @@ def main():
             "peak_agree": len({f["peak_bytes"] for _, f in full}) == 1,
         })
 
-    with open(os.path.join(args.out_dir, "allocated-memory.csv"), "w", newline="") as f:
+    with open(os.path.join(args.out_dir, "bench_readme_timeline.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["map", "round", "seconds", "bytes"])
         for m, points in plotted.items():
             rnd = next(r["round"] for r in rows if r["map"] == m)
             for t, b in points:
                 w.writerow([m, rnd, f"{t:.9f}", b])
-    draw(os.path.join(args.out_dir, "allocated-memory.svg"), plotted, peaks, ends)
+    draw(os.path.join(args.out_dir, "bench-readme-timeline.svg"), plotted, peaks, ends)
 
     print("| map | peak MB | MB after the inserts | runtime s (plotted run) | insert s | destroy s | "
           "median s (spread %) | every 1000th s | no counting s (spread %) | events | ns per event | peaks equal |")
