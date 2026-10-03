@@ -257,7 +257,8 @@ How the timeline was taken:
 - The program replaces `malloc`, `calloc`, `realloc`, `free`, `aligned_alloc`, `posix_memalign`,
   `mmap` and `munmap`. A block counts with `malloc_usable_size`: the size that glibc gives for the
   request, without its chunk header of 8 bytes. The `memory` numbers of the panels count the header
-  too. A block that is mapped with `mmap` counts with its length.
+  too. For a node map the header is 8 of the 32 bytes of a node, 80 MB at 10 million entries. A
+  block that is mapped with `mmap` counts with its length.
 - For every allocation and every free, the program records the time stamp counter of the CPU and
   the allocated bytes after the event. The buffer is mapped and faulted in before the start, so the
   recording does not allocate from the heap it counts. The CSV keeps the first, the last, the
