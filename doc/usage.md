@@ -104,17 +104,17 @@ All members are `constexpr`, so a map and a set can be used in a constant expres
   The iterators model `std::forward_iterator`. A map iterator meets only the Cpp17InputIterator requirements, because its reference type is not `value_type &`, so its `iterator_category` is `std::input_iterator_tag`. `std::views::keys` and `std::views::values` work.
 - **Exception safety.** If an insertion throws, the container holds the same elements as before, except in one case where it is empty. See [exception safety](#exception-safety).
 - **Iterator invalidation.** Every operation that modifies the container may invalidate all iterators, references and pointers to elements. `erase` returns an iterator to the next element. In detail:
-  - `clear`, `operator=`, `reserve`, `rehash`, `merge`: always invalidate the iterators.
+  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate the iterators.
+  - `merge`: always invalidates the iterators of both containers.
   - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate the iterators if an element is inserted.
   - `erase`: always invalidates the iterators. Use the returned iterator.
 - `emplace` constructs the element first, and inserts it if its key is not in the container yet. `try_emplace` constructs nothing if the key is there.
 - There is no bucket interface beyond `bucket_count`, and there are no node handles. `merge` moves the elements, or copies them if their move constructor can throw, instead of transferring nodes.
-- Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws.
-- Heterogeneous overloads are enabled by `KeyEqual::is_transparent` alone. `Hash` must accept the other key types, too.
+- Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws. If they are nothrow move constructible, their move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption.
 
 ## Heterogeneous lookup
 
-Heterogeneous overloads accept other types than `Key` for lookup, erasure and insertion, as long as these types are hashable and comparable to `Key`. They are enabled if the qualified-id `KeyEqual::is_transparent` is valid, as for [`std::map::find`](https://en.cppreference.com/w/cpp/container/map/find). Use [`std::equal_to<>`](https://en.cppreference.com/w/cpp/utility/functional/equal_to_void) or your own function object. The hash function must accept the other types, too.
+Heterogeneous overloads accept other types than `Key` for lookup, erasure and insertion, as long as these types are hashable and comparable to `Key`. They are enabled if `Hash::is_transparent` and `KeyEqual::is_transparent` are both valid, as for [`std::unordered_map::find`](https://en.cppreference.com/w/cpp/container/unordered_map/find). Use [`std::equal_to<>`](https://en.cppreference.com/w/cpp/utility/functional/equal_to_void) or your own function object as the key equality, and a hash function that accepts the other types and has `is_transparent`. Without both, the argument is converted to `Key` first: with `int` keys, `std::hash<int>` and `std::equal_to<>`, `find(1.5)` finds the element with the key 1.
 
 ```c++
 #include <dice/unordered_sparse.hpp>
@@ -182,7 +182,9 @@ If an insertion throws, the container holds the same elements as before, except 
 - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old buckets is freed while they are moved. If the hash function or the allocator throws while the elements are moved, the container is empty. Any other exception leaves the container unchanged.
 - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and the new buckets are in memory at the same time. An exception leaves the container unchanged.
 
-If `merge` throws, the element that was being merged is still in the source.
+If `merge` throws, the element that was being merged is still in the source and not in the target. So every element is in exactly one of the two containers.
+
+`erase` does not throw, unless the hash function or the key equality throws. An erased element whose move constructor can throw keeps its memory for a while, see [insertion and erasure in a group](design.md#insertion-and-erasure-in-a-group).
 
 ## Allocators and metall
 
