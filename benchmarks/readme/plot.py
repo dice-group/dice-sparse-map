@@ -6,7 +6,8 @@
 Writes four SVGs into <out dir>: bench-readme-u64.svg, bench-readme-str.svg (std::allocator) and
 bench-readme-u64-metall.svg, bench-readme-str-metall.svg (metall's allocator). Each has five panels
 side by side, one bar per map, the value next to the bar, and the rows sorted by the geometric mean
-of the five panels. Every value is relative to dice::sparse_map::sparse_map with sparsity medium. A panel stops
+of the five panels. The last panel is the peak resident set (`rss`) with std::allocator and the
+peak disk usage of the datastore (`diskpeak`) with metall's allocator. Every value is relative to dice::sparse_map::sparse_map with sparsity medium. A panel stops
 at a fixed multiple of the reference, and a bar that runs past it is drawn torn off, with its real
 value next to it. `--not-relocatable` names the maps (as in the CSV) that run with metall but keep
 raw pointers. They get a star and a note in the metall plots.
@@ -52,16 +53,20 @@ PRETTY_METALL = {
     "udm": "unordered_dense 5.2.0, boost vector",
 }
 REFERENCE = "sparse-medium"
-PANELS = [
+TIMED_PANELS = [
     ("buildfree", "build + destroy"),
     ("find", "find, 50% hits"),
     ("churn", "churn"),
     ("iterate", "iterate"),
-    ("rss", "peak memory"),
 ]
+# the last panel, per allocator, and what its values are
+MEMORY_PANEL = {
+    "std": (("rss", "peak memory"), "peak resident bytes per entry"),
+    "metall": (("diskpeak", "peak disk usage"), "peak bytes of the datastore on disk per entry"),
+}
 # The axis of a panel ends at this multiple of the reference. iterate gets more room, because the
 # node maps are far out there and a short axis would tear all of them off at the same place.
-CAP = {"buildfree": 4.0, "find": 4.0, "churn": 4.0, "iterate": 10.0, "rss": 4.0}
+CAP = {"buildfree": 4.0, "find": 4.0, "churn": 4.0, "iterate": 10.0, "rss": 4.0, "diskpeak": 4.0}
 
 FONT = ("Roboto Condensed, Noto Sans Condensed, DejaVu Sans Condensed, Liberation Sans Narrow, "
         "Arial Narrow, Avenir Next Condensed, Inter, system-ui, sans-serif")
@@ -122,13 +127,13 @@ def geomean(xs):
     return math.exp(sum(math.log(x) for x in xs) / len(xs))
 
 
-def draw(out, title, lines, notes, order, vals, rank, pretty):
-    """vals: (map, panel) -> ratio. order: the maps, top to bottom."""
+def draw(out, title, lines, notes, order, vals, rank, pretty, panels, memory_unit):
+    """vals: (map, panel) -> ratio. order: the maps, top to bottom. panels: (key, heading) pairs."""
     n = len(order)
     # about 6.8 px per glyph at 12.5 px in the plain fallback font, so that names fit without the
     # condensed fonts too
     label = max(len(pretty(m)) for m in order) * 6.8 + 56
-    width = int(label + len(PANELS) * (PANEL_W + GAP) + 8)
+    width = int(label + len(panels) * (PANEL_W + GAP) + 8)
     top = TOP + 18 * (len(lines) - 2)
     height = top + n * ROWH + 40 + 18 * len(notes)
     s = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" '
@@ -137,7 +142,7 @@ def draw(out, title, lines, notes, order, vals, rank, pretty):
     s += f'  <text x="8" y="20" fill="{INK_HEAD}" font-size="13.5" font-weight="600">{esc(title)}</text>\n'
     for i, line in enumerate(lines):
         s += f'  <text x="8" y="{38 + 18 * i}" fill="{INK_MUTED}" font-size="12">{esc(line)}</text>\n'
-    for ci, (key, heading) in enumerate(PANELS):
+    for ci, (key, heading) in enumerate(panels):
         x0 = label + ci * (PANEL_W + GAP)
         cap = CAP[key]
         vmax = max(vals[(m, key)] for m in order) * 1.02
@@ -190,7 +195,7 @@ def draw(out, title, lines, notes, order, vals, rank, pretty):
         s += f'  <text x="{lx + 16:.0f}" y="{ly}" fill="{INK_MUTED}" font-size="11.5">{fam}</text>\n'
         lx += 74
     s += (f'  <text x="{lx + 10:.0f}" y="{ly}" fill="{INK_MUTED}" font-size="11.5">time for the first four '
-          f'panels, peak resident bytes per entry for the last</text>\n')
+          f'panels, {esc(memory_unit)} for the last</text>\n')
     for i, note in enumerate(notes):
         s += f'  <text x="8" y="{ly + 22 + 18 * i}" fill="{INK_MUTED}" font-size="11.5">{esc(note)}</text>\n'
     s += "</svg>\n"
@@ -209,6 +214,8 @@ def main():
 
     rows = read(args.csv)
     for variant in ("std", "metall"):
+        memory_panel, memory_unit = MEMORY_PANEL[variant]
+        panels = TIMED_PANELS + [memory_panel]
         for key in ("u64", "str"):
             cells = [r for r in rows if r["variant"] == variant and r["key"] == key]
             if not cells:
@@ -219,8 +226,8 @@ def main():
                 if int(r["base"]) == base:
                     vals[(r["map"], r["panel"])] = float(r["ratio"])
             maps = sorted({m for (m, _) in vals if m in OF})
-            maps = [m for m in maps if all((m, p) in vals for p, _ in PANELS)]
-            rank = {m: geomean([vals[(m, p)] for p, _ in PANELS]) for m in maps}
+            maps = [m for m in maps if all((m, p) in vals for p, _ in panels)]
+            rank = {m: geomean([vals[(m, p)] for p, _ in panels]) for m in maps}
             order = sorted(maps, key=lambda m: rank[m])
             key_name = "uint64_t" if key == "u64" else "std::string"
             lines = [f"geometric mean over one octave from {base:,} entries, mapped type size_t. Lower is better, "
@@ -236,7 +243,7 @@ def main():
                 title = (f"relative to dice::sparse_map::sparse_map (sparsity medium), {key_name} keys, every map with metall's "
                          f"allocator (offset_ptr)")
                 lines.insert(1, "The maps are in a metall datastore on a local NVMe disk. Hash and key equality are "
-                                "the defaults of each map.")
+                                "the defaults of each map. Disk usage counts the blocks of the files, not the holes.")
                 starred = [m for m in order if m in not_relocatable]
 
                 def pretty(m):
@@ -248,10 +255,11 @@ def main():
                                  "opened again at another address.")
                 if key == "str":
                     notes.append("std::string keeps raw pointers and its characters on the heap, so with string keys "
-                                 "no map here can be opened again.")
+                                 "no map here can be opened again,")
+                    notes.append("and the disk usage counts the table, not the characters of the keys.")
             suffix = "" if variant == "std" else "-metall"
             out = os.path.join(args.out_dir, f"bench-readme-{key}{suffix}.svg")
-            draw(out, title, lines, notes, order, vals, rank, pretty)
+            draw(out, title, lines, notes, order, vals, rank, pretty, panels, memory_unit)
 
 
 if __name__ == "__main__":

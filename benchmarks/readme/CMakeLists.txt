@@ -1,6 +1,7 @@
 # The README benchmark: one binary per allocator, key type and map, and a second binary per map
-# that counts the bytes requested from the heap. The checks of the map interface and of the
-# relocation are in bin/check. See README.md in this directory.
+# that counts the bytes requested from the heap (std) or measures the disk usage of the datastore
+# (metall). The checks of the map interface and of the relocation are in bin/check. See README.md in
+# this directory.
 find_package(Boost REQUIRED)
 find_package(Metall REQUIRED)
 find_package(unordered_dense REQUIRED)
@@ -17,7 +18,8 @@ set(metall_failing_maps unordered_dense_allocator absl_flat absl_node)
 
 set(readme_bin_dir "${CMAKE_CURRENT_BINARY_DIR}/bin")
 
-# kind: `time` (the timed panels and rss), `memory` (counts the bytes requested) or `api` (api_check.cpp)
+# kind: `time` (the timed panels and rss), `memory` (counts the bytes requested), `disk` (disk usage
+# of the metall datastore) or `api` (api_check.cpp)
 function(dsm_readme_target variant key map kind)
     if (kind STREQUAL "api")
         set(target "dsm_readme_api_${variant}_${key}_${map}")
@@ -27,6 +29,8 @@ function(dsm_readme_target variant key map kind)
         set(target "dsm_readme_${variant}_${key}_${map}")
         if (kind STREQUAL "memory")
             string(APPEND target "_memory")
+        elseif (kind STREQUAL "disk")
+            string(APPEND target "_disk")
         endif ()
         add_executable(${target} bench_readme.cpp)
         set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${readme_bin_dir}")
@@ -52,6 +56,9 @@ function(dsm_readme_target variant key map kind)
         target_compile_definitions(${target} PRIVATE DSM_README_COUNT_ALLOC)
         target_link_libraries(${target} PRIVATE ${CMAKE_DL_LIBS})
     endif ()
+    if (kind STREQUAL "disk")
+        target_compile_definitions(${target} PRIVATE DSM_README_DISK_USAGE)
+    endif ()
 endfunction()
 
 foreach (key u64 str)
@@ -62,12 +69,20 @@ foreach (key u64 str)
     endforeach ()
     foreach (map IN LISTS metall_maps)
         dsm_readme_target(metall ${key} ${map} time)
+        dsm_readme_target(metall ${key} ${map} disk)
         dsm_readme_target(metall ${key} ${map} api)
     endforeach ()
     foreach (map IN LISTS metall_failing_maps)
         dsm_readme_target(metall ${key} ${map} api)
         set_target_properties(dsm_readme_api_metall_${key}_${map} PROPERTIES EXCLUDE_FROM_ALL TRUE)
     endforeach ()
+    # `unordered_dense` with metall's allocator and its default `std::vector`. It compiles for the
+    # operations of the benchmark, so it can show what the value container costs. Not part of `all`,
+    # and in bin/extra, so that run.sh does not pick it up.
+    dsm_readme_target(metall ${key} unordered_dense_allocator time)
+    set_target_properties(dsm_readme_metall_${key}_unordered_dense_allocator PROPERTIES
+            EXCLUDE_FROM_ALL TRUE
+            RUNTIME_OUTPUT_DIRECTORY "${readme_bin_dir}/extra")
 endforeach ()
 
 # Which maps keep working when their metall datastore is opened at another address.

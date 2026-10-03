@@ -2,7 +2,7 @@
  * The README benchmark: one map, one key type and one allocator per binary, measured on one panel
  * per process.
  *
- *   dsm_readme_<variant>_<key>_<map> <build|buildfree|find|churn|iterate|rss|memory> <base>
+ *   dsm_readme_<variant>_<key>_<map> <build|buildfree|find|churn|iterate|rss|memory|disk> <base>
  *
  * The map is chosen at compile time (`DSM_README_MAP`, a struct of maps.hpp), the key type with
  * `DSM_README_STRING_KEYS` and the allocator with `DSM_README_METALL`. A binary that holds many maps
@@ -25,6 +25,20 @@
  *  - `rss`: peak resident set while the map is built, baseline subtracted, in bytes.
  *  - `memory`: peak bytes requested from the heap while the map is built. Only the binaries built
  *    with `DSM_README_COUNT_ALLOC` can measure it.
+ *  - `disk`: blocks of the files of the metall datastore, empty datastore subtracted, in bytes. Only
+ *    the metall binaries built with `DSM_README_DISK_USAGE` can measure it (see disk_usage.hpp). It
+ *    prints one line per quantity:
+ *     - `disk`: after the build, with the map alive.
+ *     - `diskpeak`: the peak during the build, sampled right before every hole that metall punches,
+ *       every 1/256 of the inserts and right after every insert that changed `bucket_count()`.
+ *     - `diskflushed`: after the build, with the map alive, after metall's object cache was
+       emptied (`profile` does that). `diskclear`: after `clear()`. `diskfreed`: after the map is
+       destroyed. `diskempty`: after that and after the object cache was emptied again.
+ *     - `metallsegment`, `metallchunks`, `metallobjects`: metall's own numbers after the build,
+ *       read from `metall::manager::profile`: the chunks up to the last one in use, the chunks in
+ *       use, and the live objects, each rounded up to its size class. The numbers of the empty
+ *       datastore are subtracted.
+ *    The summary of a `disk` line is the arithmetic mean if one of the five values is not positive.
  *
  * Every timed panel does about 10 million operations per size (`DSM_README_OPS` changes that), after
  * one run that is not timed.
@@ -35,6 +49,7 @@
  */
 
 #include "count_alloc.hpp"
+#include "disk_usage.hpp"
 #include "max_rss.hpp"
 #include "maps.hpp"
 
@@ -48,7 +63,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -63,6 +80,10 @@
 
 #ifndef DSM_README_MAP
 #error "DSM_README_MAP must name a map struct of maps.hpp"
+#endif
+
+#if defined(DSM_README_DISK_USAGE) && !defined(DSM_README_METALL)
+#error "DSM_README_DISK_USAGE measures a metall datastore and needs DSM_README_METALL"
 #endif
 
 namespace {
@@ -280,7 +301,73 @@ namespace {
         [[nodiscard]] Map make() {
             return Map(typename Map::allocator_type(manager_->get_allocator()));
         }
+
+        [[nodiscard]] std::filesystem::path const &path() const noexcept {
+            return path_;
+        }
+
+        [[nodiscard]] metall::manager &manager() noexcept {
+            return *manager_;
+        }
     };
+
+#if defined(DSM_README_DISK_USAGE)
+    /// metall's own numbers, read from `metall::manager::profile`, in bytes
+    struct metall_numbers {
+        double segment = 0.0;  ///< the chunks up to the last one in use
+        double chunks = 0.0;   ///< the chunks in use
+        double objects = 0.0;  ///< the live objects, each rounded up to its size class
+        /// per object size: the chunks in use and the live objects
+        std::map<std::uint64_t, std::pair<double, double>> classes;
+    };
+
+    /**
+     * Reads metall's profile. It has one line per chunk up to the last one in use: the chunk
+     * number, the object size (0 for a free chunk) and the share of its slots in use, in percent
+     * with two decimals. A chunk of a large object shows the size of the object and 100. `profile`
+     * first gives the objects in metall's object cache back to their chunks, which can free
+     * chunks, so it changes the datastore.
+     */
+    metall_numbers read_profile(metall::manager &manager) {
+        std::stringstream out;
+        manager.profile(&out);
+        constexpr auto chunk = static_cast<double>(metall::manager::chunk_size());
+        metall_numbers numbers;
+        std::string line;
+        bool in_chunks = false;
+        while (std::getline(out, line)) {
+            if (line.starts_with("[chunk no]")) {
+                in_chunks = true;
+                continue;
+            }
+            if (!in_chunks) {
+                continue;
+            }
+            std::istringstream fields{line};
+            std::uint64_t chunk_no = 0;
+            double object_size = 0.0;
+            double occupancy = 0.0;
+            if (!(fields >> chunk_no >> object_size >> occupancy)) {
+                break;
+            }
+            numbers.segment += chunk;
+            if (object_size == 0.0) {
+                continue;
+            }
+            numbers.chunks += chunk;
+            double objects = chunk;
+            if (object_size <= chunk / 2.0) {
+                double const slots = std::floor(chunk / object_size);
+                objects = std::round(occupancy / 100.0 * slots) * object_size;
+            }
+            numbers.objects += objects;
+            auto &of_class = numbers.classes[static_cast<std::uint64_t>(object_size)];
+            of_class.first += chunk;
+            of_class.second += objects;
+        }
+        return numbers;
+    }
+#endif
 #else
     std::filesystem::path fresh_datastore_path() {
         return {};
@@ -325,6 +412,144 @@ namespace {
     double nanoseconds(clock_type::duration duration) {
         return static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count());
     }
+
+#if defined(DSM_README_DISK_USAGE)
+    /// the quantities of the `disk` panel, one line each, in this order
+    constexpr std::array<char const *, 9> disk_quantities{"disk", "diskpeak", "diskflushed", "diskclear", "diskfreed", "diskempty", "metallsegment", "metallchunks", "metallobjects"};
+
+    /**
+     * `fill` with samples of the disk usage: every 1/256 of the inserts, and right after every
+     * insert that changed `bucket_count()`. The samples right before a hole punch come from the
+     * replaced `madvise`.
+     */
+    template<typename Map>
+    void fill_sampled(Map &map, std::vector<key_type> const &keys, disk_usage::sampler &sampler) {
+        std::size_t const every = keys.size() / 256 > 0 ? keys.size() / 256 : 1;
+        auto buckets = map.bucket_count();
+        std::size_t inserted = 0;
+        for (auto const &key : keys) {
+            map.try_emplace(key, 1);
+            ++inserted;
+            if (map.bucket_count() != buckets) {
+                buckets = map.bucket_count();
+                sampler.sample(disk_usage::trigger::growth);
+            }
+            if (inserted % every == 0) {
+                sampler.sample(disk_usage::trigger::periodic);
+            }
+        }
+    }
+
+    /**
+     * The quantities of `disk_quantities` at size `n`, in bytes per entry. Prints the details of
+     * the sampling and metall's chunks per object size to stderr.
+     */
+    std::array<double, disk_quantities.size()> disk_one_size(std::size_t n) {
+        pools p{n};
+        context ctx{fresh_datastore_path()};
+        std::uint64_t const empty = disk_usage::allocated_bytes(ctx.path());
+        metall_numbers const empty_metall = read_profile(ctx.manager());
+
+        disk_usage::sampler sampler{ctx.path()};
+        std::optional<map_t> map;
+        disk_usage::punch_sampler = &sampler;
+        auto const t0 = clock_type::now();
+        map.emplace(ctx.make<map_t>());
+        fill_sampled(*map, p.present, sampler);
+        auto const t1 = clock_type::now();
+        std::uint64_t const built = sampler.now();
+        disk_usage::punch_sampler = nullptr;
+        if (map->size() != n) {
+            fail("size after fill");
+        }
+        std::size_t const buckets = map->bucket_count();
+
+        metall_numbers const metall = read_profile(ctx.manager());
+        std::uint64_t const flushed = disk_usage::allocated_bytes(ctx.path());
+        map->clear();
+        std::uint64_t const cleared = disk_usage::allocated_bytes(ctx.path());
+        map.reset();
+        std::uint64_t const freed = disk_usage::allocated_bytes(ctx.path());
+        static_cast<void>(read_profile(ctx.manager()));
+        std::size_t files = 0;
+        std::uint64_t const emptied = disk_usage::allocated_bytes(ctx.path(), &files);
+
+        auto const entries = static_cast<double>(n);
+        auto per_entry = [&](std::uint64_t bytes) {
+            return (static_cast<double>(bytes) - static_cast<double>(empty)) / entries;
+        };
+        auto const p_index = static_cast<std::size_t>(disk_usage::trigger::periodic);
+        auto const g_index = static_cast<std::size_t>(disk_usage::trigger::growth);
+        auto const h_index = static_cast<std::size_t>(disk_usage::trigger::punch);
+        std::fprintf(stderr,
+                     "disk-detail %s %s %s n %zu buckets %zu empty_bytes %llu built_bytes %llu peak_bytes %llu "
+                     "samples periodic %zu growth %zu punch %zu largest_per_entry periodic %.4f growth %.4f "
+                     "punch %.4f punches %zu punched_bytes %llu sample_us %.1f fill_ms %.1f "
+                     "files %zu empty_metall segment %.0f chunks %.0f objects %.0f\n",
+                     variant_name,
+                     key_name,
+                     map_desc::name,
+                     n,
+                     buckets,
+                     static_cast<unsigned long long>(empty),
+                     static_cast<unsigned long long>(built),
+                     static_cast<unsigned long long>(sampler.peak),
+                     sampler.samples[p_index],
+                     sampler.samples[g_index],
+                     sampler.samples[h_index],
+                     sampler.samples[p_index] > 0 ? per_entry(sampler.largest[p_index]) : 0.0,
+                     sampler.samples[g_index] > 0 ? per_entry(sampler.largest[g_index]) : 0.0,
+                     sampler.samples[h_index] > 0 ? per_entry(sampler.largest[h_index]) : 0.0,
+                     sampler.punches,
+                     static_cast<unsigned long long>(sampler.punched_bytes),
+                     sampler.total_samples() > 0
+                         ? nanoseconds(sampler.spent) / 1000.0 / static_cast<double>(sampler.total_samples())
+                         : 0.0,
+                     nanoseconds(t1 - t0) / 1e6,
+                     files,
+                     empty_metall.segment,
+                     empty_metall.chunks,
+                     empty_metall.objects);
+        std::fprintf(stderr, "disk-classes %s %s %s n %zu", variant_name, key_name, map_desc::name, n);
+        for (auto const &[object_size, of_class] : metall.classes) {
+            std::fprintf(stderr, " %llu:%.0f:%.0f", static_cast<unsigned long long>(object_size), of_class.first, of_class.second);
+        }
+        std::fprintf(stderr, "\n");
+
+        return {per_entry(built),
+                per_entry(sampler.peak),
+                per_entry(flushed),
+                per_entry(cleared),
+                per_entry(freed),
+                per_entry(emptied),
+                (metall.segment - empty_metall.segment) / entries,
+                (metall.chunks - empty_metall.chunks) / entries,
+                (metall.objects - empty_metall.objects) / entries};
+    }
+
+    /// runs the `disk` panel at the five sizes and prints one line per quantity
+    void print_disk(std::size_t base) {
+        std::array<std::array<double, disk_quantities.size()>, 5> values{};
+        for (std::size_t i = 0; i < 5; ++i) {
+            values[i] = disk_one_size(octave_size(base, i));
+        }
+        for (std::size_t q = 0; q < disk_quantities.size(); ++q) {
+            std::printf("%s %s %s %s %zu", variant_name, key_name, map_desc::name, disk_quantities[q], base);
+            bool all_positive = true;
+            double log_sum = 0.0;
+            double sum = 0.0;
+            for (std::size_t i = 0; i < 5; ++i) {
+                double const value = values[i][q];
+                all_positive = all_positive && value > 0.0;
+                log_sum += std::log(value > 0.0 ? value : 1e-9);
+                sum += value;
+                std::printf(" %.4f", value);
+            }
+            std::printf(" geomean %.4f\n", all_positive ? std::exp(log_sum / 5.0) : sum / 5.0);
+        }
+        std::fflush(stdout);
+    }
+#endif
 
     /// nanoseconds per operation at size `n`, or bytes per entry for `rss` and `memory`
     double one_size(std::string_view work, std::size_t n) {
@@ -480,13 +705,13 @@ namespace {
 int main(int argc, char **argv) {
     tame_allocator();
     if (argc < 3) {
-        std::fprintf(stderr, "usage: %s <build|buildfree|find|churn|iterate|rss|memory> <base>\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <build|buildfree|find|churn|iterate|rss|memory|disk> <base>\n", argv[0]);
         return 1;
     }
     std::string_view const work{argv[1]};
     current_work = work;
     std::size_t const base = std::strtoull(argv[2], nullptr, 10);
-    static constexpr std::array<std::string_view, 7> known{"build", "buildfree", "find", "churn", "iterate", "rss", "memory"};
+    static constexpr std::array<std::string_view, 8> known{"build", "buildfree", "find", "churn", "iterate", "rss", "memory", "disk"};
     bool is_known = false;
     for (auto const &name : known) {
         is_known = is_known || name == work;
@@ -498,6 +723,15 @@ int main(int argc, char **argv) {
     if (work == "memory" && !count_alloc::available()) {
         std::fprintf(stderr, "this binary was built without DSM_README_COUNT_ALLOC and cannot count bytes\n");
         return 2;
+    }
+    if (work == "disk") {
+#if defined(DSM_README_DISK_USAGE)
+        print_disk(base);
+        return 0;
+#else
+        std::fprintf(stderr, "this binary was built without DSM_README_DISK_USAGE and cannot measure the disk\n");
+        return 2;
+#endif
     }
 
     double log_sum = 0.0;
