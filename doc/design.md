@@ -20,7 +20,9 @@ So each bucket has one bit in each bitmap, and the pointer and the counters are 
 
 The position of the value of a bucket in the values array is the number of occupied buckets before it in the group. The library counts them with `std::popcount` on the occupancy bitmap.
 
-The table holds an array of groups. Bucket `i` is in group `i / 64`, at position `i % 64`.
+A bucket with both bits set is a hole. Holes exist only for elements whose move constructor can throw (see below). The slot of a hole in the values array holds no value, but it counts as occupied for the position of the values after it.
+
+The table holds an array of groups. Bucket `i` is in group `i / 64`, at position `i % 64`. The table also keeps the index of its first group with a value, so `begin()` takes constant time. `begin()` only reads this index, so it also works on a read-only mapping. An insertion can lower the index. An erasure that empties the group at the index looks for the next group with a value. So erasing in the order of iteration, `while (!map.empty()) map.erase(map.begin());`, reads each group once in total.
 
 ## Insertion and erasure in a group
 
@@ -33,7 +35,13 @@ How the values move depends on the move assignment of the elements:
 
 When the values array is full, an insertion allocates one that is 2, 4 or 8 slots larger and moves the values into it, one by one through the allocator. If the elements are trivially copyable and trivially move constructible and the allocator has no `construct` and no `destroy` of its own, the group copies them as bytes with `std::memcpy` instead, also when the group is copied or moved into a new values array.
 
-If the move constructor of the elements can throw, every insertion allocates a new values array for one more value, copies the values into it and constructs the new value there, and every erasure copies all other values into a new array. This is slower, but it keeps the strong exception guarantee.
+If the move constructor of the elements can throw, no value is moved inside the values array:
+
+- An erasure destroys the value and leaves a hole. When the last value of a group is erased, the group frees its values array.
+- An insertion into a hole constructs the new value in its slot.
+- Any other insertion allocates a new values array, copies the values into it and constructs the new value there. The holes of the group become deleted buckets.
+
+So an erasure never throws, and an insertion keeps the strong exception guarantee. A hole keeps its memory until an insertion of the last kind or a rehash. A copy of the container has no holes.
 
 ## Hashing and probing
 
@@ -59,11 +67,11 @@ An insertion that needs a rehash constructs the new element first, because its k
 
 ## Deleted buckets
 
-An erasure marks the bucket as deleted (a tombstone), so that a later lookup goes on past it. An insertion can reuse a deleted bucket. The deleted buckets are removed with a rehash to the same bucket count. It happens when the number of elements plus the number of deleted buckets reaches `max_load_factor + 0.5 * (1 - max_load_factor)` of the bucket count, which is 0.75 with the default maximum load factor.
+An erasure marks the bucket as deleted (a tombstone), so that a later lookup goes on past it. A hole counts as a deleted bucket. An insertion can reuse a deleted bucket. The deleted buckets are removed with a rehash to the same bucket count. It happens when the number of elements plus the number of deleted buckets reaches `max_load_factor + 0.5 * (1 - max_load_factor)` of the bucket count, which is 0.75 with the default maximum load factor.
 
 ## Iterators
 
-An iterator holds plain pointers, also with an allocator that uses fancy pointers: the group, the element and the end of the elements of the group. To go to the next element, it moves to the next value in the values array, or to the first value of the next group that is not empty. An insertion or an erasure can invalidate it.
+An iterator holds plain pointers, also with an allocator that uses fancy pointers: the group, the element and the end of the elements of the group. To go to the next element, it moves to the next value in the values array, or to the first value of the next group that is not empty. For elements whose move constructor can throw, it holds the run of its element instead of the end: the number of elements in the slots right after it, up to the next hole, and the index after which the next run starts. It moves to the next slot while the run has elements, and otherwise asks the group for the next run, so it skips the holes. A group without holes is one run. An insertion or an erasure can invalidate it.
 
 ## Standard layout
 
@@ -76,5 +84,7 @@ The elements of a map are stored as `map_slot<Key, T>`, not as `std::pair<Key, T
 A container in persistent memory, for example in a metall datastore, keeps the binary representation of its objects. `dice::sparse_map::pobr_version` is the version of this persisted object binary representation (POBR). It is 3. CMake writes it into `include/dice/sparse-map/version.hpp` from `POBR_VERSION` in `CMakeLists.txt`.
 
 The GitHub Actions workflow `Detect POBR diff` runs on pull requests to `develop` and `main`. It checks the headers `sparse_hash.hpp`, `sparse_map.hpp` and `sparse_set.hpp` under `include/dice/sparse-map` for changes of the binary representation against the base branch, with `pobr_version` as the version constant.
+
+The binary representation includes the members of the table (with `std::allocator`, `sizeof(sparse_map<int, int>)` is 72 bytes), the group headers and their bitmaps, and the holes of groups whose elements have a move constructor that can throw.
 
 Containers that were persisted with 0.3 cannot be opened. Their binary representation is different, and the default hash function `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` places the elements in other buckets than `std::hash`, the default of 0.3. See [upgrading from 0.3](upgrading-from-0.3.md).
