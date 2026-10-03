@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.15)
 project(PackageTest CXX)
 
-find_package(dice-sparse-map REQUIRED)
+find_package(dice-unordered-sparse REQUIRED)
 
 add_executable(example example.cpp)
 
 target_link_libraries(example PUBLIC
-        dice-sparse-map::dice-sparse-map)
+        dice-unordered-sparse::dice-unordered-sparse)
 
 set_target_properties(
         example PROPERTIES

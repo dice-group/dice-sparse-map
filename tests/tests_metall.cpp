@@ -154,7 +154,7 @@ namespace {
         std::filesystem::path path;
 
         explicit datastore_path(std::string const &name)
-            : path(std::filesystem::temp_directory_path() / ("dice_sparse_map_tests_metall_" + file_name_part(name) + "_" + std::to_string(std::random_device{}()))) {
+            : path(std::filesystem::temp_directory_path() / ("dice_unordered_sparse_tests_metall_" + file_name_part(name) + "_" + std::to_string(std::random_device{}()))) {
             static_cast<void>(metall::manager::remove(path.c_str()));
         }
 

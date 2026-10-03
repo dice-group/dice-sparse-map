@@ -42,14 +42,14 @@ namespace {
 
     /**
      * The directory for the metall datastores: the environment variable
-     * `DICE_SPARSE_MAP_BENCH_METALL_DIR`, or `/tmp/dice-sparse-map-bench-metall`.
+     * `DICE_UNORDERED_SPARSE_BENCH_METALL_DIR`, or `/tmp/dice-unordered-sparse-bench-metall`.
      */
     [[nodiscard]] std::filesystem::path metall_dir() {
-        char const *dir = std::getenv("DICE_SPARSE_MAP_BENCH_METALL_DIR");
+        char const *dir = std::getenv("DICE_UNORDERED_SPARSE_BENCH_METALL_DIR");
         if (dir != nullptr && *dir != '\0') {
             return dir;
         }
-        return "/tmp/dice-sparse-map-bench-metall";
+        return "/tmp/dice-unordered-sparse-bench-metall";
     }
 
     /**
