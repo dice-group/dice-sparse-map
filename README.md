@@ -62,7 +62,7 @@ Relative to `dice::sparse_map::sparse_map` (1.00), lower is better. The first tw
 
 With `uint64_t` keys, `dice::sparse_map::sparse_map` needs less than half the peak memory of every other map in the plots. Its lookups are as fast as in `unordered_dense` (the other flat maps need 0.75 to 0.84 of its time), and its inserts and erases take 2 to 3.5 times as long as in the flat maps. With `std::string` keys the other maps need 15 % to 41 % more peak memory. With metall's allocator the last panel is the peak disk usage of the datastore, and the gap is smaller: `unordered_dense` needs 12 % and `boost::unordered_flat_map` 38 % more (`uint64_t` keys).
 
-[doc/benchmarks.md](doc/benchmarks.md#allocated-memory-over-time) also plots the allocated memory over time while 10 million `uint64_t` pairs are inserted: `dice::sparse_map::sparse_map` peaks at 194 MB, the other maps at 253 to 495 MB.
+[doc/benchmarks.md](doc/benchmarks.md#allocated-memory-over-time) also plots the allocated memory over time while 10 million `uint64_t` pairs are inserted. There `dice::sparse_map::sparse_map` peaks at 194 MB, the flat maps of the panels above at 403 to 495 MB, and the node maps at 337 MB (`std::unordered_map`) and 403 MB (`absl::node_hash_map`). This plot does not count the 8 byte header that glibc keeps in front of every block. A node map pays this header once per element, 80 MB at 10 million entries.
 
 ## Documentation
 
