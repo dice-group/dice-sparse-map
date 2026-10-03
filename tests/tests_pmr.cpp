@@ -181,6 +181,32 @@ TEST_CASE("the keys of a pmr set use the resource of the set") {
     CHECK(resource.deallocations() == resource.allocations());
 }
 
+// `std::unordered_map::emplace` constructs the new element with the allocator of the container. The element does not
+// pass through an object that takes its memory from somewhere else.
+TEST_CASE("emplace and insert of a pair-like value take no memory from the default resource") {
+    auto resource = counting_resource{};
+    auto default_resource = counting_resource{};
+    {
+        auto map = pmr_map{&resource};
+        auto set = pmr_set{&resource};
+        auto const key = std::pmr::string{"a key that is too long for the small string buffer", &resource};
+        auto const value = std::pmr::vector<int>{{1, 2, 3}, &resource};
+        auto const pair_like = std::pair<char const *, std::pmr::vector<int>>{"another string literal that is too long for the small string buffer", value};
+
+        auto const guard = default_resource_guard{&default_resource};
+        map.emplace(key, value);
+        map.emplace_hint(map.end(), "a string literal that is too long for the small string buffer", value);
+        map.insert(pair_like);
+        set.emplace("a string literal that is too long for the small string buffer");
+        CHECK(map.size() == 3);
+        CHECK(set.size() == 1);
+        CHECK(entries_use(map, &resource));
+        CHECK(keys_use(set, &resource));
+        CHECK(default_resource.allocations() == 0);
+    }
+    CHECK(resource.bytes_in_use() == 0);
+}
+
 TEST_CASE("a pmr map never asks its resource for 0 bytes and never gives back a null pointer") {
     auto resource = counting_resource{};
     {

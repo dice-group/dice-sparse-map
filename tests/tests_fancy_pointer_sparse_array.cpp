@@ -122,6 +122,12 @@ struct custom_alloc {
 };
 
 
+// A sparse_array does not store its allocator and frees its storage only in `clear(Allocator &)`. An assignment could
+// not free the old storage, so a sparse_array is neither copy assignable nor move assignable.
+static_assert(!std::is_copy_assignable_v<std_alloc<int>::array_type>);
+static_assert(!std::is_move_assignable_v<std_alloc<int>::array_type>);
+static_assert(!std::is_move_assignable_v<custom_alloc<int>::array_type>);
+
 /* The instantiation of the tests.
  * They are not template test cases, so that every test case has its own name.
  */

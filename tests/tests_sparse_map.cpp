@@ -628,8 +628,9 @@ TEST_SUITE("test_sparse_map") {
             (dice::sparse_map<int, int>(std::numeric_limits<std::size_t>::max())),
             std::length_error);
 
+        auto const max_bucket_count = dice::sparse_map<int, int>().max_bucket_count();
         CHECK_THROWS_AS(
-            (dice::sparse_map<int, int>(std::numeric_limits<std::size_t>::max() / 2 + 1)),
+            (dice::sparse_map<int, int>(max_bucket_count + 1)),
             std::length_error);
     }
 
@@ -1036,6 +1037,8 @@ TEST_SUITE("test_sparse_map") {
 
     TEST_CASE("test_heterogeneous_lookups") {
         struct hash_ptr {
+            using is_transparent = void;
+
             std::size_t operator()(std::unique_ptr<int> const &p) const {
                 return std::hash<std::uintptr_t>()(
                     reinterpret_cast<std::uintptr_t>(p.get()));

@@ -15,6 +15,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 /**
  * What a map holds after an allocation or the hash function failed in the middle of an operation. The allocations
@@ -742,6 +743,65 @@ TEST_CASE("a swap whose hash throws swaps neither the elements nor the allocator
 }
 
 namespace {
+    /**
+     * A hash with a seed, which it adds to the key. Two maps with different seeds place the same key in different
+     * buckets.
+     */
+    struct seeded_hash {
+        std::size_t seed = 0;
+
+        std::size_t operator()(std::size_t key) const noexcept {
+            return key + seed;
+        }
+    };
+
+    /// the move assignment of `fragile_key_equal` throws while this is true
+    bool key_equal_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * A key equality whose move assignment throws while `key_equal_moves_throw` is true. `std::swap` of two of
+     * them move assigns, so it throws, too.
+     */
+    struct fragile_key_equal {
+        fragile_key_equal() = default;
+        fragile_key_equal(fragile_key_equal const &) = default;
+        fragile_key_equal(fragile_key_equal &&) = default;
+        fragile_key_equal &operator=(fragile_key_equal const &) = default;
+        ~fragile_key_equal() = default;
+
+        fragile_key_equal &operator=(fragile_key_equal && /*other*/) noexcept(false) {
+            if (key_equal_moves_throw) {
+                throw std::runtime_error("fragile_key_equal move assignment");
+            }
+            return *this;
+        }
+
+        bool operator()(std::size_t lhs, std::size_t rhs) const noexcept {
+            return lhs == rhs;
+        }
+    };
+}  // namespace
+
+TEST_CASE("a swap whose key equality throws leaves both maps able to find their elements") {
+    using map_t = sparse_map<std::size_t, std::size_t, seeded_hash, fragile_key_equal>;
+    auto map_1 = map_t{0, seeded_hash{1}};
+    auto map_2 = map_t{0, seeded_hash{1000}};
+    for (std::size_t key = 0; key < 100; ++key) {
+        map_1[key] = key;
+        map_2[key + 1000] = key + 1000;
+    }
+    static_assert(!noexcept(map_1.swap(map_2)));
+
+    // the hash functions are swapped first, then the key equality throws
+    key_equal_moves_throw = true;
+    CHECK_THROWS_AS(map_1.swap(map_2), std::runtime_error);
+    key_equal_moves_throw = false;
+
+    check_holds(map_1, 0, 100);
+    check_holds(map_2, 1000, 100);
+}
+
+namespace {
     /// moves and copies of `countdown_value` that are left before one throws, -1 never throws
     int value_transfers_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
@@ -805,6 +865,65 @@ TEST_CASE("a move assignment to an unequal allocator that throws keeps the value
         kept += (it != source.end() && it->second.value == static_cast<int>(key)) ? 1 : 0;
     }
     CHECK(kept == 100);
+}
+
+namespace {
+    /**
+     * A hash with state. It adds the size of `seed` to the key, and a move leaves `seed` empty, so a moved-from
+     * `move_sensitive_hash` hashes differently.
+     */
+    struct move_sensitive_hash {
+        std::vector<std::size_t> seed = std::vector<std::size_t>(3);
+
+        std::size_t operator()(std::size_t key) const noexcept {
+            return key + seed.size();
+        }
+    };
+
+    using seeded_allocator_t = id_allocator<std::pair<std::size_t, countdown_value>>;
+    using seeded_map_t = sparse_map<std::size_t, countdown_value, move_sensitive_hash, std::equal_to<std::size_t>, seeded_allocator_t>;
+
+    /// number of the keys 0 to 99 that `map` finds with their value
+    std::size_t nb_found_with_value(seeded_map_t const &map) {
+        std::size_t found = 0;
+        for (std::size_t key = 0; key < 100; ++key) {
+            auto const it = map.find(key);
+            found += (it != map.end() && it->second.value == static_cast<int>(key)) ? 1 : 0;
+        }
+        return found;
+    }
+}  // namespace
+
+TEST_CASE("a move assignment to an unequal allocator that throws leaves the source able to find its values") {
+    auto source = seeded_map_t{seeded_allocator_t{1}};
+    for (std::size_t key = 0; key < 100; ++key) {
+        source.try_emplace(key, static_cast<int>(key));
+    }
+    auto target = seeded_map_t{seeded_allocator_t{2}};
+
+    // the 51st move or copy of a value throws, after 50 values reached the target
+    value_transfers_until_throw = 50;
+    CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+    value_transfers_until_throw = -1;
+
+    CHECK(target.empty());
+    CHECK(source.size() == 100);                // NOLINT(bugprone-use-after-move)
+    CHECK(nb_found_with_value(source) == 100);  // NOLINT(bugprone-use-after-move)
+}
+
+TEST_CASE("a move construction with an unequal allocator that throws leaves the source able to find its values") {
+    auto source = seeded_map_t{seeded_allocator_t{1}};
+    for (std::size_t key = 0; key < 100; ++key) {
+        source.try_emplace(key, static_cast<int>(key));
+    }
+
+    // the 51st move or copy of a value throws, after 50 values reached the new map
+    value_transfers_until_throw = 50;
+    CHECK_THROWS_AS((seeded_map_t{std::move(source), seeded_allocator_t{2}}), std::runtime_error);
+    value_transfers_until_throw = -1;
+
+    CHECK(source.size() == 100);                // NOLINT(bugprone-use-after-move)
+    CHECK(nb_found_with_value(source) == 100);  // NOLINT(bugprone-use-after-move)
 }
 
 namespace {

@@ -48,8 +48,12 @@ namespace dice::unordered_sparse {
      * The interface follows `std::unordered_set`, with these differences:
      *  - The iterators are forward iterators.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
-     *  - Heterogeneous lookup and insertion are enabled by `KeyEqual::is_transparent` alone.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
+     *
+     * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
+     * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
+     * `KeyEqual::is_transparent` both exist, and the hash function and the key equality must accept the other type.
+     * Otherwise the argument is converted to `Key` first.
      *
      * If an insertion throws, the set holds the same elements as before, except in one case where it is empty. It
      * comes from a rehash, which an insertion, `merge`, `rehash` or `reserve` can do. `reserve` avoids rehashes. How
@@ -65,12 +69,19 @@ namespace dice::unordered_sparse {
      * less memory and slower insertions. The lookup speed does not depend on it.
      *
      * `Key` must be nothrow move constructible and/or copy constructible. The behaviour is undefined if the
-     * destructor of `Key` throws.
+     * destructor of `Key` throws. If `Key` is nothrow move constructible, the set moves its elements with
+     * `std::allocator_traits<Allocator>::construct` and expects that this does not throw either. With a scoped or a
+     * polymorphic allocator, that is the allocator-extended move constructor of `Key`, which does not throw when the
+     * allocators are equal. `std::vector` makes the same assumption.
      *
-     * Iterator invalidation:
-     *  - `clear`, `operator=`, `reserve`, `rehash`, `merge`: always invalidate the iterators.
-     *  - `insert`, `emplace`, `emplace_hint`: invalidate the iterators if an element is inserted.
-     *  - `erase`: always invalidates the iterators. Use the returned iterator.
+     * Invalidation of iterators, references and pointers to elements: a group stores its elements densely and moves
+     * them when an element is inserted or erased. So, unlike with `std::unordered_set`, references and pointers to
+     * elements are invalidated like the iterators.
+     *  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate the iterators, references and pointers.
+     *  - `merge`: always invalidates the iterators, references and pointers of both sets.
+     *  - `insert`, `emplace`, `emplace_hint`: invalidate the iterators, references and pointers if an element is
+     *    inserted.
+     *  - `erase`: always invalidates the iterators, references and pointers. Use the returned iterator.
      */
     template<typename Key,
              typename Hash = std::hash<Key>,
@@ -84,8 +95,8 @@ namespace dice::unordered_sparse {
         template<typename, typename, typename, typename, unordered_sparse::sparsity>
         friend struct sparse_set;
 
-        /// heterogeneous lookup and insertion are enabled by `KeyEqual::is_transparent`
-        static constexpr bool is_transparent = detail::IsTransparent<KeyEqual>;
+        /// the heterogeneous overloads exist if `Hash::is_transparent` and `KeyEqual::is_transparent` exist
+        static constexpr bool is_transparent = detail::IsTransparent<Hash> && detail::IsTransparent<KeyEqual>;
 
     public:
         using key_type = Key;
@@ -302,8 +313,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `insert` (C++26). Only if `KeyEqual::is_transparent` exists. The element is constructed
-         * from `key` only if it is inserted.
+         * Heterogeneous `insert` (C++26). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist.
+         * The element is constructed from `key` only if it is inserted.
          */
         template<typename K>
         requires (heterogeneous_key<K> && std::is_constructible_v<value_type, K &&>)
@@ -346,8 +357,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Constructs a `value_type` from `args`, and inserts it if it is not in the set yet. Like
-         * `insert(value_type(std::forward<Args>(args)...))`.
+         * Constructs a `value_type` from `args` with the allocator of the set, and inserts it if it is not in the set
+         * yet. A scoped or a polymorphic allocator passes itself on to the element.
          */
         template<typename... Args>
         constexpr std::pair<iterator, bool> emplace(Args &&...args) {
@@ -355,7 +366,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Like `insert(hint, value_type(std::forward<Args>(args)...))`.
+         * Constructs a `value_type` from `args` with the allocator of the set, and inserts it like
+         * `insert(hint, value)`.
          */
         template<typename... Args>
         constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {
@@ -387,8 +399,8 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Heterogeneous `erase` (C++23). Only if `KeyEqual::is_transparent` exists. `K` must be hashable and
-         * comparable to `Key`.
+         * Heterogeneous `erase` (C++23). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist. `K`
+         * must be hashable and comparable to `Key`.
          */
         template<typename K>
         requires heterogeneous_key<K>
