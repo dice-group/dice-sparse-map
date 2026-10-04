@@ -56,6 +56,11 @@ of 64 buckets grows when it is full (2, 4 or 8), so it trades memory for insert 
 `sparse_map` and `unordered_dense` both use `ankerl::unordered_dense::hash`, so that a comparison of the
 two open addressing tables shows the tables and not the hashes. `std::unordered_map` uses `std::hash`.
 
+Before the timed runs of a container type, `quick_overall`, `find_all`, `set` and `find_random` build,
+search and destroy three maps of that type with 1, 2 and 3 elements (`use_small_maps` in
+`workloads.hpp`). So a container with its own code path for small maps has that path in use in the
+same translation unit as the timed workloads on large maps.
+
 ## What each benchmark measures
 
 The workloads check their results. A checksum depends only on the contents of the map, so every correct
