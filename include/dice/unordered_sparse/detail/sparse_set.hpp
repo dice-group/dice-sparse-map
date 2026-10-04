@@ -41,9 +41,9 @@ namespace dice::unordered_sparse {
      * low load factor, and keeps good performance.
      *
      * The buckets are grouped by 64. A group stores only its occupied buckets, densely, and a bitmap tells which
-     * buckets are occupied. The bucket count is 0 or a power of two and doubles when the table grows. The hash
-     * picks the bucket with a mask. A hash function that is not marked as avalanching (see
-     * `hash_is_avalanching`) is mixed first.
+     * buckets are occupied. The bucket count is 0 or a power of two of at least 64 (one group) and doubles when
+     * the table grows. The hash picks the bucket with a mask. A hash function that is not marked as avalanching
+     * (see `hash_is_avalanching`) is mixed first.
      *
      * The interface follows `std::unordered_set`, with these differences:
      *  - The iterators are forward iterators.

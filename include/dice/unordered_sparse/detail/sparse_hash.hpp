@@ -1465,9 +1465,9 @@ namespace dice::unordered_sparse {
          * is at `buckets_[sparse_array::sparse_ibucket(ibucket)]`, position
          * `sparse_array::index_in_sparse_bucket(ibucket)`.
          *
-         * The bucket count is 0 or a power of two, and it doubles when the table grows. A hash maps to a bucket
-         * with a mask, after `mixed_hash` (see `hash_is_avalanching`). Collisions are resolved with quadratic
-         * probing.
+         * The bucket count is 0 or a power of two of at least `min_bucket_count` (one group), and it doubles when the
+         * table grows. A hash maps to a bucket with a mask, after `mixed_hash` (see `hash_is_avalanching`). Collisions
+         * are resolved with quadratic probing.
          *
          * The constructors take the allocator of the container or the allocator of the stored elements, and convert
          * it with a direct initialization. So an allocator with an `explicit` converting constructor works, as the
@@ -1751,7 +1751,8 @@ namespace dice::unordered_sparse {
             };
 
             /**
-             * Creates a table with at least `bucket_count` buckets. The bucket count is rounded up to a power of two.
+             * Creates a table with at least `bucket_count` buckets. A bucket count that is not 0 is rounded up to a power
+             * of two of at least `min_bucket_count`.
              * @throws std::length_error if `bucket_count` is larger than `max_bucket_count()`
              */
             template<typename Alloc>
@@ -1770,6 +1771,8 @@ namespace dice::unordered_sparse {
                 // checked here instead of at class scope, so that value_type may be incomplete there
                 static_assert(std::is_nothrow_move_constructible_v<slot_type> || std::is_copy_constructible_v<slot_type>,
                               "Key, and T if present, must be nothrow move constructible and/or copy constructible.");
+                static_assert(sparse_array::nb_sparse_buckets(min_bucket_count) == 1 && sparse_array::nb_sparse_buckets(2 * min_bucket_count) == 2,
+                              "min_bucket_count must be the number of buckets of one group.");
             }
 
             constexpr ~sparse_hash() {
@@ -2535,7 +2538,7 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * @return `bucket_count` rounded up to a power of two, or 0 for 0
+             * @return `bucket_count` rounded up to a power of two of at least `min_bucket_count`, or 0 for 0
              * @throws std::length_error if the result is larger than `max_bucket_count()`
              */
             [[nodiscard]] constexpr size_type rounded_bucket_count(size_type bucket_count) const {
@@ -2546,7 +2549,7 @@ namespace dice::unordered_sparse {
                     return 0;
                 }
 
-                auto const rounded = static_cast<size_type>(std::bit_ceil(static_cast<std::size_t>(bucket_count)));
+                auto const rounded = static_cast<size_type>(std::bit_ceil(std::max<std::size_t>(bucket_count, min_bucket_count)));
                 if (rounded > max_bucket_count()) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
@@ -2588,14 +2591,18 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * @return the bucket count after the next growth, twice the current one, at least 2
+             * @return the bucket count after the next growth: `min_bucket_count` for a table without buckets, otherwise
+             * twice the current one
              * @throws std::length_error if the table cannot grow
              */
             [[nodiscard]] constexpr size_type next_bucket_count() const {
+                if (bucket_count_ == 0) {
+                    return rounded_bucket_count(min_bucket_count);
+                }
                 if (bucket_count_ > max_bucket_count() / 2) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
-                return bucket_count_ == 0 ? 2 : bucket_count_ * 2;
+                return bucket_count_ * 2;
             }
 
             /**
@@ -3036,6 +3043,12 @@ namespace dice::unordered_sparse {
 
         public:
             static constexpr size_type default_init_bucket_count = 0;
+
+            /**
+             * The smallest bucket count of a table with buckets: one group. A table with fewer buckets still has one
+             * group, so it would need the same memory and up to five more rehashes until it holds 32 elements.
+             */
+            static constexpr size_type min_bucket_count = 64;
             static constexpr float default_max_load_factor = 0.5f;
 
             /**
@@ -3056,7 +3069,7 @@ namespace dice::unordered_sparse {
             size_type nb_sparse_buckets_ = 0;
 
             /**
-             * 0 or a power of two.
+             * 0 or a power of two of at least `min_bucket_count`.
              */
             size_type bucket_count_ = 0;
             size_type nb_elements_ = 0;

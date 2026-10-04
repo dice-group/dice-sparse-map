@@ -149,7 +149,7 @@ int main() {
 
 ## Hash functions
 
-The bucket count is 0 or a power of two, and a hash picks its bucket with a mask on its low bits. A hash function is avalanching if every bit of the input changes about half of the bits of the output. Its hash is used as it is. Any other hash function, for example `std::hash<std::uint64_t>`, which is the identity in libstdc++ and libc++, is mixed with one 64 bit multiplication first.
+The bucket count is 0 or a power of two of at least 64, and a hash picks its bucket with a mask on its low bits. A hash function is avalanching if every bit of the input changes about half of the bits of the output. Its hash is used as it is. Any other hash function, for example `std::hash<std::uint64_t>`, which is the identity in libstdc++ and libc++, is mixed with one 64 bit multiplication first.
 
 A hash function is marked as avalanching with a member type `is_avalanching`, or with a specialization of `dice::unordered_sparse::hash_is_avalanching`. This is the convention of `ankerl::unordered_dense` and `boost::unordered`:
 
