@@ -190,6 +190,12 @@ TEST_CASE("find_all offset_ptr sparse_map low") {
     find_all_hits_or_misses<offset_ptr_sparse<sparsity::low>>("offset_ptr sparse_map low");
 }
 
+TEST_CASE("iterate metall sparse_map medium") {
+    with_datastore([](metall_source const &source) {
+        iterate_large<metall_sparse<sparsity::medium>>("metall sparse_map medium", source);
+    });
+}
+
 TEST_CASE("throwing_move metall sparse_map medium") {
     with_datastore([](metall_source const &source) {
         throwing_move<metall_sparse<sparsity::medium>>("metall sparse_map medium", source);

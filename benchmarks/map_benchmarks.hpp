@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 #include <nanobench.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -16,9 +17,11 @@
 
 /**
  * The map benchmarks that run for many container configurations, with the plain allocator and
- * with fancy pointers: the quick overall score and the lookups that all hit or all miss.
+ * with fancy pointers: the quick overall score, the lookups that all hit or all miss, and the passes
+ * over all elements of a large map.
  *
- * Ported from ankerl::unordered_dense (test/bench/quick_overall_map.cpp, MIT license).
+ * The quick overall score and the lookups are ported from ankerl::unordered_dense
+ * (test/bench/quick_overall_map.cpp, MIT license).
  */
 namespace dice::unordered_sparse::bench {
 
@@ -184,6 +187,96 @@ namespace dice::unordered_sparse::bench {
             bench.run(std::format("{} std::string -> size_t no hits", container), [&] {
                 CHECK(find_all<false, Sizes::lookups>(&strings) == 0);
             });
+        });
+    }
+
+    struct iterate_large_full {
+        static constexpr std::array<std::size_t, 2> sizes{1000000, 10000000};
+    };
+
+    struct iterate_large_quick {
+        static constexpr std::array<std::size_t, 2> sizes{1000, 20000};
+    };
+
+    /**
+     * The sum of the mapped values of `map`, with `map.for_each` if `use_for_each`, and otherwise with a loop over
+     * the iterators.
+     */
+    template<bool use_for_each, typename Map>
+    [[nodiscard]] std::uint64_t sum_mapped(Map const &map) {
+        std::uint64_t sum = 0;
+        if constexpr (use_for_each) {
+            map.for_each([&sum](auto const &element) {
+                sum += element.second;
+            });
+        } else {
+            for (auto const &element : map) {
+                sum += element.second;
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * A map from `make_map` with `num_elements` random keys. The value of a key is the number of keys inserted
+     * before it, so the values are 0 to `num_elements - 1`.
+     */
+    template<typename Map, typename MakeMap>
+    [[nodiscard]] Map filled_map(std::size_t num_elements, MakeMap const &make_map) {
+        tame_allocator();
+        ankerl::nanobench::Rng rng(271828);
+        Map map = make_map();
+        while (map.size() < num_elements) {
+            map.try_emplace(key_for<Map>(rng() & ~never_inserted), map.size());
+        }
+        return map;
+    }
+
+    /**
+     * Builds a map of `num_elements` entries, then times one pass over all its elements with the iterators and, if
+     * the map has it, with `for_each`. Each pass sums the mapped values.
+     */
+    template<typename Map, typename Source>
+    void iterate_rows(ankerl::nanobench::Bench &bench, std::string_view name, std::size_t num_elements, Source const &source) {
+        auto const map = filled_map<Map>(num_elements, [&source] {
+            return source.template make<Map>();
+        });
+        auto const expected = static_cast<std::uint64_t>(num_elements) * (num_elements - 1) / 2;
+        bench.batch(num_elements);
+        bench.run(std::format("{} {} entries, iterators", name, num_elements), [&] {
+            CHECK(sum_mapped<false>(map) == expected);
+        });
+        if constexpr (HasForEach<Map>) {
+            bench.run(std::format("{} {} entries, for_each", name, num_elements), [&] {
+                CHECK(sum_mapped<true>(map) == expected);
+            });
+        }
+    }
+
+    /**
+     * A pass over all elements of a map of 1 million and of 10 million entries, `uint64_t -> uint64_t` and
+     * `std::string -> uint64_t`, with a loop over the iterators and, if the map has it, with `for_each`. The maps are
+     * built before the timed runs, so that the runs time the pass and not a fill. nanobench reports the time per
+     * element. `Family::map<Key, T>` is the map type, `source` makes the empty maps.
+     */
+    template<typename Family, typename Source = default_source>
+    void iterate_large(std::string_view container, Source const &source = Source{}) {
+        with_sizes<iterate_large_full, iterate_large_quick>([&]<typename Sizes>() {
+            ankerl::nanobench::Bench bench;
+            bench.title(std::format("iterate {}", container)).unit("element");
+            configure(bench);
+            for (auto const num_elements : Sizes::sizes) {
+                iterate_rows<typename Family::template map<std::uint64_t, std::uint64_t>>(
+                    bench,
+                    std::format("{} uint64_t -> uint64_t", container),
+                    num_elements,
+                    source);
+                iterate_rows<typename Family::template map<std::string, std::uint64_t>>(
+                    bench,
+                    std::format("{} std::string -> uint64_t", container),
+                    num_elements,
+                    source);
+            }
         });
     }
 

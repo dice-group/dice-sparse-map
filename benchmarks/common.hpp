@@ -18,8 +18,8 @@
 #include <utility>
 
 /**
- * What the benchmarks share: the quick mode, the nanobench settings, the geometric mean and the
- * container configurations.
+ * What the benchmarks share: the quick mode, the nanobench settings, the geometric mean, the
+ * container configurations and what a container offers.
  */
 namespace dice::unordered_sparse::bench {
 
@@ -145,6 +145,14 @@ namespace dice::unordered_sparse::bench {
     using sparse_high = sparse_family<sparsity::high>;
     using sparse_medium = sparse_family<sparsity::medium>;
     using sparse_low = sparse_family<sparsity::low>;
+
+    /**
+     * True if `Map` has a member `for_each(f)` that calls `f` with every element. The iteration benchmarks run it
+     * besides the loop over the iterators.
+     */
+    template<typename Map>
+    concept HasForEach = requires (Map const &map) { map.for_each([](auto &&) {
+                                                     }); };
 
     /**
      * Makes every map with `Map{}`. A source of maps has a member template `make<Map>()`.

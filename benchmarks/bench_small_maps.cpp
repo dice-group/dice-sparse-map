@@ -12,6 +12,7 @@
 #include <format>
 #include <iostream>
 #include <numeric>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -32,7 +33,7 @@ namespace {
 
     struct small_maps_quick {
         static constexpr std::size_t num_maps = 10000;
-        static constexpr std::size_t rounds = 1;
+        static constexpr std::size_t rounds = 2;
     };
 
     /**
@@ -87,24 +88,28 @@ namespace {
         std::cout << std::format("\nsmall maps: {} maps with 1 to 16 elements, {} elements in total, uint64_t -> uint64_t\n\n",
                                  num_maps,
                                  num_elements)
-                  << std::format("| {:<18} | {:>12} | {:>11} | {:>12} | {:>12} | {:>14} | {:>10} | {:>12} | {:>11} |\n",
+                  << std::format("| {:<18} | {:>12} | {:>11} | {:>12} | {:>12} | {:>16} | {:>14} | {:>10} | {:>12} | {:>11} |\n",
                                  "container",
                                  "build ns/map",
                                  "hit ns/find",
                                  "miss ns/find",
                                  "iter ns/elem",
+                                 "for_each ns/elem",
                                  "destroy ns/map",
                                  "heap B/map",
                                  "allocs/map",
                                  "sizeof(map)")
-                  << std::format("|{:-<20}|{:->13}:|{:->12}:|{:->13}:|{:->13}:|{:->15}:|{:->11}:|{:->13}:|{:->12}:|\n", "", "", "", "", "", "", "", "", "");
+                  << std::format("|{:-<20}|{:->13}:|{:->12}:|{:->13}:|{:->13}:|{:->17}:|{:->15}:|{:->11}:|{:->13}:|{:->12}:|\n", "", "", "", "", "", "", "", "", "", "");
     }
 
     /**
      * Builds all maps, looks up every key (hits) and every key with the top bit set (misses), with
      * the maps in a random order as a trie lookup jumps between nodes, iterates over all maps in
-     * the order they were built, and destroys them. Each phase is timed on its own, and the table
-     * shows the median over all rounds.
+     * the order they were built, with the iterators and, if the map has it, with `for_each`, and
+     * destroys them. Each phase is timed on its own, and the table shows the median over all rounds.
+     * A round times one of the two iteration passes, right after the misses: the iterators in the
+     * even rounds, and `for_each` in the odd rounds of a map that has it. The other pass runs
+     * untimed after it. So both passes are timed from the same state.
      */
     template<typename Family>
     void small_maps(std::string_view container, small_maps_input const &input, std::size_t rounds) {
@@ -118,6 +123,7 @@ namespace {
         std::vector<std::chrono::nanoseconds> hit_times;
         std::vector<std::chrono::nanoseconds> miss_times;
         std::vector<std::chrono::nanoseconds> iterate_times;
+        std::vector<std::chrono::nanoseconds> for_each_times;
         std::vector<std::chrono::nanoseconds> destroy_times;
         std::size_t heap_bytes = 0;
         std::size_t live_allocations = 0;
@@ -160,12 +166,37 @@ namespace {
             auto const missed = clock::now();
 
             std::uint64_t iterate_sum = 0;
-            for (auto const &map : maps) {
-                for (auto const &key_value : map) {
-                    iterate_sum += key_value.second;
+            auto const iterate = [&] {
+                for (auto const &map : maps) {
+                    for (auto const &key_value : map) {
+                        iterate_sum += key_value.second;
+                    }
                 }
+            };
+            std::uint64_t for_each_sum = input.value_sum;
+            auto const visit = [&] {
+                if constexpr (HasForEach<map_t>) {
+                    for_each_sum = 0;
+                    for (auto const &map : maps) {
+                        map.for_each([&for_each_sum](auto const &key_value) {
+                            for_each_sum += key_value.second;
+                        });
+                    }
+                }
+            };
+            bool const time_for_each = HasForEach<map_t> && round % 2 == 1;
+            if (time_for_each) {
+                visit();
+            } else {
+                iterate();
             }
-            auto const iterated = clock::now();
+            auto const timed = clock::now();
+            if (time_for_each) {
+                iterate();
+            } else {
+                visit();
+            }
+            auto const visited = clock::now();
 
             heap_bytes = stats.current;
             live_allocations = stats.live_allocations;
@@ -175,22 +206,29 @@ namespace {
             CHECK(hit_sum == input.value_sum);
             CHECK(false_hits == 0);
             CHECK(iterate_sum == input.value_sum);
+            CHECK(for_each_sum == input.value_sum);
             CHECK(stats.current == 0);
             CHECK(stats.live_allocations == 0);
 
             build_times.push_back(built - start);
             hit_times.push_back(hit - built);
             miss_times.push_back(missed - hit);
-            iterate_times.push_back(iterated - missed);
-            destroy_times.push_back(destroyed - iterated);
+            if (time_for_each) {
+                for_each_times.push_back(timed - missed);
+            } else {
+                iterate_times.push_back(timed - missed);
+            }
+            destroy_times.push_back(destroyed - visited);
         }
 
-        std::cout << std::format("| {:<18} | {:>12.1f} | {:>11.1f} | {:>12.1f} | {:>12.2f} | {:>14.1f} | {:>10.1f} | {:>12.2f} | {:>11} |\n",
+        auto const for_each_ns = for_each_times.empty() ? std::string{"-"} : std::format("{:.2f}", median_ns_per(for_each_times, num_elements));
+        std::cout << std::format("| {:<18} | {:>12.1f} | {:>11.1f} | {:>12.1f} | {:>12.2f} | {:>16} | {:>14.1f} | {:>10.1f} | {:>12.2f} | {:>11} |\n",
                                  container,
                                  median_ns_per(build_times, num_maps),
                                  median_ns_per(hit_times, num_elements),
                                  median_ns_per(miss_times, num_elements),
                                  median_ns_per(iterate_times, num_elements),
+                                 for_each_ns,
                                  median_ns_per(destroy_times, num_maps),
                                  static_cast<double>(heap_bytes) / static_cast<double>(num_maps),
                                  static_cast<double>(live_allocations) / static_cast<double>(num_maps),
