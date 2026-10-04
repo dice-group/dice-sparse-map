@@ -966,6 +966,19 @@ namespace dice::unordered_sparse {
             }
 
             /**
+             * Asks the processor to load the cache line of the first value of the group, without waiting for it. A
+             * prefetch does not fault, also without values. Does nothing in a constant evaluation and with a compiler
+             * without `__builtin_prefetch`.
+             */
+            constexpr void prefetch_values() const noexcept {
+                if !consteval {
+#if defined(__GNUC__) || defined(__clang__)
+                    __builtin_prefetch(values());
+#endif
+                }
+            }
+
+            /**
              * Constructs a value at `index` from `value_args`. With holes, see `set_with_holes`.
              * @return iterator to the new value
              */
@@ -1770,6 +1783,14 @@ namespace dice::unordered_sparse {
              */
             static constexpr bool has_holes = sparse_array::has_holes;
 
+            /**
+             * `for_each` asks the processor for the cache line of the first value of the group
+             * `for_each_prefetch_distance` groups ahead of the group it visits (`sparse_array::prefetch_values`), if
+             * that group exists. The values of each group lie in a block of their own. In a table larger than the
+             * cache, a pass without the prefetch waits for the memory at every group. 0 turns the prefetch off.
+             */
+            static constexpr std::ptrdiff_t for_each_prefetch_distance = 8;
+
             static constexpr bool propagate_on_copy_assignment = slot_allocator_traits::propagate_on_container_copy_assignment::value;
             static constexpr bool propagate_on_move_assignment = slot_allocator_traits::propagate_on_container_move_assignment::value;
             static constexpr bool propagate_on_swap = slot_allocator_traits::propagate_on_container_swap::value;
@@ -2235,8 +2256,9 @@ namespace dice::unordered_sparse {
              * first one with an element (`table_state::first_nonempty_group`) to the end of the bucket array, and over
              * the values of each group (`sparse_array::for_each_value`), which lie in one array. In a group without
              * holes, each step of the loop over the values compares only with the end of the values of the group. A
-             * loop over the iterators also compares each step with `end()`. A table that keeps its elements in the
-             * inline group calls `f` with the inline elements, which lie in one array in the order of the iterators.
+             * loop over the iterators also compares each step with `end()`. It prefetches the first values of the
+             * groups ahead (`for_each_prefetch_distance`). A table that keeps its elements in the inline group calls
+             * `f` with the inline elements, which lie in one array in the order of the iterators.
              *
              * `f` may change the mapped values through the reference and read the table. It must not change the table
              * in another way. If `f` throws, the exception leaves `for_each`, and the table is unchanged except for
@@ -2270,6 +2292,12 @@ namespace dice::unordered_sparse {
                 DICE_UNORDERED_SPARSE_ASSERT(self.first_nonempty_group_is_plausible());
                 group_type *const last = self.buckets_end();
                 for (group_type *group = self.buckets_begin() + self.table().first_nonempty_group; group != last; ++group) {
+                    if constexpr (for_each_prefetch_distance > 0) {
+                        // only a group that exists, so that no pointer goes past the end of the bucket array
+                        if (last - group > for_each_prefetch_distance) {
+                            group[for_each_prefetch_distance].prefetch_values();
+                        }
+                    }
                     group->for_each_value(visit);
                 }
             }

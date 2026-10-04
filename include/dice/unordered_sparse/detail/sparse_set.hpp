@@ -338,7 +338,8 @@ namespace dice::unordered_sparse {
          * Calls `f` with every key, as `Key const &`, in the order of the iterators. A constraint checks that `f` can
          * be called with the key. The loop runs over the groups of 64 buckets and over the keys of each group, which
          * lie in one array. A set that keeps its keys in the inline group (see `inline_capacity`) has one such array
-         * in the set object.
+         * in the set object. It asks the processor for the first keys of the groups ahead (a prefetch), so that it
+         * waits less for the memory.
          *
          * `f` may read the set. It must not insert or erase keys or change the set in another way (`clear`, `rehash`,
          * `reserve`, assignment, `swap`, `merge`), otherwise the behaviour is undefined. If `f` throws, the exception

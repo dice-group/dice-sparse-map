@@ -349,7 +349,8 @@ namespace dice::unordered_sparse {
          * `std::pair<Key const &, T &>`, for a const map `std::pair<Key const &, T const &>`. A constraint checks that
          * `f` can be called with the element. The loop runs over the groups of 64 buckets and over the elements of
          * each group, which lie in one array. A map that keeps its elements in the inline group (see
-         * `inline_capacity`) has one such array in the map object.
+         * `inline_capacity`) has one such array in the map object. It asks the processor for the first elements of the
+         * groups ahead (a prefetch), so that it waits less for the memory.
          *
          * `f` may change the mapped values through the reference, and it may read the map. It must not insert or
          * erase elements or change the map in another way (`clear`, `rehash`, `reserve`, assignment, `swap`,

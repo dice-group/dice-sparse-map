@@ -27,7 +27,7 @@ The interface is the one of `std::unordered_map` and `std::unordered_set`, inclu
 - heterogeneous `find`, `count`, `contains`, `equal_range`, `erase`, `try_emplace`, `insert_or_assign`, `operator[]` and set `insert` (see [heterogeneous lookup](#heterogeneous-lookup)),
 - `lookup` of C++29.
 
-Beyond the standard interface, `for_each` calls a function with every element (see [for_each](#for_each)).
+Beyond the standard interface, `for_each` calls a function with every element. In a large container it is faster than a loop over the iterators (see [for_each](#for_each)).
 
 `lookup` returns a reference to the mapped value, or nothing, and never inserts. Its result type is `dice::unordered_sparse::optional_ref<T>`. With a standard library that provides `std::optional<T &>`, this is `std::optional<T &>`. Otherwise it is a type of the library with the same interface.
 
@@ -129,7 +129,7 @@ map.for_each([&sum](auto &&element) {
 // sum is 23, map is {a, 11} {b, 12}
 ```
 
-The elements of a group of 64 buckets lie in one array, and `for_each` runs over this array. A container that keeps its elements in the container object ([small maps](#small-maps)) has one such array there.
+The elements of a group of 64 buckets lie in one array, and `for_each` runs over this array. Each group has its own array, and in a container larger than the cache a pass waits for the memory at every group. So `for_each` asks the processor for the first elements of a group a few groups ahead (a prefetch). In a large container, a pass with `for_each` is faster than a loop over the iterators. For a small container it is not faster. A container that keeps its elements in the container object ([small maps](#small-maps)) has them in one array there, and `for_each` runs over it.
 
 - `f` may change the mapped values through the reference, and it may read the container, for example with `find`. It must not insert or erase elements or change the container in another way (`clear`, `rehash`, `reserve`, assignment, `swap`, `merge`). Otherwise the behaviour is undefined. Note that `operator[]` inserts if the key is not in the map.
 - If `f` throws, the exception leaves `for_each`. The elements that `f` got before keep what `f` did to them, and the container is not changed otherwise.
@@ -281,6 +281,7 @@ A type that keeps a raw pointer, like `std::string`, cannot live in persistent m
 
 - Make sure that `Key` and `T` have a `noexcept` move constructor. Without it the containers still work, but insertions copy elements and are much slower.
 - Make sure that `Key` and `T` also have a `noexcept` move assignment. Without it, an insertion or an erasure moves the elements of a group by construction and destruction through the allocator, which is slower, most of all with an allocator that has its own `construct` and `destroy`, like the allocator of metall.
+- Use `for_each` for a pass over all elements of a large container. There it is faster than a loop over the iterators.
 - The library uses `std::popcount`. Compile with `-mpopcnt` or `-march=native` (x86) so that it becomes one instruction.
 - Define `DICE_UNORDERED_SPARSE_DEBUG` (or `TSL_DEBUG`) to enable internal consistency checks.
 
