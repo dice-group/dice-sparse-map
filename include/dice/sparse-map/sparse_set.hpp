@@ -49,8 +49,8 @@ namespace dice::sparse_map {
      * `is_avalanching` for every key type. A `dice::hash::dice_hash_overload` for
      * your own key type must keep the avalanche of the policy.
      *
-     * The number of buckets is 0 or a power of two and doubles when the table
-     * grows. A hash picks its bucket with a mask.
+     * The number of buckets is 0 or a power of two of at least 64 (one group) and
+     * doubles when the table grows. A hash picks its bucket with a mask.
      *
      * The interface follows `std::unordered_set`, with these differences:
      *  - The iterators are forward iterators.
