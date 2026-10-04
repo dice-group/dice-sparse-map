@@ -245,10 +245,77 @@ TEST_CASE("an allocator that constructs in place: a group copies and moves value
     group.clear(alloc);
 }
 
+namespace {
+    /// the hash of a key is the key, and the table uses it without mixing, so key `k` is in bucket `k % 64`
+    struct bucket_hash {
+        using is_avalanching = void;
+
+        std::size_t operator()(std::uint64_t key) const noexcept {
+            return static_cast<std::size_t>(key);
+        }
+    };
+
+    using inline_map_t = sparse_map<std::uint64_t, std::uint64_t, bucket_hash, std::equal_to<std::uint64_t>, construct_counting_allocator<pair_u64>, sparsity::medium, 4>;
+}  // namespace
+
+// The inline group uses the same functions on a range of slots as a group: with the opt-in it shifts, copies and moves
+// its values as bytes.
+TEST_CASE("an allocator that constructs in place: the inline group copies and moves values as bytes") {
+    auto map = inline_map_t{};
+    for (std::uint64_t const n : {10, 20, 30}) {
+        map.try_emplace(n, n);
+    }
+
+    // in front of all values: the holder of the new value and the new value at its place
+    auto const insertion = counted([&] {
+        map.try_emplace(1, 1);
+    });
+    CHECK(insertion.constructs == 2);
+    CHECK(insertion.destroys == 1);
+
+    // the values after the erased one move as bytes, nothing is destroyed
+    auto const erase = counted([&] {
+        map.erase(map.find(1));
+    });
+    CHECK(erase.constructs == 0);
+    CHECK(erase.destroys == 0);
+    map.try_emplace(1, 1);
+
+    // copies, moves and swaps of the inline elements copy them as bytes
+    auto const copies = counted([&] {
+        auto copy = map;
+        auto moved = std::move(copy);
+        auto other = inline_map_t{};
+        other.try_emplace(5, 5);
+        other.swap(moved);
+        CHECK(other.size() == 4);
+        CHECK(other.at(30) == 30);
+    });
+    CHECK(copies.constructs == 1);  // the element 5
+    CHECK(copies.destroys == 0);
+
+    // the move of the full inline group into an allocated group copies the values as bytes
+    auto const move_out = counted([&] {
+        map.try_emplace(40, 40);
+    });
+    CHECK(move_out.constructs == 2);  // the holder of the new value and the new value at its place
+    CHECK(move_out.destroys == 1);
+    CHECK(map.size() == 5);
+    for (std::uint64_t const n : {1, 10, 20, 30, 40}) {
+        CHECK(map.at(n) == n);
+    }
+}
+
 TEST_CASE("an allocator that constructs in place: random insertions and erasures") {
     using map_t = sparse_map<std::uint64_t, std::uint64_t, std::hash<std::uint64_t>, std::equal_to<std::uint64_t>, construct_counting_allocator<pair_u64>>;
     for (std::uint64_t seed = 0; seed < 4; ++seed) {
         auto map = map_t{};
+        std::unordered_map<std::uint64_t, std::uint64_t> reference;
+        run_random_operations(map, reference, seed);
+    }
+    using inline_t = sparse_map<std::uint64_t, std::uint64_t, std::hash<std::uint64_t>, std::equal_to<std::uint64_t>, construct_counting_allocator<pair_u64>, sparsity::medium, 4>;
+    for (std::uint64_t seed = 0; seed < 4; ++seed) {
+        auto map = inline_t{};
         std::unordered_map<std::uint64_t, std::uint64_t> reference;
         run_random_operations(map, reference, seed);
     }

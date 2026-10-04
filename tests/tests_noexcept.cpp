@@ -80,6 +80,11 @@ namespace {
     using plain_map = sparse_map<int, int>;
     using plain_set = sparse_set<int>;
 
+    /// with an inline group: its elements move one by one, which cannot throw
+    using inline_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, sparsity::medium, 4>;
+    using inline_set = sparse_set<int, std::hash<int>, std::equal_to<int>, std::allocator<int>, sparsity::medium, 4>;
+    using inline_unequal_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, pmr_like_allocator<std::pair<int, int>>, sparsity::medium, 4>;
+
     using throwing_map = sparse_map<int, int, throwing_hash>;
     using throwing_set = sparse_set<int, throwing_hash>;
 
@@ -109,6 +114,9 @@ namespace {
 }  // namespace
 
 TYPE_TO_STRING_AS("sparse_map<int, int>", plain_map);
+TYPE_TO_STRING_AS("sparse_map<int, int, ..., 4>", inline_map);
+TYPE_TO_STRING_AS("sparse_set<int, ..., 4>", inline_set);
+TYPE_TO_STRING_AS("sparse_map<int, int, ..., pmr_like_allocator, ..., 4>", inline_unequal_map);
 TYPE_TO_STRING_AS("sparse_set<int>", plain_set);
 TYPE_TO_STRING_AS("sparse_map<int, int, throwing_hash>", throwing_map);
 TYPE_TO_STRING_AS("sparse_set<int, throwing_hash>", throwing_set);
@@ -117,7 +125,7 @@ TYPE_TO_STRING_AS("sparse_set<int, ..., pmr_like_allocator>", unequal_set);
 
 // `std::unordered_map` does not require this, but the standard libraries give it, and a
 // `std::vector` of maps moves its elements on growth only if it holds.
-TEST_CASE_TEMPLATE("the move constructor is noexcept when nothing it moves can throw", container_t, plain_map, plain_set, unequal_map, unequal_set) {
+TEST_CASE_TEMPLATE("the move constructor is noexcept when nothing it moves can throw", container_t, plain_map, plain_set, unequal_map, unequal_set, inline_map, inline_set, inline_unequal_map) {
     CHECK(std::is_nothrow_move_constructible_v<container_t>);
 }
 
@@ -135,7 +143,7 @@ TEST_CASE_TEMPLATE("the move constructor is not noexcept when the hash can throw
     CHECK(source.contains(42));   // NOLINT(bugprone-use-after-move)
 }
 
-TEST_CASE_TEMPLATE("move assignment is noexcept when the allocator is always equal and the functors cannot throw", container_t, plain_map, plain_set) {
+TEST_CASE_TEMPLATE("move assignment is noexcept when the allocator is always equal and the functors cannot throw", container_t, plain_map, plain_set, inline_map, inline_set) {
     CHECK(std::is_nothrow_move_assignable_v<container_t>);
 }
 
@@ -150,7 +158,7 @@ TEST_CASE_TEMPLATE("move assignment is not noexcept when the allocator is not al
     CHECK_FALSE(std::is_nothrow_move_assignable_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("swap is noexcept when the allocator is always equal and the functors cannot throw", container_t, plain_map, plain_set) {
+TEST_CASE_TEMPLATE("swap is noexcept when the allocator is always equal and the functors cannot throw", container_t, plain_map, plain_set, inline_map, inline_set) {
     CHECK(noexcept(std::declval<container_t &>().swap(std::declval<container_t &>())));
     CHECK(std::is_nothrow_swappable_v<container_t>);
 }

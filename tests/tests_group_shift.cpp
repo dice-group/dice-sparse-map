@@ -59,6 +59,9 @@ namespace {
 
     using map_t = sparse_map<counter::obj, counter::obj, bucket_hash, std::equal_to<counter::obj>, construct_counting_allocator<std::pair<counter::obj, counter::obj>>>;
 
+    /// the same map with an inline group, which moves its elements with the functions of a group
+    using inline_map_t = sparse_map<counter::obj, counter::obj, bucket_hash, std::equal_to<counter::obj>, construct_counting_allocator<std::pair<counter::obj, counter::obj>>, sparsity::medium, 4>;
+
     /**
      * What an operation did: the calls of `construct` and `destroy` of the allocator, and the move constructions,
      * the move assignments and the destructions of `counter::obj`.
@@ -240,11 +243,15 @@ TEST_CASE("a group of one value: an insertion in front of it and an erase of eac
     group.clear(alloc);
 }
 
-TEST_CASE("an insertion and an erase in front of the elements of a group of a map move the elements by assignment") {
+TEST_CASE_TEMPLATE("an insertion and an erase in front of the elements of a group of a map move the elements by assignment",
+                   container_t,
+                   map_t,
+                   inline_map_t) {
     auto counts = counter{};
-    auto map = map_t{};
-    map.reserve(32);
-    REQUIRE(map.bucket_count() == 64);
+    auto map = container_t{};
+    if constexpr (std::is_same_v<container_t, map_t>) {
+        map.reserve(32);
+    }
     for (std::size_t const n : {10, 20, 30}) {
         map.try_emplace(counter::obj{n, counts}, n, counts);
     }

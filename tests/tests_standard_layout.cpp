@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -44,6 +45,13 @@ namespace {
 
     template<template<typename> typename AllocatorOf, sparsity Sparsity>
     using array_of = detail::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity>;
+
+    /// with 4 elements in the inline group
+    template<template<typename> typename AllocatorOf>
+    using inline_map_of = sparse_map<std::uint64_t, std::uint64_t, std::hash<std::uint64_t>, std::equal_to<std::uint64_t>, AllocatorOf<entry_t>, sparsity::medium, 4>;
+
+    template<template<typename> typename AllocatorOf>
+    using inline_set_of = sparse_set<std::uint64_t, std::hash<std::uint64_t>, std::equal_to<std::uint64_t>, AllocatorOf<std::uint64_t>, sparsity::medium, 4>;
 
     constexpr auto high = sparsity::high;
     constexpr auto medium = sparsity::medium;
@@ -126,6 +134,25 @@ TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are stan
     CHECK(std::is_standard_layout_v<container_t>);
 }
 
+TYPE_TO_STRING_AS("sparse_map<std::allocator, medium, 4>", inline_map_of<std::allocator>);
+TYPE_TO_STRING_AS("sparse_map<offset_ptr_allocator, medium, 4>", inline_map_of<offset_ptr_allocator>);
+TYPE_TO_STRING_AS("sparse_map<metall, medium, 4>", inline_map_of<metall_allocator>);
+TYPE_TO_STRING_AS("sparse_set<std::allocator, medium, 4>", inline_set_of<std::allocator>);
+TYPE_TO_STRING_AS("sparse_set<offset_ptr_allocator, medium, 4>", inline_set_of<offset_ptr_allocator>);
+TYPE_TO_STRING_AS("sparse_set<metall, medium, 4>", inline_set_of<metall_allocator>);
+
+TEST_CASE_TEMPLATE("sparse_map and sparse_set with an inline capacity are standard layout",
+                   container_t,
+                   inline_map_of<std::allocator>,
+                   inline_map_of<offset_ptr_allocator>,
+                   inline_map_of<metall_allocator>,
+                   inline_set_of<std::allocator>,
+                   inline_set_of<offset_ptr_allocator>,
+                   inline_set_of<metall_allocator>) {
+    MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
+    CHECK(std::is_standard_layout_v<container_t>);
+}
+
 TEST_CASE("map_slot is standard layout") {
     CHECK(std::is_standard_layout_v<dice::unordered_sparse::detail::map_slot<std::uint64_t, std::uint64_t>>);
 }
@@ -166,4 +193,22 @@ TEST_CASE("sizes") {
     CHECK(sizeof(map_t::const_iterator) == 24);
     CHECK(sizeof(holes_map_t::iterator) == 24);
     CHECK(sizeof(holes_map_t::const_iterator) == 24);
+}
+
+TEST_CASE("sizes with the inline capacity 4") {
+    using string_map_t = sparse_map<std::string, std::uint64_t, std::hash<std::string>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::uint64_t>>, sparsity::medium, 4>;
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., 4>) = " << sizeof(inline_map_of<std::allocator>));
+    MESSAGE("sizeof(sparse_set<std::uint64_t, ..., 4>) = " << sizeof(inline_set_of<std::allocator>));
+    MESSAGE("sizeof(sparse_map<std::string, std::uint64_t, ..., 4>) = " << sizeof(string_map_t));
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall, ..., 4>) = " << sizeof(inline_map_of<metall_allocator>));
+    MESSAGE("sizeof(sparse_set<std::uint64_t, ..., metall, ..., 4>) = " << sizeof(inline_set_of<metall_allocator>));
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall>) = " << sizeof(map_of<metall_allocator, medium>));
+    // the element count (8 bytes), the maximum load factor (4) and the flag (1, with 3 bytes of padding), then the
+    // union of the state of the buckets (56 bytes) and the inline group: two bitmaps of 8 bytes and 4 elements
+    CHECK(sizeof(inline_map_of<std::allocator>) == 16 + 16 + 4 * sizeof(entry_t));
+    CHECK(sizeof(inline_set_of<std::allocator>) == 16 + 56);
+    CHECK(sizeof(string_map_t) == 16 + 16 + 4 * sizeof(dice::unordered_sparse::detail::map_slot<std::string, std::uint64_t>));
+    // the allocator of metall holds a pointer of 8 bytes
+    CHECK(sizeof(inline_map_of<metall_allocator>) == 8 + 16 + 16 + 4 * sizeof(entry_t));
+    CHECK(sizeof(map_of<metall_allocator, medium>) == 80);
 }

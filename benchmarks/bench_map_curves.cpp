@@ -58,12 +58,13 @@ struct dice::unordered_sparse::allocator_constructs_in_place<metall::stl_allocat
  * size. A separate pass with `tracking_allocator` counts the bytes and allocations of a map. Each time is the median of
  * `rounds` rounds.
  *
- * Churn: the first `churn_maps` maps each run `churn_cycles` cycles of one erase and one insertion of a new key, so
- * the size stays n. An erase leaves a deleted bucket, and when the elements and the deleted buckets reach the clean-up
- * threshold (48 of a group of 64 buckets at the default maximum load factor), an insertion rebuilds the buckets. The
- * time is per cycle. For `sparse_map` and `sparse_set`, a separate pass with a hash function that counts its calls
- * gives the hash calls per map beyond the two of each cycle (`churn_rehash_hashes`): a rebuild hashes every element,
- * so this is n times the number of rebuilds.
+ * Churn: the first `churn_maps` maps each run `churn_cycles` cycles of one erase and one insertion of a new key, so the
+ * size stays n. An erase leaves a deleted bucket, and when the elements and the deleted buckets reach the clean-up
+ * threshold (48 of a group of 64 buckets at the default maximum load factor), an insertion rebuilds the buckets. In an
+ * inline group an erase leaves a deleted bucket only while an element can be outside its home bucket, and the clean-up
+ * threshold is twice the inline capacity (at most 48). The time is per cycle. For `sparse_map` and `sparse_set`, a
+ * separate pass with a hash function that counts its calls gives the hash calls per map beyond the two of each cycle
+ * (`churn_rehash_hashes`): a rebuild hashes every element, so this is n times the number of rebuilds.
  *
  * Types: `uint64_t -> uint64_t` maps, `uint64_t` sets and `std::string -> uint64_t` maps (keys of 12 bytes, inside the
  * small string buffer of libstdc++), each as `sparse_map`, `ankerl::unordered_dense` and `std::unordered_map`, and
@@ -71,7 +72,9 @@ struct dice::unordered_sparse::allocator_constructs_in_place<metall::stl_allocat
  * fresh datastore and gives the disk bytes per map (`disk_bytes`, the blocks of the datastore files after the build
  * minus before, see `readme/disk_usage.hpp`).
  *
- * The output starts with `sizeof` of each container. Every result is a line `CSV,...`.
+ * The macro `DICE_UNORDERED_SPARSE_BENCH_INLINE_CAPACITY` sets the inline capacity of `sparse_map` and `sparse_set`
+ * (see `bench_inline_capacity` in `common.hpp`). The output starts with `sizeof` and the inline capacity of each
+ * container. Every result is a line `CSV,...`.
  */
 
 namespace {
@@ -117,14 +120,16 @@ namespace {
                                        Hash,
                                        std::equal_to<Key>,
                                        Alloc<std::pair<Key, T>>,
-                                       sparsity::medium>;
+                                       sparsity::medium,
+                                       bench_inline_capacity_for<dice::unordered_sparse::detail::map_slot<Key, T>>>;
 
     template<typename Key, template<typename> typename Alloc = std::allocator, typename Hash = table_hash<Key>>
     using curve_set = dice::sparse_set<Key,
                                        Hash,
                                        std::equal_to<Key>,
                                        Alloc<Key>,
-                                       sparsity::medium>;
+                                       sparsity::medium,
+                                       bench_inline_capacity_for<Key>>;
 
     template<typename Container>
     inline constexpr bool is_map = requires { typename Container::mapped_type; };
@@ -922,9 +927,9 @@ namespace {
 
     void print_config() {
         auto const line = [](std::string_view name, std::size_t size_of) {
-            std::cout << std::format("CONFIG,{},{}\n", name, size_of);
+            std::cout << std::format("CONFIG,{},{},{}\n", name, size_of, bench_inline_capacity);
         };
-        std::cout << "\nmap curves\n";
+        std::cout << std::format("\nmap curves: inline capacity {}\n", bench_inline_capacity);
         line("sparse_map u64", sizeof(curve_map<std::uint64_t, std::uint64_t>));
         line("sparse_set u64", sizeof(curve_set<std::uint64_t>));
         line("sparse_map string", sizeof(curve_map<std::string, std::uint64_t>));

@@ -11,11 +11,11 @@ How to use `dice::sparse_map` and `dice::sparse_set`: the interface, where it di
 The template parameters are:
 
 ```c++
-sparse_map<Key, T, Hash, KeyEqual, Allocator, sparsity>
-sparse_set<Key, Hash, KeyEqual, Allocator, sparsity>
+sparse_map<Key, T, Hash, KeyEqual, Allocator, sparsity, inline_capacity>
+sparse_set<Key, Hash, KeyEqual, Allocator, sparsity, inline_capacity>
 ```
 
-The defaults are `std::hash<Key>`, `std::equal_to<Key>`, `std::allocator<std::pair<Key, T>>` (`std::allocator<Key>` for the set) and `sparsity::medium`.
+The defaults are `std::hash<Key>`, `std::equal_to<Key>`, `std::allocator<std::pair<Key, T>>` (`std::allocator<Key>` for the set), `sparsity::medium` and the inline capacity 0 (see [small maps](#small-maps)).
 
 ## The interface
 
@@ -108,6 +108,7 @@ All members are `constexpr`, so a map and a set can be used in a constant expres
   - `merge`: always invalidates the iterators of both containers.
   - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate the iterators if an element is inserted.
   - `erase`: always invalidates the iterators. Use the returned iterator.
+  - With an [inline capacity](#small-maps): the move constructor, the move assignment and `swap` invalidate the iterators, references and pointers to inline elements.
 - `emplace` constructs the element first, and inserts it if its key is not in the container yet. `try_emplace` constructs nothing if the key is there.
 - There is no bucket interface beyond `bucket_count`, and there are no node handles. `merge` moves the elements, or copies them if their move constructor can throw, instead of transferring nodes.
 - Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws. If they are nothrow move constructible, their move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption. If they are also nothrow move assignable, an insertion or an erasure moves the elements after it in its group of 64 buckets with their move assignment, as `std::vector::insert` and `std::vector::erase` do.
@@ -146,6 +147,39 @@ int main() {
     map.erase(std::string_view{"Jane Doe"});
 }
 ```
+
+## Small maps
+
+The template parameter `inline_capacity` (default 0) is the number of elements that a container keeps in the container object itself, without an allocation. Many small maps, for example the maps of the nodes of a tree, then need no heap memory and no pointer chase:
+
+```c++
+// up to 4 elements in the map object, sizeof is 96 with std::allocator on 64 bit targets
+using small_map = dice::sparse_map<std::uint64_t, std::uint64_t, std::hash<std::uint64_t>, std::equal_to<std::uint64_t>,
+                                   std::allocator<std::pair<std::uint64_t, std::uint64_t>>,
+                                   dice::unordered_sparse::sparsity::medium, 4>;
+```
+
+The container object then holds group 0 of a table of 64 buckets: a bitmap of the buckets that hold an element, a bitmap of the deleted buckets, and room for `inline_capacity` elements, densely in bucket order. A lookup is the one of a table of 64 buckets. When an insertion finds the inline group full, the elements move into an allocated group of 64 buckets, in the same buckets and in the same order, without a rehash. A lower maximum load factor lowers the limit to the load threshold of 64 buckets. An erase of an inline element moves the elements after it, in the container object, and marks its bucket as deleted only while an element can be outside the bucket of its hash. So it allocates nothing, does not throw unless the hash function or the key equality throws, and keeps the order of the other elements. When the elements and the deleted buckets reach twice the inline capacity (at most the clean-up threshold of 64 buckets), an insertion rebuilds the inline group, as a table rebuilds its buckets.
+
+The inline capacity is at most 32. Inline storage makes the container object larger, also for a container that holds more elements than fit inline. With `std::allocator` on 64 bit targets:
+
+| type | inline capacity 0 | inline capacity 4 |
+|---|---:|---:|
+| `sparse_map<std::uint64_t, std::uint64_t>` | 72 | 96 |
+| `sparse_set<std::uint64_t>` | 72 | 72 |
+| `sparse_map<std::string, std::uint64_t>` (libstdc++) | 72 | 192 |
+
+The inline group takes the place of the state of the buckets (56 bytes), so the first inline elements cost nothing: with 16 bytes of bitmaps, 40 bytes are left, 2 `uint64_t -> uint64_t` elements or 5 `uint64_t` keys. With metall's allocator every size is 8 bytes larger.
+
+An inline capacity other than 0 does not compile for:
+
+- elements whose move constructor can throw (a `static_assert`). The inline elements move one by one in a move, a swap and the move into an allocated group, and `noexcept` of the move constructor and of `swap` does not depend on the element type. Such elements keep the holes of their groups, see [exception safety](#exception-safety).
+- elements with an alignment larger than the alignment of the allocator's pointer type and `size_type`, 8 bytes with `std::allocator` on 64 bit targets (a `static_assert`).
+- a key or a mapped type that is incomplete where the container type is instantiated, for example a map that is a member of its own mapped type. The container object holds the elements, so the compiler needs their size, and it reports the incomplete type, for example "field has incomplete type" (clang) or "has incomplete type" (gcc) for a map, and "incomplete type used in type trait expression" (clang) or "invalid use of incomplete type" (gcc) for a set. The inline capacity 0 allows incomplete types.
+
+Move construction, move assignment and `swap` move the inline elements one by one. So, unlike with `std::unordered_map`, they invalidate the iterators, references and pointers to inline elements, and a byte copy of a container object is not a move. In a constant expression the inline group holds no element: the first insertion allocates the group of 64 buckets. `bucket_count()` of a container with inline elements is 64, of an empty inline container 0. `reserve(n)` keeps an empty container inline if `n` elements fit, and a bucket count `n` from 1 to 64, in the constructor or in `rehash(n)`, gives an empty container an allocated group instead of the inline group.
+
+The inline capacity and the layout of the inline group are part of the [persisted format](design.md#the-persisted-format).
 
 ## Hash functions
 
