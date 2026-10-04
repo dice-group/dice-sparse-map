@@ -169,11 +169,11 @@ The `sparsity` template parameter trades insertion speed for memory. With `spars
 
 | sparsity | bytes per element, `uint64_t -> uint64_t` | bytes per element, `std::string -> uint64_t` | build, `uint64_t -> size_t` | build, `std::string -> size_t` |
 |---|---:|---:|---:|---:|
-| `high` | 17.64 (peak 17.65) | 42.11 (peak 42.12) | 11.8 ms | 40.3 ms |
-| `medium` | 18.30 (peak 18.31) | 43.76 (peak 43.77) | 9.5 ms | 33.5 ms |
-| `low` | 19.59 (peak 19.60) | 47.05 (peak 47.06) | 8.2 ms | 29.4 ms |
+| `high` | 17.64 (peak 17.65) | 42.11 (peak 42.12) | 11.0 ms | 41.2 ms |
+| `medium` | 18.30 (peak 18.31) | 43.76 (peak 43.77) | 8.9 ms | 34.1 ms |
+| `low` | 19.59 (peak 19.60) | 47.05 (peak 47.06) | 7.6 ms | 29.3 ms |
 
-Bytes per element: the memory that a map with 100000 elements requests from its allocator after the build, and the peak during the build (without the heap memory of the strings). A rehash frees the old buckets while it moves the elements, so the peak is close to the memory after the build, see [exception safety](#exception-safety). Build: 200000 insertions into an empty map. Measured with the benchmarks of this repository (see [benchmarks/README.md](../benchmarks/README.md)) on an i9-14900K, one pinned core, clang 20 Release `-march=x86-64-v2`, median of two runs.
+Bytes per element: the memory that a map with 100000 elements requests from its allocator after the build, and the peak during the build (without the heap memory of the strings). A rehash frees the old buckets while it moves the elements, so the peak is close to the memory after the build, see [exception safety](#exception-safety). Build: 200000 insertions into an empty map. Measured with the benchmarks of this repository (see [benchmarks/README.md](../benchmarks/README.md)) on an i9-14900K, one pinned core, clang 20 Release `-march=x86-64-v2`, median of three runs.
 
 ## Exception safety
 
