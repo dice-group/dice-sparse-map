@@ -966,6 +966,36 @@ namespace dice::unordered_sparse {
             }
 
             /**
+             * Calls `f` with the values as `for_each_value` does, until `f` returns `false`. `f` returns `bool`.
+             * @return `false` if `f` returned `false`, otherwise `true`
+             */
+            template<typename Self, typename F>
+            constexpr bool for_each_value_while(this Self &self, F &f) {
+                auto *slot = self.values();
+                if constexpr (has_holes) {
+                    if (self.has_hole()) {
+                        // every occupied bucket has a slot, in the order of the buckets, a hole too
+                        bitmap_type const holes = self.bitmap_vals_ & self.bitmap_deleted_vals_;
+                        for (bitmap_type occupied = self.bitmap_vals_; occupied != 0; occupied &= occupied - 1, ++slot) {
+                            bitmap_type const lowest = occupied & (~occupied + 1);
+                            if ((holes & lowest) == 0 && !f(*slot)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                }
+
+                auto *const end = slot + self.nb_elements_;
+                for (; slot != end; ++slot) {
+                    if (!f(*slot)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            /**
              * Asks the processor to load the cache line of the first value of the group, without waiting for it. A
              * prefetch does not fault, also without values. Does nothing in a constant evaluation and with a compiler
              * without `__builtin_prefetch`.
@@ -2300,6 +2330,57 @@ namespace dice::unordered_sparse {
                     }
                     group->for_each_value(visit);
                 }
+            }
+
+            /**
+             * Calls `f` with the elements as `for_each` does, until `f` returns `false`. The result of `f` converts to
+             * `bool`. The loops are those of `for_each`, with `sparse_array::for_each_value_while` for the values of a
+             * group, and with the same prefetch. It returns at the first `false`. The rules for `f` are those of
+             * `for_each`.
+             * @return `true` if every result of `f` converts to `true` (also for an empty table), `false` if a result
+             * of `f` converts to `false`
+             */
+            template<typename Self, typename F>
+            constexpr bool for_each_while(this Self &self, F &f) {
+                using group_type = std::conditional_t<std::is_const_v<Self>, sparse_array const, sparse_array>;
+
+                auto visit = [&f](auto &slot) -> bool {
+                    if constexpr (Policy::is_map) {
+                        using reference_type = std::conditional_t<std::is_const_v<Self>, const_reference, reference>;
+                        return std::invoke(f, reference_type{Policy::key(slot), Policy::mapped(slot)});
+                    } else {
+                        return std::invoke(f, std::as_const(slot));
+                    }
+                };
+
+                if constexpr (has_inline_group) {
+                    if (self.is_inline_) {
+                        // the inline elements lie densely in bucket order, without holes, as the iterators visit them
+                        auto *slot = self.inline_slots();
+                        auto *const end = slot + self.nb_elements_;
+                        for (; slot != end; ++slot) {
+                            if (!visit(*slot)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                }
+
+                DICE_UNORDERED_SPARSE_ASSERT(self.first_nonempty_group_is_plausible());
+                group_type *const last = self.buckets_end();
+                for (group_type *group = self.buckets_begin() + self.table().first_nonempty_group; group != last; ++group) {
+                    if constexpr (for_each_prefetch_distance > 0) {
+                        // only a group that exists, so that no pointer goes past the end of the bucket array
+                        if (last - group > for_each_prefetch_distance) {
+                            group[for_each_prefetch_distance].prefetch_values();
+                        }
+                    }
+                    if (!group->for_each_value_while(visit)) {
+                        return false;
+                    }
+                }
+                return true;
             }
 
             /*

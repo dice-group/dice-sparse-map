@@ -57,7 +57,8 @@ namespace dice::unordered_sparse {
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - `emplace` constructs the element first and inserts it if its key is not in the map.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
-     *  - `for_each(f)` calls `f` with every element.
+     *  - `for_each(f)` calls `f` with every element, and `for_each_while(f)` calls it until `f` returns `false`.
+     *    Use `for_each` for a pass over all elements and `for_each_while` to stop early.
      *
      * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
      * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
@@ -366,6 +367,33 @@ namespace dice::unordered_sparse {
         requires std::invocable<F &, std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const_reference, reference>>
         constexpr void for_each(this Self &&self, F &&f) {
             self.sparse_map::ht_.for_each(f);
+        }
+
+        /**
+         * Calls `f` with the elements as `for_each` does, in the order of the iterators, until `f` returns `false`.
+         * `f` gets the element as `*it` gives it: `std::pair<Key const &, T &>`, for a const map
+         * `std::pair<Key const &, T const &>`. The result of `f` converts to `bool`, and a constraint checks
+         * `std::predicate`. The constraint checks only the syntax: `f` may change its own state and the mapped
+         * values, which a `std::predicate` must not. `true` goes on, `false` stops. The loop and the prefetch are those
+         * of `for_each`, and the loop checks the result of `f` at every element. A pass that stops early prefetches at
+         * most a few groups that it does not visit.
+         *
+         * The rules for `f` are those of `for_each`: `f` may change the mapped values through the reference, and it may
+         * read the map. It must not insert or erase elements or change the map in another way, otherwise the behaviour
+         * is undefined. If `f` throws, the exception leaves `for_each_while`. The elements that `f` got before keep what
+         * `f` did to them, and the map is not changed otherwise.
+         *
+         * The same member template serves a map that is const and a map that is not, as for `for_each`. So the
+         * constraint is checked only with the reference type of the call, and a generic `f` that writes through the
+         * reference works. A class with the map as a private or protected base calls `for_each_while` through a
+         * `static_cast` to the map type. A direct call does not compile there.
+         * @return `true` if every result of `f` converts to `true` (also for an empty map), `false` if a result of `f`
+         * converts to `false` (also at the last element)
+         */
+        template<typename Self, typename F>
+        requires std::predicate<F &, std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const_reference, reference>>
+        constexpr bool for_each_while(this Self &&self, F &&f) {
+            return self.sparse_map::ht_.for_each_while(f);
         }
 
         /*

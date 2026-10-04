@@ -992,3 +992,191 @@ TEST_CASE_TEMPLATE("for_each of a container in a metall datastore that is opened
         CHECK(iterated_elements(*container) == expected);
     }
 }
+
+namespace {
+    /// the elements of a loop over the iterators of `container` that breaks after `count` elements
+    template<typename Container>
+    [[nodiscard]] std::vector<element> iterated_elements_until(Container const &container, std::size_t count) {
+        std::vector<element> result;
+        for (auto const &e : container) {
+            result.push_back(element_of(e));
+            if (result.size() == count) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    /// the elements that `for_each_while` gives to an `f` that returns `false` at the element `count`, and its result
+    template<typename Container>
+    [[nodiscard]] std::pair<std::vector<element>, bool> for_each_while_elements(Container const &container, std::size_t count) {
+        std::vector<element> result;
+        bool const ran_to_end = container.for_each_while([&result, count](auto const &e) {
+            result.push_back(element_of(e));
+            return result.size() != count;
+        });
+        return {result, ran_to_end};
+    }
+
+    /**
+     * Checks `for_each_while` of `container` against a loop over the iterators that breaks at the same element: a stop
+     * at the first, at the middle and at the last element, and a pass without a stop.
+     */
+    template<typename Container>
+    void check_for_each_while_against_iterators(Container const &container) {
+        auto const size = container.size();
+        for (std::size_t const count : {std::size_t{1}, size / 2, size}) {
+            CHECK(for_each_while_elements(container, count) == std::pair{iterated_elements_until(container, count), false});
+        }
+        CHECK(for_each_while_elements(container, size + 1) == std::pair{iterated_elements(container), true});
+    }
+}  // namespace
+
+// `for_each_while` reaches the elements through the fancy pointers in the group headers, as `for_each` does. After the
+// datastore is mapped at another address, it stops where a loop over the iterators breaks, and `for_each_while` of a
+// map that is not const changes the mapped values of the elements up to the stop. `for_each_while` of a const
+// container in a datastore that is open read-only writes nothing.
+TEST_CASE_TEMPLATE("for_each_while of a container in a metall datastore that is opened again",
+                   container_t,
+                   persistent_map<sparsity::medium>,
+                   persistent_set<sparsity::medium>,
+                   map_with_holes) {
+    datastore_path const store{"for_each_while"};
+    char const *object_name = "container";
+    mapping last_mapping;
+    std::vector<element> expected;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *container = manager.construct<container_t>(object_name)(manager.get_allocator());
+        REQUIRE(container != nullptr);
+        for (std::uint64_t key = 0; key < num_elements; ++key) {
+            insert_one(*container, key);
+        }
+        // erasures leave holes in `map_with_holes`
+        for (std::uint64_t key = 0; key < num_elements; key += 3) {
+            container->erase(key);
+        }
+        expected = iterated_elements(*container);
+        check_for_each_while_against_iterators(*container);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *container = std::get<0>(manager.find<container_t>(object_name));
+        REQUIRE(container != nullptr);
+        check_for_each_while_against_iterators(*container);
+
+        if constexpr (is_map_v<container_t>) {
+            auto const half = expected.size() / 2;
+            std::size_t calls = 0;
+            CHECK_FALSE(container->for_each_while([&calls, half](auto &&e) {
+                increment(e.second);
+                ++calls;
+                return calls != half;
+            }));
+            for (std::size_t i = 0; i < half; ++i) {
+                ++expected[i].second;
+            }
+        }
+        CHECK(iterated_elements(*container) == expected);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_read_only, store.path.c_str()};
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto const *container = std::get<0>(manager.find<container_t>(object_name));
+        REQUIRE(container != nullptr);
+        check_for_each_while_against_iterators(*container);
+        CHECK(iterated_elements(*container) == expected);
+    }
+}
+
+namespace {
+    /**
+     * Checks `for_each_while` of `small`, of `outer` and of the inner maps that `for_each_while` of `outer` gives to its
+     * `f` against a loop over the iterators that breaks at the same element.
+     */
+    void check_for_each_while_of_inline_maps(inline_outer_map const &outer, small_inline_map const &small) {
+        check_for_each_while_against_iterators(small);
+        std::vector<std::uint64_t> keys;
+        CHECK_FALSE(outer.for_each_while([&keys](auto const &e) {
+            keys.push_back(e.first);
+            return false;
+        }));
+        CHECK(keys == std::vector<std::uint64_t>{outer.begin()->first});
+        keys.clear();
+        CHECK(outer.for_each_while([&keys](auto const &e) {
+            keys.push_back(e.first);
+            check_for_each_while_against_iterators(e.second);
+            return true;
+        }));
+        CHECK(keys == keys_by_iterators(outer));
+    }
+}  // namespace
+
+// `for_each_while` reaches the inline elements through the address of the map, as `for_each` does. After the datastore
+// is mapped at another address, it stops where a loop over the iterators breaks, also in inline maps that are inline
+// elements of another map, and `for_each_while` of a map that is not const changes the mapped values up to the stop.
+TEST_CASE("for_each_while of maps with inline elements in a metall datastore that is opened again") {
+    datastore_path const store{"for_each_while_inline"};
+    mapping last_mapping;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *outer = manager.construct<inline_outer_map>("outer")(manager.get_allocator());
+        auto *small = manager.construct<small_inline_map>("small")(manager.get_allocator());
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        fill_inline_maps(*outer, *small);
+        REQUIRE(all_inline(*outer, *small));
+        check_for_each_while_of_inline_maps(*outer, *small);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        REQUIRE(all_inline(*outer, *small));
+        check_for_each_while_of_inline_maps(*outer, *small);
+
+        auto expected = iterated_elements(*small);
+        CHECK_FALSE(small->for_each_while([](auto &&e) {
+            ++e.second;
+            return false;
+        }));
+        ++expected.front().second;
+        CHECK(iterated_elements(*small) == expected);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_read_only, store.path.c_str()};
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto const *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto const *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        REQUIRE(all_inline(*outer, *small));
+        check_for_each_while_of_inline_maps(*outer, *small);
+    }
+}

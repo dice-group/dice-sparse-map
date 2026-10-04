@@ -155,6 +155,15 @@ namespace dice::unordered_sparse::bench {
                                                      }); };
 
     /**
+     * True if `Map` has a member `for_each_while(f)` that calls `f` with the elements until `f` returns `false`. The
+     * iteration benchmarks run it besides the loop over the iterators that breaks.
+     */
+    template<typename Map>
+    concept HasForEachWhile = requires (Map const &map) { map.for_each_while([](auto &&) -> bool {
+                                                              return true;
+                                                          }); };
+
+    /**
      * Makes every map with `Map{}`. A source of maps has a member template `make<Map>()`.
      */
     struct default_source {

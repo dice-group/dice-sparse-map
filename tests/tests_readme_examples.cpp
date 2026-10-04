@@ -83,6 +83,20 @@ TEST_CASE("for_each") {
     CHECK(map == dice::sparse_map<std::string, int>{{"a", 11}, {"b", 12}});
 }
 
+TEST_CASE("for_each_while") {
+    dice::sparse_map<std::string, int> map = {{"a", 1}, {"b", -2}, {"c", 3}};
+    std::string first_negative;
+    bool const all_positive = map.for_each_while([&first_negative](auto const &element) {
+        if (element.second < 0) {
+            first_negative = element.first;
+            return false;
+        }
+        return true;
+    });
+    CHECK_FALSE(all_positive);
+    CHECK(first_negative == "b");
+}
+
 TEST_CASE("heterogeneous lookup") {
     dice::sparse_map<std::string, int, string_hash, std::equal_to<>> map;
 

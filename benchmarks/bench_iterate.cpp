@@ -7,8 +7,9 @@ using namespace dice::unordered_sparse::bench;
 
 /*
  * A pass over all elements of a large map, with the iterators and, for a map with a member `for_each`, with
- * `for_each` (see `iterate_large`). `unordered_dense` and `std::unordered_map` run the loop over the iterators. The
- * metall rows are in `bench_metall.cpp`.
+ * `for_each`, and a pass that can stop, with the iterators and `break` and, for a map with a member `for_each_while`,
+ * with `for_each_while` (see `iterate_large`). `unordered_dense` and `std::unordered_map` run the loops over the
+ * iterators. The metall rows are in `bench_metall.cpp`.
  */
 
 TEST_CASE("iterate sparse_map medium") {

@@ -27,7 +27,7 @@ The interface is the one of `std::unordered_map` and `std::unordered_set`, inclu
 - heterogeneous `find`, `count`, `contains`, `equal_range`, `erase`, `try_emplace`, `insert_or_assign`, `operator[]` and set `insert` (see [heterogeneous lookup](#heterogeneous-lookup)),
 - `lookup` of C++29.
 
-Beyond the standard interface, `for_each` calls a function with every element. In a large container it is faster than a loop over the iterators (see [for_each](#for_each)).
+Beyond the standard interface, `for_each` calls a function with every element, and `for_each_while` calls it until the function returns `false`. In a large container, `for_each` is faster than a loop over the iterators, and `for_each_while` is faster than a loop over the iterators with `break` (see [for_each](#for_each) and [for_each_while](#for_each_while)).
 
 `lookup` returns a reference to the mapped value, or nothing, and never inserts. Its result type is `dice::unordered_sparse::optional_ref<T>`. With a standard library that provides `std::optional<T &>`, this is `std::optional<T &>`. Otherwise it is a type of the library with the same interface.
 
@@ -133,8 +133,25 @@ The elements of a group of 64 buckets lie in one array, and `for_each` runs over
 
 - `f` may change the mapped values through the reference, and it may read the container, for example with `find`. It must not insert or erase elements or change the container in another way (`clear`, `rehash`, `reserve`, assignment, `swap`, `merge`). Otherwise the behaviour is undefined. Note that `operator[]` inserts if the key is not in the map.
 - If `f` throws, the exception leaves `for_each`. The elements that `f` got before keep what `f` did to them, and the container is not changed otherwise.
-- `for_each` returns nothing and ignores the result of `f`. It visits every element, unless `f` throws. A pass that stops early uses the iterators.
-- `for_each` of a map is one member template with an explicit object parameter (`this Self &&self`) for a const map and a map that is not const. So the constraint is checked only with the reference type of the call, and a generic `f` that writes through the reference works. A class with a map as a private or protected base calls `for_each` through a `static_cast` to the map type. A direct call does not compile there.
+- `for_each` returns nothing and ignores the result of `f`. It visits every element, unless `f` throws. A pass that stops early uses `for_each_while`.
+- `for_each` and `for_each_while` of a map are each one member template with an explicit object parameter (`this Self &&self`) for a const map and a map that is not const. So the constraint is checked only with the reference type of the call, and a generic `f` that writes through the reference works. A class with a map as a private or protected base calls them through a `static_cast` to the map type. A direct call does not compile there.
+
+### for_each_while
+
+`for_each_while(f)` calls `f` as `for_each` does, until `f` returns `false`. The result of `f` converts to `bool`, as for the predicate of `std::ranges::find_if`, and a constraint checks this at compile time (`std::predicate`). The constraint checks only the syntax: `f` may change its own state and the mapped values of a map, which a `std::predicate` must not. `true` goes on, `false` stops. `for_each_while` returns `true` if every result of `f` converts to `true`, also for an empty container, and `false` if a result of `f` converts to `false`, also at the last element. The loop, the prefetch and the rules for `f` are those of `for_each`, and the loop checks the result of `f` at every element. So `for_each` is the better choice for a pass over all elements: it is faster with small elements and not slower with others. In a large container, a pass with `for_each_while` is faster than a loop over the iterators with `break`. In a small container it is about as fast.
+
+```c++
+dice::sparse_map<std::string, int> map = {{"a", 1}, {"b", -2}, {"c", 3}};
+std::string first_negative;
+bool const all_positive = map.for_each_while([&first_negative](auto const &element) {
+    if (element.second < 0) {
+        first_negative = element.first;
+        return false;
+    }
+    return true;
+});
+// all_positive is false, first_negative is "b"
+```
 
 ## Heterogeneous lookup
 
@@ -281,7 +298,7 @@ A type that keeps a raw pointer, like `std::string`, cannot live in persistent m
 
 - Make sure that `Key` and `T` have a `noexcept` move constructor. Without it the containers still work, but insertions copy elements and are much slower.
 - Make sure that `Key` and `T` also have a `noexcept` move assignment. Without it, an insertion or an erasure moves the elements of a group by construction and destruction through the allocator, which is slower, most of all with an allocator that has its own `construct` and `destroy`, like the allocator of metall.
-- Use `for_each` for a pass over all elements of a large container. There it is faster than a loop over the iterators.
+- Use `for_each` for a pass over all elements of a large container. There it is faster than a loop over the iterators. Use `for_each_while` for a pass that can stop early. In a large container it is faster than a loop over the iterators with `break`.
 - The library uses `std::popcount`. Compile with `-mpopcnt` or `-march=native` (x86) so that it becomes one instruction.
 - Define `DICE_UNORDERED_SPARSE_DEBUG` (or `TSL_DEBUG`) to enable internal consistency checks.
 

@@ -50,7 +50,8 @@ namespace dice::unordered_sparse {
      *  - The iterators are forward iterators.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
-     *  - `for_each(f)` calls `f` with every key.
+     *  - `for_each(f)` calls `f` with every key, and `for_each_while(f)` calls it until `f` returns `false`. Use
+     *    `for_each` for a pass over all keys and `for_each_while` to stop early.
      *
      * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
      * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
@@ -349,6 +350,25 @@ namespace dice::unordered_sparse {
         requires std::invocable<F &, const_reference>
         constexpr void for_each(F &&f) const {
             ht_.for_each(f);
+        }
+
+        /**
+         * Calls `f` with the keys as `for_each` does, as `Key const &`, in the order of the iterators, until `f` returns
+         * `false`. The result of `f` converts to `bool`, and a constraint checks `std::predicate`. The constraint
+         * checks only the syntax: `f` may change its own state, which a `std::predicate` must not. `true` goes on,
+         * `false` stops. The loop and the prefetch are those of `for_each`, and the loop checks the result of `f` at
+         * every key. A pass that stops early prefetches at most a few groups that it does not visit.
+         *
+         * The rules for `f` are those of `for_each`: `f` may read the set. It must not insert or erase keys or change
+         * the set in another way, otherwise the behaviour is undefined. If `f` throws, the exception leaves
+         * `for_each_while`, and the set is not changed.
+         * @return `true` if every result of `f` converts to `true` (also for an empty set), `false` if a result of `f`
+         * converts to `false` (also at the last key)
+         */
+        template<typename F>
+        requires std::predicate<F &, const_reference>
+        constexpr bool for_each_while(F &&f) const {
+            return ht_.for_each_while(f);
         }
 
         /*

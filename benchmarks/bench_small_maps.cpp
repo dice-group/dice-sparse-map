@@ -1,4 +1,5 @@
 #include "common.hpp"
+#include "map_benchmarks.hpp"
 #include "tracking_allocator.hpp"
 #include "workloads.hpp"
 
@@ -88,18 +89,20 @@ namespace {
         std::cout << std::format("\nsmall maps: {} maps with 1 to 16 elements, {} elements in total, uint64_t -> uint64_t\n\n",
                                  num_maps,
                                  num_elements)
-                  << std::format("| {:<18} | {:>12} | {:>11} | {:>12} | {:>12} | {:>16} | {:>14} | {:>10} | {:>12} | {:>11} |\n",
+                  << std::format("| {:<18} | {:>12} | {:>11} | {:>12} | {:>12} | {:>16} | {:>18} | {:>22} | {:>14} | {:>10} | {:>12} | {:>11} |\n",
                                  "container",
                                  "build ns/map",
                                  "hit ns/find",
                                  "miss ns/find",
                                  "iter ns/elem",
                                  "for_each ns/elem",
+                                 "iter break ns/elem",
+                                 "for_each_while ns/elem",
                                  "destroy ns/map",
                                  "heap B/map",
                                  "allocs/map",
                                  "sizeof(map)")
-                  << std::format("|{:-<20}|{:->13}:|{:->12}:|{:->13}:|{:->13}:|{:->17}:|{:->15}:|{:->11}:|{:->13}:|{:->12}:|\n", "", "", "", "", "", "", "", "", "", "");
+                  << std::format("|{0:-<20}|{0:->13}:|{0:->12}:|{0:->13}:|{0:->13}:|{0:->17}:|{0:->19}:|{0:->23}:|{0:->15}:|{0:->11}:|{0:->13}:|{0:->12}:|\n", "");
     }
 
     /**
@@ -109,7 +112,11 @@ namespace {
      * destroys them. Each phase is timed on its own, and the table shows the median over all rounds.
      * A round times one of the two iteration passes, right after the misses: the iterators in the
      * even rounds, and `for_each` in the odd rounds of a map that has it. The other pass runs
-     * untimed after it. So both passes are timed from the same state.
+     * untimed after it. So both passes are timed from the same state. Then the same for the passes that can stop, a
+     * loop over the iterators with `break` and, if the map has it, `for_each_while`. Both compare the mapped value of
+     * every element with a value that is not in the maps, so they stop nothing, and the table shows the time per
+     * element. A round times the loop with `break` in the even rounds and `for_each_while` in the odd rounds of a map
+     * that has it, and runs the other pass untimed after it.
      */
     template<typename Family>
     void small_maps(std::string_view container, small_maps_input const &input, std::size_t rounds) {
@@ -124,6 +131,8 @@ namespace {
         std::vector<std::chrono::nanoseconds> miss_times;
         std::vector<std::chrono::nanoseconds> iterate_times;
         std::vector<std::chrono::nanoseconds> for_each_times;
+        std::vector<std::chrono::nanoseconds> iterate_break_times;
+        std::vector<std::chrono::nanoseconds> for_each_while_times;
         std::vector<std::chrono::nanoseconds> destroy_times;
         std::size_t heap_bytes = 0;
         std::size_t live_allocations = 0;
@@ -198,6 +207,43 @@ namespace {
             }
             auto const visited = clock::now();
 
+            // the values are 0 to `num_elements - 1`, so `num_elements` is in no map and stops nothing
+            auto const no_stop = static_cast<std::uint64_t>(num_elements);
+            std::uint64_t iterate_break_sum = 0;
+            bool iterate_break_ran_to_end = true;
+            auto const iterate_break = [&] {
+                for (auto const &map : maps) {
+                    auto const [sum, ran_to_end] = sum_mapped_until<false>(map, no_stop);
+                    iterate_break_sum += sum;
+                    iterate_break_ran_to_end = iterate_break_ran_to_end && ran_to_end;
+                }
+            };
+            std::uint64_t for_each_while_sum = input.value_sum;
+            bool for_each_while_ran_to_end = true;
+            auto const visit_while = [&] {
+                if constexpr (HasForEachWhile<map_t>) {
+                    for_each_while_sum = 0;
+                    for (auto const &map : maps) {
+                        auto const [sum, ran_to_end] = sum_mapped_until<true>(map, no_stop);
+                        for_each_while_sum += sum;
+                        for_each_while_ran_to_end = for_each_while_ran_to_end && ran_to_end;
+                    }
+                }
+            };
+            bool const time_for_each_while = HasForEachWhile<map_t> && round % 2 == 1;
+            if (time_for_each_while) {
+                visit_while();
+            } else {
+                iterate_break();
+            }
+            auto const timed_while = clock::now();
+            if (time_for_each_while) {
+                iterate_break();
+            } else {
+                visit_while();
+            }
+            auto const visited_while = clock::now();
+
             heap_bytes = stats.current;
             live_allocations = stats.live_allocations;
             maps.clear();
@@ -207,6 +253,10 @@ namespace {
             CHECK(false_hits == 0);
             CHECK(iterate_sum == input.value_sum);
             CHECK(for_each_sum == input.value_sum);
+            CHECK(iterate_break_sum == input.value_sum);
+            CHECK(iterate_break_ran_to_end);
+            CHECK(for_each_while_sum == input.value_sum);
+            CHECK(for_each_while_ran_to_end);
             CHECK(stats.current == 0);
             CHECK(stats.live_allocations == 0);
 
@@ -218,17 +268,25 @@ namespace {
             } else {
                 iterate_times.push_back(timed - missed);
             }
-            destroy_times.push_back(destroyed - visited);
+            if (time_for_each_while) {
+                for_each_while_times.push_back(timed_while - visited);
+            } else {
+                iterate_break_times.push_back(timed_while - visited);
+            }
+            destroy_times.push_back(destroyed - visited_while);
         }
 
         auto const for_each_ns = for_each_times.empty() ? std::string{"-"} : std::format("{:.2f}", median_ns_per(for_each_times, num_elements));
-        std::cout << std::format("| {:<18} | {:>12.1f} | {:>11.1f} | {:>12.1f} | {:>12.2f} | {:>16} | {:>14.1f} | {:>10.1f} | {:>12.2f} | {:>11} |\n",
+        auto const for_each_while_ns = for_each_while_times.empty() ? std::string{"-"} : std::format("{:.2f}", median_ns_per(for_each_while_times, num_elements));
+        std::cout << std::format("| {:<18} | {:>12.1f} | {:>11.1f} | {:>12.1f} | {:>12.2f} | {:>16} | {:>18.2f} | {:>22} | {:>14.1f} | {:>10.1f} | {:>12.2f} | {:>11} |\n",
                                  container,
                                  median_ns_per(build_times, num_maps),
                                  median_ns_per(hit_times, num_elements),
                                  median_ns_per(miss_times, num_elements),
                                  median_ns_per(iterate_times, num_elements),
                                  for_each_ns,
+                                 median_ns_per(iterate_break_times, num_elements),
+                                 for_each_while_ns,
                                  median_ns_per(destroy_times, num_maps),
                                  static_cast<double>(heap_bytes) / static_cast<double>(num_maps),
                                  static_cast<double>(live_allocations) / static_cast<double>(num_maps),

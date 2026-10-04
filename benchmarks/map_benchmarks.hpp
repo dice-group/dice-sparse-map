@@ -12,8 +12,10 @@
 #include <cstdint>
 #include <format>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <string_view>
+#include <utility>
 
 /**
  * The map benchmarks that run for many container configurations, with the plain allocator and
@@ -218,6 +220,32 @@ namespace dice::unordered_sparse::bench {
     }
 
     /**
+     * The sum of the mapped values of the elements of `map` up to the element with the mapped value `stop_value`, with
+     * `map.for_each_while` if `use_for_each_while`, and otherwise with a loop over the iterators that breaks there. Both
+     * compare the mapped value of every element with `stop_value`, so a `stop_value` that is not in the map stops
+     * nothing. The second value is true if the pass did not stop.
+     */
+    template<bool use_for_each_while, typename Map>
+    [[nodiscard]] std::pair<std::uint64_t, bool> sum_mapped_until(Map const &map, std::uint64_t stop_value) {
+        std::uint64_t sum = 0;
+        if constexpr (use_for_each_while) {
+            bool const ran_to_end = map.for_each_while([&sum, stop_value](auto const &element) {
+                sum += element.second;
+                return element.second != stop_value;
+            });
+            return {sum, ran_to_end};
+        } else {
+            for (auto const &element : map) {
+                sum += element.second;
+                if (element.second == stop_value) {
+                    return {sum, false};
+                }
+            }
+            return {sum, true};
+        }
+    }
+
+    /**
      * A map from `make_map` with `num_elements` random keys. The value of a key is the number of keys inserted
      * before it, so the values are 0 to `num_elements - 1`.
      */
@@ -234,7 +262,10 @@ namespace dice::unordered_sparse::bench {
 
     /**
      * Builds a map of `num_elements` entries, then times one pass over all its elements with the iterators and, if
-     * the map has it, with `for_each`. Each pass sums the mapped values.
+     * the map has it, with `for_each`. Each pass sums the mapped values. Then it times the passes that can stop: a loop
+     * over the iterators with `break` and, if the map has it, `for_each_while`, once without a stop and once with a
+     * stop at the element in the middle of the order of the iterators. The time of a pass with a stop is per element
+     * that it visits.
      */
     template<typename Map, typename Source>
     void iterate_rows(ankerl::nanobench::Bench &bench, std::string_view name, std::size_t num_elements, Source const &source) {
@@ -251,13 +282,41 @@ namespace dice::unordered_sparse::bench {
                 CHECK(sum_mapped<true>(map) == expected);
             });
         }
+
+        // the mapped values are 0 to `num_elements - 1`, so `num_elements` is not in the map
+        auto const no_stop = static_cast<std::uint64_t>(num_elements);
+        auto const expected_no_stop = std::pair{expected, true};
+        if constexpr (HasForEachWhile<Map>) {
+            bench.run(std::format("{} {} entries, for_each_while, no stop", name, num_elements), [&] {
+                CHECK(sum_mapped_until<true>(map, no_stop) == expected_no_stop);
+            });
+        }
+        bench.run(std::format("{} {} entries, iterators with break, no stop", name, num_elements), [&] {
+            CHECK(sum_mapped_until<false>(map, no_stop) == expected_no_stop);
+        });
+
+        // the mapped value of the element in the middle of the order of the iterators
+        auto const half = num_elements / 2;
+        auto const middle_value = std::next(map.begin(), static_cast<std::ptrdiff_t>(half))->second;
+        auto const expected_middle = sum_mapped_until<false>(map, middle_value);
+        REQUIRE(!expected_middle.second);
+        bench.batch(half + 1);
+        if constexpr (HasForEachWhile<Map>) {
+            bench.run(std::format("{} {} entries, for_each_while, stop in the middle", name, num_elements), [&] {
+                CHECK(sum_mapped_until<true>(map, middle_value) == expected_middle);
+            });
+        }
+        bench.run(std::format("{} {} entries, iterators with break, stop in the middle", name, num_elements), [&] {
+            CHECK(sum_mapped_until<false>(map, middle_value) == expected_middle);
+        });
     }
 
     /**
      * A pass over all elements of a map of 1 million and of 10 million entries, `uint64_t -> uint64_t` and
-     * `std::string -> uint64_t`, with a loop over the iterators and, if the map has it, with `for_each`. The maps are
-     * built before the timed runs, so that the runs time the pass and not a fill. nanobench reports the time per
-     * element. `Family::map<Key, T>` is the map type, `source` makes the empty maps.
+     * `std::string -> uint64_t`, with a loop over the iterators and, if the map has it, with `for_each`, and the passes
+     * that can stop (see `iterate_rows`). The maps are built before the timed runs, so that the runs time the pass and
+     * not a fill. nanobench reports the time per element. `Family::map<Key, T>` is the map type, `source` makes the
+     * empty maps.
      */
     template<typename Family, typename Source = default_source>
     void iterate_large(std::string_view container, Source const &source = Source{}) {
