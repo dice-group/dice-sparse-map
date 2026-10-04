@@ -17,7 +17,7 @@ sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>
 
 The defaults are `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>`, `std::equal_to<Key>`, `std::allocator<std::pair<Key, T>>` (`std::allocator<Key>` for the set), `sh::sparsity::medium` and `sh::allocation_failure::terminating`.
 
-The bucket count is 0 or a power of two and doubles when the table grows. The exception guarantee follows from the type of the elements (see [exception safety](#exception-safety)).
+The bucket count is 0 or a power of two of at least 64 and doubles when the table grows. The exception guarantee follows from the type of the elements (see [exception safety](#exception-safety)).
 
 ## The interface
 
@@ -152,7 +152,7 @@ int main() {
 
 ## Hash functions
 
-The bucket count is 0 or a power of two, and a hash picks its bucket with a mask on its low bits, as it is, without mixing. So the hash function must be avalanching: every bit of the input changes about half of the bits of the output. `std::hash` is not avalanching: for integers, libstdc++ and libc++ return the value itself.
+The bucket count is 0 or a power of two of at least 64, and a hash picks its bucket with a mask on its low bits, as it is, without mixing. So the hash function must be avalanching: every bit of the input changes about half of the bits of the output. `std::hash` is not avalanching: for integers, libstdc++ and libc++ return the value itself.
 
 A `static_assert` checks `dice::sparse_map::sh::hash_is_avalanching_v<Hash>`. The trait is true if `Hash` has the public member type `is_avalanching`, its own or of a public base: `using is_avalanching = void;` as in `ankerl::unordered_dense`, or `using is_avalanching = std::true_type;` as in `boost::unordered`. A member type with a `value` that is false, like `std::false_type`, does not count. For a hash function that you cannot change, specialize `dice::sparse_map::sh::hash_is_avalanching`.
 

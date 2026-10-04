@@ -45,7 +45,7 @@ So an erasure moves nothing and does not throw in the group (`erase(key)` can st
 
 ## Hashing and probing
 
-The bucket count is 0 or a power of two. A hash picks its bucket with a mask on its low bits, as it is, without mixing. So the hash function must be avalanching (see [hash functions](usage.md#hash-functions)).
+The bucket count is 0 or a power of two of at least 64, one group. A table with fewer buckets would still have one group, so it would take the same memory and grow five more times before it holds 32 elements. A hash picks its bucket with a mask on its low bits, as it is, without mixing. So the hash function must be avalanching (see [hash functions](usage.md#hash-functions)).
 
 Collisions are resolved with quadratic probing. Probe number `i` goes `i` buckets further than probe number `i - 1`.
 
@@ -54,7 +54,7 @@ Collisions are resolved with quadratic probing. Probe number `i` goes `i` bucket
 
 ## Growth and rehash
 
-A new container has no buckets. The default maximum load factor is 0.5. `max_load_factor(float)` clamps its argument to [0.1, 0.8]. When the number of elements has reached the maximum load factor times the bucket count, the next insertion doubles the bucket count (a container without buckets gets 2).
+A new container has no buckets. The first insertion gives it one group of 64 buckets, and `reserve` and `rehash` round a bucket count that is not 0 up to 64. The default maximum load factor is 0.5. `max_load_factor(float)` clamps its argument to [0.1, 0.8]. When the number of elements has reached the maximum load factor times the bucket count, the next insertion doubles the bucket count.
 
 A rehash builds a new table and inserts every element into it, which calls the hash function once per element. How the elements get there depends on their type:
 
