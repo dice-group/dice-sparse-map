@@ -1475,21 +1475,21 @@ namespace dice::unordered_sparse {
          * stored elements can throw, the groups have holes (`has_holes`, see `sparse_array`): an erase destroys the
          * element in place and leaves a hole, which keeps the memory of the element until the group is compacted by
          * an insertion into another bucket of the group or by a rehash, or until its last element is erased. A copy
-         * of the table has no holes. A hole counts as a deleted bucket in `nb_deleted_buckets_`, so the clean-up
-         * rehash bounds the holes as it bounds the other deleted buckets.
+         * of the table has no holes. A hole counts as a deleted bucket in `table_state::nb_deleted_buckets`, so the
+         * clean-up rehash bounds the holes as it bounds the other deleted buckets.
          *
          * `begin()` is constant time and writes nothing. The table keeps the index of its first group that holds an
-         * element (`first_nonempty_group_`), and every operation that changes the table keeps it exact. An erase that
-         * empties this group reads the headers of the groups after it, up to the next group with an element. So the
-         * loop `while (!empty()) { erase(begin()); }` reads every group header once in total.
+         * element (`table_state::first_nonempty_group`), and every operation that changes the table keeps it exact. An
+         * erase that empties this group reads the headers of the groups after it, up to the next group with an
+         * element. So the loop `while (!empty()) { erase(begin()); }` reads every group header once in total.
          *
          * The stored elements must be nothrow move constructible and/or copy constructible. The behaviour is
          * undefined if their destructor throws. See `sparse_array` for what a nothrow move needs from the allocator.
          *
-         * The buckets are kept in two dimensions. `buckets_` points to an array of `nb_sparse_buckets_`
-         * `sparse_array`s, and each `sparse_array` holds `sparse_array::bitmap_nb_bits` buckets. Bucket `ibucket`
-         * is at `buckets_[sparse_array::sparse_ibucket(ibucket)]`, position
-         * `sparse_array::index_in_sparse_bucket(ibucket)`.
+         * The state of the buckets is one struct, `table_state`. The buckets are kept in two dimensions.
+         * `table_state::buckets` points to an array of `table_state::nb_sparse_buckets` `sparse_array`s, and each
+         * `sparse_array` holds `sparse_array::bitmap_nb_bits` buckets. Bucket `ibucket` is at
+         * `buckets[sparse_array::sparse_ibucket(ibucket)]`, position `sparse_array::index_in_sparse_bucket(ibucket)`.
          *
          * The bucket count is 0 or a power of two of at least `min_bucket_count` (one group), and it doubles when the
          * table grows. A hash maps to a bucket with a mask, after `mixed_hash` (see `hash_is_avalanching`). Collisions
@@ -1539,6 +1539,44 @@ namespace dice::unordered_sparse {
             using bucket_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<sparse_array>;
             using bucket_allocator_traits = std::allocator_traits<bucket_allocator_type>;
             using bucket_pointer = typename bucket_allocator_traits::pointer;
+
+            /**
+             * The state of the buckets of the table.
+             */
+            struct table_state {
+                /**
+                 * Array of `nb_sparse_buckets` `sparse_array`s, nullptr if the table has no buckets.
+                 */
+                bucket_pointer buckets = nullptr;
+                size_type nb_sparse_buckets = 0;
+
+                /**
+                 * 0 or a power of two of at least `min_bucket_count`.
+                 */
+                size_type bucket_count = 0;
+
+                /**
+                 * The index of the first group that holds an element, or `nb_sparse_buckets` if there is none. Every
+                 * operation that changes the table keeps it exact, so that `begin()` is constant time and writes nothing.
+                 */
+                size_type first_nonempty_group = 0;
+
+                /**
+                 * Number of buckets that are marked as deleted, holes included.
+                 */
+                size_type nb_deleted_buckets = 0;
+
+                /**
+                 * Maximum that the number of elements can reach before a rehash grows the table.
+                 */
+                size_type load_threshold_rehash = 0;
+
+                /**
+                 * Maximum that the number of elements plus `nb_deleted_buckets` can reach before a rehash removes the
+                 * deleted-bucket markers.
+                 */
+                size_type load_threshold_clear_deleted = 0;
+            };
 
             /**
              * True if a group can have holes (see `sparse_array`): the move constructor of the stored elements can
@@ -1787,9 +1825,10 @@ namespace dice::unordered_sparse {
                 : alloc_(alloc),
                   hash_(hash),
                   key_equal_(equal) {
-                bucket_count_ = rounded_bucket_count(bucket_count);
-                if (bucket_count_ > 0) {
-                    allocate_buckets(sparse_array::nb_sparse_buckets(bucket_count_));
+                size_type const rounded = rounded_bucket_count(bucket_count);
+                if (rounded > 0) {
+                    allocate_buckets(table_, sparse_array::nb_sparse_buckets(rounded));
+                    table_.bucket_count = rounded;
                 }
 
                 this->max_load_factor(max_load_factor);
@@ -1802,7 +1841,7 @@ namespace dice::unordered_sparse {
             }
 
             constexpr ~sparse_hash() {
-                destroy_buckets();
+                destroy_buckets(table_);
             }
 
             constexpr sparse_hash(sparse_hash const &other)
@@ -1818,12 +1857,7 @@ namespace dice::unordered_sparse {
                 : alloc_(alloc),
                   hash_(other.hash_),
                   key_equal_(other.key_equal_),
-                  bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
-                  first_nonempty_group_(other.first_nonempty_group_),
-                  nb_deleted_buckets_(other.nb_deleted_buckets_),
-                  load_threshold_rehash_(other.load_threshold_rehash_),
-                  load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
                   max_load_factor_(other.max_load_factor_) {
                 copy_buckets_from(other);
             }
@@ -1834,15 +1868,9 @@ namespace dice::unordered_sparse {
                 : alloc_(std::move(other.alloc_)),
                   hash_(std::move(other.hash_)),
                   key_equal_(std::move(other.key_equal_)),
-                  buckets_(std::exchange(other.buckets_, nullptr)),
-                  nb_sparse_buckets_(std::exchange(other.nb_sparse_buckets_, 0)),
-                  bucket_count_(std::exchange(other.bucket_count_, 0)),
                   nb_elements_(std::exchange(other.nb_elements_, 0)),
-                  first_nonempty_group_(std::exchange(other.first_nonempty_group_, 0)),
-                  nb_deleted_buckets_(std::exchange(other.nb_deleted_buckets_, 0)),
-                  load_threshold_rehash_(std::exchange(other.load_threshold_rehash_, 0)),
-                  load_threshold_clear_deleted_(std::exchange(other.load_threshold_clear_deleted_, 0)),
-                  max_load_factor_(other.max_load_factor_) {
+                  max_load_factor_(other.max_load_factor_),
+                  table_(std::exchange(other.table_, table_state{})) {
             }
 
             /**
@@ -1857,19 +1885,13 @@ namespace dice::unordered_sparse {
                 : alloc_(alloc),
                   hash_(other.hash_),
                   key_equal_(other.key_equal_),
-                  bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
-                  first_nonempty_group_(other.first_nonempty_group_),
-                  nb_deleted_buckets_(other.nb_deleted_buckets_),
-                  load_threshold_rehash_(other.load_threshold_rehash_),
-                  load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
                   max_load_factor_(other.max_load_factor_) {
                 if (allocator_is_always_equal || alloc_ == other.alloc_) {
-                    buckets_ = std::exchange(other.buckets_, nullptr);
-                    nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
+                    table_ = std::exchange(other.table_, table_state{});
                 } else {
                     move_buckets_from(other);
-                    other.destroy_buckets();
+                    other.destroy_buckets(other.table_);
                 }
                 other.reset_to_empty();
             }
@@ -1879,7 +1901,7 @@ namespace dice::unordered_sparse {
                     return *this;
                 }
 
-                destroy_buckets();
+                destroy_buckets(table_);
                 reset_to_empty();
 
                 if constexpr (propagate_on_copy_assignment) {
@@ -1892,12 +1914,7 @@ namespace dice::unordered_sparse {
                 // on an exception *this stays empty
                 copy_buckets_from(other);
 
-                bucket_count_ = other.bucket_count_;
                 nb_elements_ = other.nb_elements_;
-                first_nonempty_group_ = other.first_nonempty_group_;
-                nb_deleted_buckets_ = other.nb_deleted_buckets_;
-                load_threshold_rehash_ = other.load_threshold_rehash_;
-                load_threshold_clear_deleted_ = other.load_threshold_clear_deleted_;
                 max_load_factor_ = other.max_load_factor_;
 
                 return *this;
@@ -1910,7 +1927,7 @@ namespace dice::unordered_sparse {
                     return *this;
                 }
 
-                destroy_buckets();
+                destroy_buckets(table_);
                 reset_to_empty();
 
                 if constexpr (propagate_on_move_assignment || allocator_is_always_equal) {
@@ -1927,18 +1944,14 @@ namespace dice::unordered_sparse {
                         hash_ = std::move(other.hash_);
                         key_equal_ = std::move(other.key_equal_);
                     } catch (...) {
-                        destroy_buckets();
+                        destroy_buckets(table_);
+                        reset_to_empty();
                         throw;
                     }
-                    other.destroy_buckets();
+                    other.destroy_buckets(other.table_);
                 }
 
-                bucket_count_ = other.bucket_count_;
                 nb_elements_ = other.nb_elements_;
-                first_nonempty_group_ = other.first_nonempty_group_;
-                nb_deleted_buckets_ = other.nb_deleted_buckets_;
-                load_threshold_rehash_ = other.load_threshold_rehash_;
-                load_threshold_clear_deleted_ = other.load_threshold_clear_deleted_;
                 max_load_factor_ = other.max_load_factor_;
 
                 other.reset_to_empty();
@@ -1955,7 +1968,7 @@ namespace dice::unordered_sparse {
              */
             [[nodiscard]] constexpr iterator begin() noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(first_nonempty_group_is_plausible());
-                sparse_array *const bucket = buckets_begin() + first_nonempty_group_;
+                sparse_array *const bucket = buckets_begin() + table().first_nonempty_group;
                 sparse_array *const last = buckets_end();
 
                 if constexpr (has_holes) {
@@ -1971,7 +1984,7 @@ namespace dice::unordered_sparse {
 
             [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(first_nonempty_group_is_plausible());
-                sparse_array const *const bucket = buckets_begin() + first_nonempty_group_;
+                sparse_array const *const bucket = buckets_begin() + table().first_nonempty_group;
                 sparse_array const *const last = buckets_end();
 
                 if constexpr (has_holes) {
@@ -2029,8 +2042,8 @@ namespace dice::unordered_sparse {
                 }
 
                 nb_elements_ = 0;
-                first_nonempty_group_ = nb_sparse_buckets_;
-                nb_deleted_buckets_ = 0;
+                table().first_nonempty_group = table().nb_sparse_buckets;
+                table().nb_deleted_buckets = 0;
             }
 
             constexpr std::pair<iterator, bool> insert(value_type const &value) {
@@ -2162,7 +2175,7 @@ namespace dice::unordered_sparse {
                                            : bucket->index_of(pos.slot_);
                     bucket->erase_in_place(alloc_, index);
                     --nb_elements_;
-                    ++nb_deleted_buckets_;
+                    ++table().nb_deleted_buckets;
 
                     auto const next_index = bucket->next_value_index(index);
                     if (next_index != sparse_array::bitmap_nb_bits) {
@@ -2171,7 +2184,7 @@ namespace dice::unordered_sparse {
                 } else {
                     slot_type *const next_slot = bucket->erase(alloc_, pos.slot_);
                     --nb_elements_;
-                    ++nb_deleted_buckets_;
+                    ++table().nb_deleted_buckets;
 
                     if (next_slot != bucket->end()) {
                         return iterator(bucket, next_slot);
@@ -2180,10 +2193,10 @@ namespace dice::unordered_sparse {
 
                 // no element follows the erased one in its group
                 if (nb_elements_ == 0) {
-                    first_nonempty_group_ = nb_sparse_buckets_;
+                    table().first_nonempty_group = table().nb_sparse_buckets;
                     return end();
                 }
-                bool const emptied_first_group = group_index(bucket) == first_nonempty_group_ && bucket->empty();
+                bool const emptied_first_group = group_index(bucket) == table().first_nonempty_group && bucket->empty();
 
                 sparse_array *const last = buckets_end();
                 do {
@@ -2191,7 +2204,7 @@ namespace dice::unordered_sparse {
                 } while (bucket != last && bucket->empty());
 
                 if (emptied_first_group) {
-                    first_nonempty_group_ = group_index(bucket);
+                    table().first_nonempty_group = group_index(bucket);
                 }
 
                 if constexpr (has_holes) {
@@ -2282,14 +2295,8 @@ namespace dice::unordered_sparse {
                     DICE_UNORDERED_SPARSE_ASSERT(alloc_ == other.alloc_);
                 }
 
-                swap(buckets_, other.buckets_);
-                swap(nb_sparse_buckets_, other.nb_sparse_buckets_);
-                swap(bucket_count_, other.bucket_count_);
+                swap(table_, other.table_);
                 swap(nb_elements_, other.nb_elements_);
-                swap(first_nonempty_group_, other.first_nonempty_group_);
-                swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
-                swap(load_threshold_rehash_, other.load_threshold_rehash_);
-                swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
                 swap(max_load_factor_, other.max_load_factor_);
             }
 
@@ -2364,7 +2371,7 @@ namespace dice::unordered_sparse {
              * Bucket interface
              */
             [[nodiscard]] constexpr size_type bucket_count() const noexcept {
-                return bucket_count_;
+                return table().bucket_count;
             }
 
             /**
@@ -2400,11 +2407,11 @@ namespace dice::unordered_sparse {
              */
             constexpr void max_load_factor(float ml) noexcept {
                 max_load_factor_ = std::max(min_max_load_factor, std::min(ml, max_max_load_factor));
-                load_threshold_rehash_ = rehash_threshold(bucket_count());
+                table().load_threshold_rehash = rehash_threshold(bucket_count());
 
                 float const max_load_factor_with_deleted_buckets = max_load_factor_ + 0.5f * (1.0f - max_load_factor_);
                 DICE_UNORDERED_SPARSE_ASSERT(max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f);
-                load_threshold_clear_deleted_ = static_cast<size_type>(static_cast<float>(bucket_count()) * max_load_factor_with_deleted_buckets);
+                table().load_threshold_clear_deleted = static_cast<size_type>(static_cast<float>(bucket_count()) * max_load_factor_with_deleted_buckets);
             }
 
             /**
@@ -2413,7 +2420,7 @@ namespace dice::unordered_sparse {
              */
             constexpr void rehash(size_type count) {
                 count = std::max(count, bucket_count_for(size()));
-                if (nb_deleted_buckets_ == 0 && rounded_bucket_count(count) == bucket_count_) {
+                if (table().nb_deleted_buckets == 0 && rounded_bucket_count(count) == table().bucket_count) {
                     return;
                 }
                 rehash_impl(count);
@@ -2471,20 +2478,28 @@ namespace dice::unordered_sparse {
                 return std::pair{it, (it == self.end()) ? it : std::next(it)};
             }
 
+            [[nodiscard]] constexpr table_state &table() noexcept {
+                return table_;
+            }
+
+            [[nodiscard]] constexpr table_state const &table() const noexcept {
+                return table_;
+            }
+
             [[nodiscard]] constexpr sparse_array *buckets_begin() noexcept {
-                return std::to_address(buckets_);
+                return std::to_address(table().buckets);
             }
 
             [[nodiscard]] constexpr sparse_array const *buckets_begin() const noexcept {
-                return std::to_address(buckets_);
+                return std::to_address(table().buckets);
             }
 
             [[nodiscard]] constexpr sparse_array *buckets_end() noexcept {
-                return buckets_begin() + nb_sparse_buckets_;
+                return buckets_begin() + table().nb_sparse_buckets;
             }
 
             [[nodiscard]] constexpr sparse_array const *buckets_end() const noexcept {
-                return buckets_begin() + nb_sparse_buckets_;
+                return buckets_begin() + table().nb_sparse_buckets;
             }
 
             [[nodiscard]] constexpr std::ranges::subrange<sparse_array *> buckets() noexcept {
@@ -2503,30 +2518,31 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * True if `first_nonempty_group_` is `nb_sparse_buckets_` for a table without elements, and otherwise the
-             * index of a group that holds an element. The groups before it are not checked, so that the check is
-             * constant time like `begin()`.
+             * True if the first non-empty group of the table state is its number of groups for a table without elements,
+             * and otherwise the index of a group that holds an element. The groups before it are not checked, so that the
+             * check is constant time like `begin()`.
              */
             [[nodiscard]] constexpr bool first_nonempty_group_is_plausible() const noexcept {
                 if (nb_elements_ == 0) {
-                    return first_nonempty_group_ == nb_sparse_buckets_;
+                    return table().first_nonempty_group == table().nb_sparse_buckets;
                 }
-                return first_nonempty_group_ < nb_sparse_buckets_ && !buckets_begin()[first_nonempty_group_].empty();
+                return table().first_nonempty_group < table().nb_sparse_buckets && !buckets_begin()[table().first_nonempty_group].empty();
             }
 
             /**
-             * Moves `first_nonempty_group_` to the next group that holds an element, after an erase emptied the first
-             * one. Reads the headers of the groups in between. Without elements it is `nb_sparse_buckets_` at once.
+             * Moves the first non-empty group of the table state to the next group that holds an element, after an erase
+             * emptied the first one. Reads the headers of the groups in between. Without elements it is the number of groups
+             * at once.
              */
             constexpr void skip_empty_first_groups() noexcept {
                 if (nb_elements_ == 0) {
-                    first_nonempty_group_ = nb_sparse_buckets_;
+                    table().first_nonempty_group = table().nb_sparse_buckets;
                     return;
                 }
 
                 sparse_array const *const raw_buckets = buckets_begin();
-                while (raw_buckets[first_nonempty_group_].empty()) {
-                    ++first_nonempty_group_;
+                while (raw_buckets[table().first_nonempty_group].empty()) {
+                    ++table().first_nonempty_group;
                 }
             }
 
@@ -2552,15 +2568,15 @@ namespace dice::unordered_sparse {
              * @return the bucket of `hash`. The table must have buckets.
              */
             [[nodiscard]] constexpr std::size_t bucket_for_hash(std::size_t hash) const noexcept {
-                DICE_UNORDERED_SPARSE_ASSERT(bucket_count_ > 0);
-                return hash & (bucket_count_ - 1);
+                DICE_UNORDERED_SPARSE_ASSERT(table().bucket_count > 0);
+                return hash & (table().bucket_count - 1);
             }
 
             /**
              * @return the bucket after `ibucket` on the quadratic probe sequence, at probe number `iprobe`
              */
             [[nodiscard]] constexpr std::size_t next_bucket(std::size_t ibucket, std::size_t iprobe) const noexcept {
-                return (ibucket + iprobe) & (bucket_count_ - 1);
+                return (ibucket + iprobe) & (table().bucket_count - 1);
             }
 
             /**
@@ -2622,20 +2638,21 @@ namespace dice::unordered_sparse {
              * @throws std::length_error if the table cannot grow
              */
             [[nodiscard]] constexpr size_type next_bucket_count() const {
-                if (bucket_count_ == 0) {
+                if (table().bucket_count == 0) {
                     return rounded_bucket_count(min_bucket_count);
                 }
-                if (bucket_count_ > max_bucket_count() / 2) {
+                if (table().bucket_count > max_bucket_count() / 2) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
-                return bucket_count_ * 2;
+                return table().bucket_count * 2;
             }
 
             /**
-             * Allocates `nb_sparse_buckets` empty `sparse_array`s and makes them the buckets of the table.
+             * Allocates `nb_sparse_buckets` empty `sparse_array`s and makes them the buckets of `state`, which has
+             * none. Sets the first non-empty group of `state` to `nb_sparse_buckets`.
              */
-            constexpr void allocate_buckets(std::size_t nb_sparse_buckets) {
-                DICE_UNORDERED_SPARSE_ASSERT(buckets_ == nullptr && nb_sparse_buckets > 0);
+            constexpr void allocate_buckets(table_state &state, std::size_t nb_sparse_buckets) {
+                DICE_UNORDERED_SPARSE_ASSERT(state.buckets == nullptr && nb_sparse_buckets > 0);
                 bucket_allocator_type bucket_alloc(alloc_);
                 bucket_pointer const new_buckets = bucket_allocator_traits::allocate(bucket_alloc, nb_sparse_buckets);
                 sparse_array *const raw_buckets = std::to_address(new_buckets);
@@ -2644,56 +2661,64 @@ namespace dice::unordered_sparse {
                 }
                 raw_buckets[nb_sparse_buckets - 1].set_as_last();
 
-                buckets_ = new_buckets;
-                nb_sparse_buckets_ = nb_sparse_buckets;
-                first_nonempty_group_ = nb_sparse_buckets;
+                state.buckets = new_buckets;
+                state.nb_sparse_buckets = nb_sparse_buckets;
+                state.first_nonempty_group = nb_sparse_buckets;
             }
 
             /**
-             * Destroys all elements and frees the bucket array. The counters stay as they are.
+             * Destroys all elements of `state` and frees its bucket array. The counters stay as they are.
              */
-            constexpr void destroy_buckets() noexcept {
-                if (nb_sparse_buckets_ == 0) {
+            constexpr void destroy_buckets(table_state &state) noexcept {
+                if (state.nb_sparse_buckets == 0) {
                     return;
                 }
 
-                for (sparse_array &bucket : buckets()) {
-                    bucket.clear(alloc_);
-                    std::destroy_at(std::addressof(bucket));
+                sparse_array *const raw_buckets = std::to_address(state.buckets);
+                for (std::size_t i = 0; i < state.nb_sparse_buckets; ++i) {
+                    raw_buckets[i].clear(alloc_);
+                    std::destroy_at(raw_buckets + i);
                 }
 
                 bucket_allocator_type bucket_alloc(alloc_);
-                bucket_allocator_traits::deallocate(bucket_alloc, buckets_, nb_sparse_buckets_);
-                buckets_ = nullptr;
-                nb_sparse_buckets_ = 0;
+                bucket_allocator_traits::deallocate(bucket_alloc, state.buckets, state.nb_sparse_buckets);
+                state.buckets = nullptr;
+                state.nb_sparse_buckets = 0;
             }
 
             /**
              * Sets the table to the state of a table with a bucket count of 0. Expects that it has no buckets.
              */
             constexpr void reset_to_empty() noexcept {
-                DICE_UNORDERED_SPARSE_ASSERT(buckets_ == nullptr && nb_sparse_buckets_ == 0);
-                bucket_count_ = 0;
+                DICE_UNORDERED_SPARSE_ASSERT(table().buckets == nullptr && table().nb_sparse_buckets == 0);
+                table() = table_state{};
                 nb_elements_ = 0;
-                first_nonempty_group_ = 0;
-                nb_deleted_buckets_ = 0;
-                load_threshold_rehash_ = 0;
-                load_threshold_clear_deleted_ = 0;
             }
 
             /**
-             * Builds a bucket array for this table from the buckets of `other`, with `make(other_bucket)`
-             * constructing each new bucket in place. On an exception the table has no buckets.
+             * @return the state `other` without its buckets: the bucket count, the counters and the thresholds
+             */
+            [[nodiscard]] static constexpr table_state without_buckets(table_state const &other) noexcept {
+                table_state state = other;
+                state.buckets = nullptr;
+                state.nb_sparse_buckets = 0;
+                return state;
+            }
+
+            /**
+             * Builds a bucket array for `state` from the buckets of `other`, with `make(other_bucket)` constructing
+             * each new bucket in place. On an exception `state` has no buckets.
              */
             template<typename OtherHash, typename Make>
-            constexpr void build_buckets_from(OtherHash &other, Make const &make) {
-                DICE_UNORDERED_SPARSE_ASSERT(buckets_ == nullptr && nb_sparse_buckets_ == 0);
-                if (other.nb_sparse_buckets_ == 0) {
+            constexpr void build_buckets_from(table_state &state, OtherHash &other, Make const &make) {
+                DICE_UNORDERED_SPARSE_ASSERT(state.buckets == nullptr && state.nb_sparse_buckets == 0);
+                std::size_t const nb_sparse_buckets = other.table().nb_sparse_buckets;
+                if (nb_sparse_buckets == 0) {
                     return;
                 }
 
                 bucket_allocator_type bucket_alloc(alloc_);
-                bucket_pointer const new_buckets = bucket_allocator_traits::allocate(bucket_alloc, other.nb_sparse_buckets_);
+                bucket_pointer const new_buckets = bucket_allocator_traits::allocate(bucket_alloc, nb_sparse_buckets);
                 sparse_array *const raw_buckets = std::to_address(new_buckets);
                 std::size_t nb_constructed = 0;
                 try {
@@ -2706,19 +2731,25 @@ namespace dice::unordered_sparse {
                         raw_buckets[i].clear(alloc_);
                         std::destroy_at(raw_buckets + i);
                     }
-                    bucket_allocator_traits::deallocate(bucket_alloc, new_buckets, other.nb_sparse_buckets_);
+                    bucket_allocator_traits::deallocate(bucket_alloc, new_buckets, nb_sparse_buckets);
                     throw;
                 }
 
                 DICE_UNORDERED_SPARSE_ASSERT(raw_buckets[nb_constructed - 1].last());
-                buckets_ = new_buckets;
-                nb_sparse_buckets_ = other.nb_sparse_buckets_;
+                state.buckets = new_buckets;
+                state.nb_sparse_buckets = nb_sparse_buckets;
             }
 
+            /**
+             * Copies the buckets of `other` into this table, which has no buckets. On an exception this table is
+             * unchanged.
+             */
             constexpr void copy_buckets_from(sparse_hash const &other) {
-                build_buckets_from(other, [this](sparse_array *target, sparse_array const &source) {
+                table_state state = without_buckets(other.table());
+                build_buckets_from(state, other, [this](sparse_array *target, sparse_array const &source) {
                     std::construct_at(target, source, alloc_);
                 });
+                table() = state;
             }
 
             /**
@@ -2736,19 +2767,20 @@ namespace dice::unordered_sparse {
                     alloc_ = std::move(other.alloc_);
                 }
 
-                buckets_ = std::exchange(other.buckets_, nullptr);
-                nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
+                table() = std::exchange(other.table(), table_state{});
             }
 
             /**
-             * Moves the elements of `other` into a new bucket array of this table, or copies the elements whose move
-             * constructor can throw. `other` keeps its buckets and its elements, the moved ones in a moved-from
-             * state.
+             * Moves the elements of `other` into a new bucket array of this table, which has no buckets, or copies
+             * the elements whose move constructor can throw. `other` keeps its buckets and its elements, the moved
+             * ones in a moved-from state. On an exception this table is unchanged.
              */
             constexpr void move_buckets_from(sparse_hash &other) {
-                build_buckets_from(other, [this](sparse_array *target, sparse_array &source) {
+                table_state state = without_buckets(other.table());
+                build_buckets_from(state, other, [this](sparse_array *target, sparse_array &source) {
                     std::construct_at(target, std::move(source), alloc_);
                 });
+                table() = state;
             }
 
             /**
@@ -2758,7 +2790,7 @@ namespace dice::unordered_sparse {
              */
             constexpr void reserve_for_insertion(std::size_t nb_elements_to_insert) {
                 // a lower max load factor can put the threshold below the size, and the size above `max_size()`
-                size_type const nb_free_buckets = load_threshold_rehash_ > size() ? load_threshold_rehash_ - size() : 0;
+                size_type const nb_free_buckets = table().load_threshold_rehash > size() ? table().load_threshold_rehash - size() : 0;
                 if (nb_elements_to_insert == 0 || nb_free_buckets >= nb_elements_to_insert) {
                     return;
                 }
@@ -2774,10 +2806,10 @@ namespace dice::unordered_sparse {
              * it. After it, the insertion of one new element does not rehash.
              */
             constexpr void make_room_for_one_insertion() {
-                while (size() >= load_threshold_rehash_) {
+                while (size() >= table().load_threshold_rehash) {
                     rehash_impl(next_bucket_count());
                 }
-                if (size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
+                if (size() + table().nb_deleted_buckets >= table().load_threshold_clear_deleted) {
                     clear_deleted_buckets();
                 }
             }
@@ -2811,7 +2843,7 @@ namespace dice::unordered_sparse {
              */
             template<typename K, typename... Args>
             constexpr std::pair<iterator, bool> insert_impl_hashed(K const &key, std::size_t hash, Args &&...args) {
-                if (nb_sparse_buckets_ == 0) {
+                if (table().nb_sparse_buckets == 0) {
                     return insert_new(hash, 0, 0, false, std::forward<Args>(args)...);
                 }
 
@@ -2836,7 +2868,7 @@ namespace dice::unordered_sparse {
                                 return {iterator(&bucket, slot), false};
                             }
                         }
-                    } else if (bucket.has_deleted_value(index_in_sparse_bucket) && probe < bucket_count_) {
+                    } else if (bucket.has_deleted_value(index_in_sparse_bucket) && probe < table().bucket_count) {
                         if (!found_first_deleted_bucket) {
                             found_first_deleted_bucket = true;
                             sparse_ibucket_first_deleted = sparse_ibucket;
@@ -2860,8 +2892,8 @@ namespace dice::unordered_sparse {
              */
             template<typename... Args>
             constexpr std::pair<iterator, bool> insert_new(std::size_t hash, std::size_t sparse_ibucket, array_size_type index_in_sparse_bucket, bool reuses_deleted_bucket, Args &&...args) {
-                bool const grows = size() >= load_threshold_rehash_;
-                if (grows || size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
+                bool const grows = size() >= table().load_threshold_rehash;
+                if (grows || size() + table().nb_deleted_buckets >= table().load_threshold_clear_deleted) {
                     // `key` and the arguments may refer to elements that the rehash moves, so the new element is
                     // constructed before the rehash.
                     value_holder<slot_type, slot_allocator_type> new_slot(alloc_, std::forward<Args>(args)...);
@@ -2877,10 +2909,10 @@ namespace dice::unordered_sparse {
                 slot_type *const slot = bucket.set(alloc_, index_in_sparse_bucket, std::forward<Args>(args)...);
                 ++nb_elements_;
                 if (reuses_deleted_bucket) {
-                    --nb_deleted_buckets_;
+                    --table().nb_deleted_buckets;
                 }
-                if (sparse_ibucket < first_nonempty_group_) {
-                    first_nonempty_group_ = static_cast<size_type>(sparse_ibucket);
+                if (sparse_ibucket < table().first_nonempty_group) {
+                    table().first_nonempty_group = static_cast<size_type>(sparse_ibucket);
                 }
 
                 if constexpr (has_holes) {
@@ -2892,7 +2924,7 @@ namespace dice::unordered_sparse {
 
             template<typename K>
             constexpr size_type erase_impl(K const &key, std::size_t hash) {
-                if (nb_sparse_buckets_ == 0) {
+                if (table().nb_sparse_buckets == 0) {
                     return 0;
                 }
 
@@ -2912,14 +2944,14 @@ namespace dice::unordered_sparse {
                                 bucket.erase(alloc_, slot, index_in_sparse_bucket);
                             }
                             --nb_elements_;
-                            ++nb_deleted_buckets_;
-                            if (sparse_ibucket == first_nonempty_group_ && bucket.empty()) {
+                            ++table().nb_deleted_buckets;
+                            if (sparse_ibucket == table().first_nonempty_group && bucket.empty()) {
                                 skip_empty_first_groups();
                             }
 
                             return 1;
                         }
-                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= bucket_count_) {
+                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= table().bucket_count) {
                         return 0;
                     }
 
@@ -2930,7 +2962,7 @@ namespace dice::unordered_sparse {
 
             template<typename K>
             [[nodiscard]] constexpr const_iterator find_impl(K const &key, std::size_t hash) const {
-                if (nb_sparse_buckets_ == 0) {
+                if (table().nb_sparse_buckets == 0) {
                     return cend();
                 }
 
@@ -2950,7 +2982,7 @@ namespace dice::unordered_sparse {
                                 return const_iterator(&bucket, slot);
                             }
                         }
-                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= bucket_count_) {
+                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= table().bucket_count) {
                         return cend();
                     }
 
@@ -2963,8 +2995,8 @@ namespace dice::unordered_sparse {
              * Removes the deleted-bucket markers with a rehash to the same bucket count.
              */
             constexpr void clear_deleted_buckets() {
-                rehash_impl(bucket_count_);
-                DICE_UNORDERED_SPARSE_ASSERT(nb_deleted_buckets_ == 0);
+                rehash_impl(table().bucket_count);
+                DICE_UNORDERED_SPARSE_ASSERT(table().nb_deleted_buckets == 0);
             }
 
             /**
@@ -3027,14 +3059,8 @@ namespace dice::unordered_sparse {
             constexpr void swap_storage(sparse_hash &other) noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(alloc_ == other.alloc_);
                 using std::swap;
-                swap(buckets_, other.buckets_);
-                swap(nb_sparse_buckets_, other.nb_sparse_buckets_);
-                swap(bucket_count_, other.bucket_count_);
+                swap(table_, other.table_);
                 swap(nb_elements_, other.nb_elements_);
-                swap(first_nonempty_group_, other.first_nonempty_group_);
-                swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
-                swap(load_threshold_rehash_, other.load_threshold_rehash_);
-                swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
             }
 
             /**
@@ -3053,8 +3079,8 @@ namespace dice::unordered_sparse {
                     if (!bucket.has_value(index_in_sparse_bucket)) {
                         bucket.set(alloc_, index_in_sparse_bucket, std::forward<S>(slot_value));
                         ++nb_elements_;
-                        if (sparse_ibucket < first_nonempty_group_) {
-                            first_nonempty_group_ = static_cast<size_type>(sparse_ibucket);
+                        if (sparse_ibucket < table().first_nonempty_group) {
+                            table().first_nonempty_group = static_cast<size_type>(sparse_ibucket);
                         }
 
                         return;
@@ -3088,41 +3114,13 @@ namespace dice::unordered_sparse {
             [[no_unique_address]] Hash hash_;
             [[no_unique_address]] KeyEqual key_equal_;
 
-            /**
-             * Array of `nb_sparse_buckets_` `sparse_array`s, nullptr if the table has no buckets.
-             */
-            bucket_pointer buckets_ = nullptr;
-            size_type nb_sparse_buckets_ = 0;
-
-            /**
-             * 0 or a power of two of at least `min_bucket_count`.
-             */
-            size_type bucket_count_ = 0;
             size_type nb_elements_ = 0;
-
-            /**
-             * The index of the first group that holds an element, or `nb_sparse_buckets_` if there is none. Every
-             * operation that changes the table keeps it exact, so that `begin()` is constant time and writes nothing.
-             */
-            size_type first_nonempty_group_ = 0;
-
-            /**
-             * Number of buckets that are marked as deleted, holes included.
-             */
-            size_type nb_deleted_buckets_ = 0;
-
-            /**
-             * Maximum that `nb_elements_` can reach before a rehash grows the table.
-             */
-            size_type load_threshold_rehash_ = 0;
-
-            /**
-             * Maximum that `nb_elements_ + nb_deleted_buckets_` can reach before a rehash removes the
-             * deleted-bucket markers.
-             */
-            size_type load_threshold_clear_deleted_ = 0;
-
             float max_load_factor_ = default_max_load_factor;
+
+            /**
+             * The state of the buckets, read through `table()`.
+             */
+            table_state table_;
         };
 
     }  // namespace detail
