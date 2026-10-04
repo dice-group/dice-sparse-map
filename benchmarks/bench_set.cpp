@@ -38,6 +38,7 @@ namespace {
     void set_workloads(std::string_view container) {
         with_sizes<set_full, set_quick>([&]<typename Sizes>() {
             using set_t = typename Family::template set<std::uint64_t>;
+            CHECK(use_small_maps<set_t>() == 6);
 
             ankerl::nanobench::Bench bench;
             bench.title(std::format("set {}", container));
