@@ -599,7 +599,9 @@ namespace constant_evaluation {
     }
 
     /**
-     * `emplace` and `emplace_hint` construct the new element with the allocator of the container before they insert it.
+     * `emplace` and `emplace_hint` with the element as the arguments, which look up the key first, and with arguments
+     * that the element is converted from, which construct the new element with the allocator of the container before
+     * they insert it.
      */
     constexpr bool emplace_in_a_constant_expression() {
         auto map = sparse_map<int, std::string, constexpr_hash>{};
@@ -607,11 +609,15 @@ namespace constant_evaluation {
         map.emplace(std::pair{2, std::string(20, 'b')});
         map.emplace_hint(map.end(), 3, std::string(20, 'c'));
         map.emplace(1, std::string(20, 'x'));
+        map.emplace(4, "a string literal that is too long for the small string buffer");
+        map.emplace_hint(map.end(), 4, "another string literal that is too long for the small string buffer");
         auto set = sparse_set<int, constexpr_hash>{};
         set.emplace(7);
         set.emplace_hint(set.end(), 8);
-        return map.size() == 3 && map.at(1) == std::string(20, 'a') && map.at(3) == std::string(20, 'c') && set.size() == 2
-               && set.contains(8);
+        set.emplace(short{9});
+        return map.size() == 4 && map.at(1) == std::string(20, 'a') && map.at(3) == std::string(20, 'c')
+               && map.at(4) == "a string literal that is too long for the small string buffer" && set.size() == 3 && set.contains(8)
+               && set.contains(9);
     }
 
     static_assert(map_in_a_constant_expression());

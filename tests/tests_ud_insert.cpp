@@ -189,8 +189,8 @@ TEST_CASE_MAP("insert_present_key_copies_nothing", counter::obj, counter::obj) {
     REQUIRE(counts.dtor() == before.dtor);
 }
 
-// sparse_map's emplace() builds the value first and then inserts it. On a present key the arguments are consumed, so
-// this checks only that the element that is already there stays.
+// `emplace` of a key and a mapped value of the exact types looks up the key first and leaves the arguments as they are
+// on a present key (`tests_emplace_lookup.cpp` counts that). This checks that the element that is already there stays.
 TEST_CASE_MAP("emplace_key_and_mapped_present_key_keeps_the_element", std::string, std::string) {
     auto map = map_t();
     map.try_emplace("key", "first");

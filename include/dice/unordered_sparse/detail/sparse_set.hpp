@@ -49,6 +49,9 @@ namespace dice::unordered_sparse {
      * The interface follows `std::unordered_set`, with these differences:
      *  - The iterators are forward iterators.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
+     *  - `emplace` and `emplace_hint` with one `value_type` (by value or by reference) look it up first and copy or
+     *    move it only if they insert it. With other arguments they construct the element first and insert it if it
+     *    is not in the set, so the arguments are consumed also if it is there.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
      *  - `for_each(f)` calls `f` with every key, and `for_each_while(f)` calls it until `f` returns `false`. Use
      *    `for_each` for a pass over all keys and `for_each_while` to stop early.
@@ -446,8 +449,11 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Constructs a `value_type` from `args` with the allocator of the set, and inserts it if it is not in the set
-         * yet. A scoped or a polymorphic allocator passes itself on to the element.
+         * Inserts an element constructed from `args` with the allocator of the set, if it is not in the set yet. A
+         * scoped or a polymorphic allocator passes itself on to the element.
+         *
+         * With one `value_type` (by value or by reference), it is looked up first and copied or moved only if it is
+         * inserted. With other arguments, a `value_type` is constructed first, also if it is in the set.
          */
         template<typename... Args>
         constexpr std::pair<iterator, bool> emplace(Args &&...args) {
@@ -455,8 +461,7 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Constructs a `value_type` from `args` with the allocator of the set, and inserts it like
-         * `insert(hint, value)`.
+         * Like `emplace`. If `hint` points to the element, nothing is inserted and `hint` is returned.
          */
         template<typename... Args>
         constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {

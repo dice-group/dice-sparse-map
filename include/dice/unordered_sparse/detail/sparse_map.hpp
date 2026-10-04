@@ -55,7 +55,10 @@ namespace dice::unordered_sparse {
      *  - The iterators are forward iterators. They model `std::forward_iterator`, but a map iterator meets only
      *    the Cpp17InputIterator requirements, because its reference type is not `value_type &`.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
-     *  - `emplace` constructs the element first and inserts it if its key is not in the map.
+     *  - `emplace` and `emplace_hint` with one `value_type`, or with one `key_type` and one `mapped_type` (by value
+     *    or by reference), look up the key first and construct the element only if they insert it, as `try_emplace`
+     *    does. With other arguments they construct the element first and insert it if its key is not in the map, so
+     *    the arguments are consumed also if the key is there.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
      *  - `for_each(f)` calls `f` with every element, and `for_each_while(f)` calls it until `f` returns `false`.
      *    Use `for_each` for a pass over all elements and `for_each_while` to stop early.
@@ -500,8 +503,13 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Constructs a `value_type` from `args` with the allocator of the map, and inserts it if its key is not in the
-         * map yet. A scoped or a polymorphic allocator passes itself on to the key and the mapped value.
+         * Inserts an element constructed from `args` with the allocator of the map, if its key is not in the map yet.
+         * A scoped or a polymorphic allocator passes itself on to the key and the mapped value.
+         *
+         * With one `value_type`, or with one `key_type` and one `mapped_type` (by value or by reference), the key is
+         * looked up first, and the element is constructed only if it is inserted. On a key that is in the map, the
+         * arguments are not copied, moved or destroyed. With other arguments, for example a `std::pair<Key const, T>`
+         * or a value that `T` is converted from, a `value_type` is constructed first, also if the key is in the map.
          */
         template<typename... Args>
         constexpr std::pair<iterator, bool> emplace(Args &&...args) {
@@ -509,8 +517,7 @@ namespace dice::unordered_sparse {
         }
 
         /**
-         * Constructs a `value_type` from `args` with the allocator of the map, and inserts it like
-         * `insert(hint, value)`.
+         * Like `emplace`. If `hint` points to the element with the key, nothing is inserted and `hint` is returned.
          */
         template<typename... Args>
         constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {

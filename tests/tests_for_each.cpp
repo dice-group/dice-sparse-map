@@ -1,5 +1,6 @@
 #include "fixtures/allocators.hpp"
 #include "fixtures/counter.hpp"
+#include "fixtures/inline_containers.hpp"
 #include "fixtures/test_types.hpp"
 
 #include <dice/unordered_sparse.hpp>
@@ -517,17 +518,6 @@ TEST_CASE("for_each in a constant expression") {
 namespace {
 
     /**
-     * Puts the key `k` into bucket `k` of a table with more than `k` buckets, so that a test knows the group of a key.
-     */
-    struct identity_hash {
-        using is_avalanching = void;
-
-        [[nodiscard]] constexpr std::size_t operator()(std::size_t key) const noexcept {
-            return key;
-        }
-    };
-
-    /**
      * Calls `for_each` with an `f` that records every element it gets, sets the mapped value of a map element to 1,
      * and throws at the element with the key `throw_key`. Checks that the exception leaves `for_each` there: `f` got
      * the elements in the order of the iterators up to `throw_key` and no other, only these elements are changed, the
@@ -943,42 +933,6 @@ TEST_CASE("for_each of a type derived from the map visits the elements of the ma
  * `k % 64` there, so that the tests know the buckets, the probe sequences and the order of the elements.
  */
 namespace {
-    template<typename Allocator, sparsity Sparsity, std::size_t capacity>
-    using identity_inline_map = sparse_map<std::size_t, std::size_t, identity_hash, std::equal_to<std::size_t>, Allocator, Sparsity, capacity>;
-
-    template<typename Allocator, sparsity Sparsity, std::size_t capacity>
-    using identity_inline_set = sparse_set<std::size_t, identity_hash, std::equal_to<std::size_t>, Allocator, Sparsity, capacity>;
-
-    using inline_map_4 = identity_inline_map<std::allocator<std::pair<std::size_t, std::size_t>>, sparsity::medium, 4>;
-    using inline_map_4_offset_ptr = identity_inline_map<offset_ptr_allocator<std::pair<std::size_t, std::size_t>>, sparsity::high, 4>;
-    using inline_map_32 = identity_inline_map<std::allocator<std::pair<std::size_t, std::size_t>>, sparsity::low, 32>;
-    using inline_set_4 = identity_inline_set<std::allocator<std::size_t>, sparsity::medium, 4>;
-    using inline_set_4_offset_ptr = identity_inline_set<offset_ptr_allocator<std::size_t>, sparsity::high, 4>;
-    using inline_set_32 = identity_inline_set<std::allocator<std::size_t>, sparsity::low, 32>;
-
-    /// the address of the key of an element as `*it` gives it
-    template<typename Element>
-    [[nodiscard]] void const *key_address(Element const &e) {
-        if constexpr (requires { e.second; }) {
-            return std::addressof(e.first);
-        } else {
-            return std::addressof(e);
-        }
-    }
-
-    /// true if `container` has elements and every element lies in the container object, so in the inline group
-    template<typename Container>
-    [[nodiscard]] bool elements_in_object(Container const &container) {
-        auto const *const first = static_cast<void const *>(std::addressof(container));
-        auto const *const last = static_cast<void const *>(std::addressof(container) + 1);
-        bool all_inside = !container.empty();
-        for (auto const &e : container) {
-            void const *const key = key_address(e);
-            all_inside = all_inside && std::less_equal<>{}(first, key) && std::less<>{}(key, last);
-        }
-        return all_inside;
-    }
-
     /// true if `container` has elements and no element lies in the container object, so all are in allocated groups
     template<typename Container>
     [[nodiscard]] bool elements_in_groups(Container const &container) {

@@ -222,6 +222,26 @@ namespace dice::unordered_sparse {
                                         || requires (Allocator &alloc, T *p) { alloc.destroy(p); };
 
         /**
+         * The arguments `Args` are an element of a table with the policy `Policy` (`map_policy` or `set_policy`), each
+         * by value or by reference: one `value_type`, or, for a map, one `key_type` and one `mapped_type`. The types
+         * must be the same after `std::remove_cvref_t`, a type that converts to them does not qualify.
+         */
+        template<typename Policy, typename... Args>
+        struct args_are_element : std::false_type {};
+
+        template<typename Policy, typename A>
+        struct args_are_element<Policy, A> : std::is_same<std::remove_cvref_t<A>, typename Policy::value_type> {};
+
+        template<typename Policy, typename A, typename B>
+        requires Policy::is_map
+        struct args_are_element<Policy, A, B>
+            : std::bool_constant<std::is_same_v<std::remove_cvref_t<A>, typename Policy::key_type>
+                                 && std::is_same_v<std::remove_cvref_t<B>, typename Policy::mapped_type>> {};
+
+        template<typename Policy, typename... Args>
+        concept ArgsAreElement = args_are_element<Policy, Args...>::value;
+
+        /**
          * A type that meets the parts of the allocator requirements that the deduction guides check.
          */
         template<typename A>
@@ -2534,22 +2554,40 @@ namespace dice::unordered_sparse {
             }
 
             /**
-             * Constructs a `value_type` from `args` and inserts it if its key is not in the table yet. The `value_type`
-             * is constructed with the allocator of the table, as the stored element is, so that a scoped or a
-             * polymorphic allocator passes itself on to the key and the mapped value.
+             * Inserts an element constructed from `args` if its key is not in the table yet.
+             *
+             * If `args` are the element (`emplace_takes_element`), the key is looked up first, and the element is
+             * constructed only if it is inserted. Otherwise a `value_type` is constructed from `args` first and
+             * inserted if its key is not in the table yet. It is constructed with the allocator of the table, as the
+             * stored element is. In both cases a scoped or a polymorphic allocator passes itself on to the key and the
+             * mapped value.
              */
             template<typename... Args>
             constexpr std::pair<iterator, bool> emplace(Args &&...args) {
-                value_allocator_type alloc(alloc_);
-                value_holder<value_type, value_allocator_type> value(alloc, std::forward<Args>(args)...);
-                return insert(std::move(value.get()));
+                if constexpr (emplace_takes_element<Args...>) {
+                    return emplace_element(std::forward<Args>(args)...);
+                } else {
+                    value_allocator_type alloc(alloc_);
+                    value_holder<value_type, value_allocator_type> value(alloc, std::forward<Args>(args)...);
+                    return insert(std::move(value.get()));
+                }
             }
 
+            /**
+             * `emplace`, but if `hint` points to the element with the key, inserts nothing and returns `hint`.
+             */
             template<typename... Args>
             constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {
-                value_allocator_type alloc(alloc_);
-                value_holder<value_type, value_allocator_type> value(alloc, std::forward<Args>(args)...);
-                return insert_hint(hint, std::move(value.get()));
+                if constexpr (emplace_takes_element<Args...>) {
+                    if (hint != cend() && compare_keys(key_of(hint), element_key(args...))) {
+                        return mutable_iterator(hint);
+                    }
+                    return emplace_element(std::forward<Args>(args)...).first;
+                } else {
+                    value_allocator_type alloc(alloc_);
+                    value_holder<value_type, value_allocator_type> value(alloc, std::forward<Args>(args)...);
+                    return insert_hint(hint, std::move(value.get()));
+                }
             }
 
             /**
@@ -3497,6 +3535,45 @@ namespace dice::unordered_sparse {
                 }
                 if (size() + table().nb_deleted_buckets >= table().load_threshold_clear_deleted) {
                     clear_deleted_buckets();
+                }
+            }
+
+            /**
+             * True if `emplace` with arguments of the types `Args` takes them as the element: one `value_type`, or, for
+             * a map, one `key_type` and one `mapped_type`, each by value or by reference (see `ArgsAreElement`). Then
+             * `emplace` looks up the key first, as `insert` and `try_emplace` do, and on a key that is in the table it
+             * copies, moves and destroys nothing. Arguments that the element would be converted from do not qualify:
+             * the element is constructed from them first, so that they are consumed also if the key is in the table.
+             * For example, `emplace(key, new X)` with a `std::unique_ptr<X>` mapped value does not leak.
+             */
+            template<typename... Args>
+            static constexpr bool emplace_takes_element = ArgsAreElement<Policy, Args...>;
+
+            /**
+             * `emplace` of one `value_type`.
+             */
+            template<typename V>
+            constexpr std::pair<iterator, bool> emplace_element(V &&value) {
+                return insert_impl(Policy::key_of_value(value), std::forward<V>(value));
+            }
+
+            /**
+             * `emplace` of one `key_type` and one `mapped_type`.
+             */
+            template<typename K, typename M>
+            constexpr std::pair<iterator, bool> emplace_element(K &&key, M &&mapped) {
+                return try_emplace(std::forward<K>(key), std::forward<M>(mapped));
+            }
+
+            /**
+             * @return the key in the arguments of `emplace_element`
+             */
+            template<typename First, typename... Rest>
+            [[nodiscard]] static constexpr key_type const &element_key(First const &first, Rest const &.../*rest*/) noexcept {
+                if constexpr (sizeof...(Rest) == 0) {
+                    return Policy::key_of_value(first);
+                } else {
+                    return first;
                 }
             }
 
