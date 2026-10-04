@@ -24,6 +24,7 @@
 #ifndef DICE_UNORDERED_SPARSE_DETAIL_SPARSE_SET_HPP
 #define DICE_UNORDERED_SPARSE_DETAIL_SPARSE_SET_HPP
 
+#include <concepts>
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
@@ -49,6 +50,7 @@ namespace dice::unordered_sparse {
      *  - The iterators are forward iterators.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
+     *  - `for_each(f)` calls `f` with every key.
      *
      * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
      * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
@@ -330,6 +332,22 @@ namespace dice::unordered_sparse {
 
         [[nodiscard]] constexpr const_iterator cend() const noexcept {
             return ht_.cend();
+        }
+
+        /**
+         * Calls `f` with every key, as `Key const &`, in the order of the iterators. A constraint checks that `f` can
+         * be called with the key. The loop runs over the groups of 64 buckets and over the keys of each group, which
+         * lie in one array. A set that keeps its keys in the inline group (see `inline_capacity`) has one such array
+         * in the set object.
+         *
+         * `f` may read the set. It must not insert or erase keys or change the set in another way (`clear`, `rehash`,
+         * `reserve`, assignment, `swap`, `merge`), otherwise the behaviour is undefined. If `f` throws, the exception
+         * leaves `for_each`, and the set is not changed.
+         */
+        template<typename F>
+        requires std::invocable<F &, const_reference>
+        constexpr void for_each(F &&f) const {
+            ht_.for_each(f);
         }
 
         /*

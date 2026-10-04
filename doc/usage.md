@@ -27,6 +27,8 @@ The interface is the one of `std::unordered_map` and `std::unordered_set`, inclu
 - heterogeneous `find`, `count`, `contains`, `equal_range`, `erase`, `try_emplace`, `insert_or_assign`, `operator[]` and set `insert` (see [heterogeneous lookup](#heterogeneous-lookup)),
 - `lookup` of C++29.
 
+Beyond the standard interface, `for_each` calls a function with every element (see [for_each](#for_each)).
+
 `lookup` returns a reference to the mapped value, or nothing, and never inserts. Its result type is `dice::unordered_sparse::optional_ref<T>`. With a standard library that provides `std::optional<T &>`, this is `std::optional<T &>`. Otherwise it is a type of the library with the same interface.
 
 A lookup can take a precalculated hash (`precalculated_hash` parameter), so that a key that is looked up in several containers is hashed once. The value is `hash_function()(key)`.
@@ -112,6 +114,27 @@ All members are `constexpr`, so a map and a set can be used in a constant expres
 - `emplace` constructs the element first, and inserts it if its key is not in the container yet. `try_emplace` constructs nothing if the key is there.
 - There is no bucket interface beyond `bucket_count`, and there are no node handles. `merge` moves the elements, or copies them if their move constructor can throw, instead of transferring nodes.
 - Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws. If they are nothrow move constructible, their move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption. If they are also nothrow move assignable, an insertion or an erasure moves the elements after it in its group of 64 buckets with their move assignment, as `std::vector::insert` and `std::vector::erase` do.
+
+## for_each
+
+`for_each(f)` calls `f` with every element, in the order of the iterators. `f` gets the element as `*it` gives it: `std::pair<Key const &, T &>` for a map, `std::pair<Key const &, T const &>` for a const map, and `Key const &` for a set. Bind it with `auto &&` or `auto const &`. A constraint checks at compile time that `f` can be called with the element.
+
+```c++
+dice::sparse_map<std::string, int> map = {{"a", 1}, {"b", 2}};
+int sum = 0;
+map.for_each([&sum](auto &&element) {
+    element.second += 10;
+    sum += element.second;
+});
+// sum is 23, map is {a, 11} {b, 12}
+```
+
+The elements of a group of 64 buckets lie in one array, and `for_each` runs over this array. A container that keeps its elements in the container object ([small maps](#small-maps)) has one such array there.
+
+- `f` may change the mapped values through the reference, and it may read the container, for example with `find`. It must not insert or erase elements or change the container in another way (`clear`, `rehash`, `reserve`, assignment, `swap`, `merge`). Otherwise the behaviour is undefined. Note that `operator[]` inserts if the key is not in the map.
+- If `f` throws, the exception leaves `for_each`. The elements that `f` got before keep what `f` did to them, and the container is not changed otherwise.
+- `for_each` returns nothing and ignores the result of `f`. It visits every element, unless `f` throws. A pass that stops early uses the iterators.
+- `for_each` of a map is one member template with an explicit object parameter (`this Self &&self`) for a const map and a map that is not const. So the constraint is checked only with the reference type of the call, and a generic `f` that writes through the reference works. A class with a map as a private or protected base calls `for_each` through a `static_cast` to the map type. A direct call does not compile there.
 
 ## Heterogeneous lookup
 

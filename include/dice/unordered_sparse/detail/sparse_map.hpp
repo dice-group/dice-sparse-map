@@ -24,6 +24,7 @@
 #ifndef DICE_UNORDERED_SPARSE_DETAIL_SPARSE_MAP_HPP
 #define DICE_UNORDERED_SPARSE_DETAIL_SPARSE_MAP_HPP
 
+#include <concepts>
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
@@ -56,6 +57,7 @@ namespace dice::unordered_sparse {
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - `emplace` constructs the element first and inserts it if its key is not in the map.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
+     *  - `for_each(f)` calls `f` with every element.
      *
      * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
      * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
@@ -340,6 +342,29 @@ namespace dice::unordered_sparse {
 
         [[nodiscard]] constexpr const_iterator cend() const noexcept {
             return ht_.cend();
+        }
+
+        /**
+         * Calls `f` with every element, in the order of the iterators. `f` gets the element as `*it` gives it:
+         * `std::pair<Key const &, T &>`, for a const map `std::pair<Key const &, T const &>`. A constraint checks that
+         * `f` can be called with the element. The loop runs over the groups of 64 buckets and over the elements of
+         * each group, which lie in one array. A map that keeps its elements in the inline group (see
+         * `inline_capacity`) has one such array in the map object.
+         *
+         * `f` may change the mapped values through the reference, and it may read the map. It must not insert or
+         * erase elements or change the map in another way (`clear`, `rehash`, `reserve`, assignment, `swap`,
+         * `merge`), otherwise the behaviour is undefined. If `f` throws, the exception leaves `for_each`. The elements
+         * that `f` got before keep what `f` did to them, and the map is not changed otherwise.
+         *
+         * The same member template serves a map that is const and a map that is not. So the constraint is checked
+         * only with the reference type of the call, and a generic `f` that writes through the reference works. A class
+         * with the map as a private or protected base calls `for_each` through a `static_cast` to the map type. A
+         * direct call does not compile there.
+         */
+        template<typename Self, typename F>
+        requires std::invocable<F &, std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const_reference, reference>>
+        constexpr void for_each(this Self &&self, F &&f) {
+            self.sparse_map::ht_.for_each(f);
         }
 
         /*

@@ -72,6 +72,17 @@ TEST_CASE("example") {
     CHECK(set == dice::sparse_set<int>{0, 1, 2, 9, -1});
 }
 
+TEST_CASE("for_each") {
+    dice::sparse_map<std::string, int> map = {{"a", 1}, {"b", 2}};
+    int sum = 0;
+    map.for_each([&sum](auto &&element) {
+        element.second += 10;
+        sum += element.second;
+    });
+    CHECK(sum == 23);
+    CHECK(map == dice::sparse_map<std::string, int>{{"a", 11}, {"b", 12}});
+}
+
 TEST_CASE("heterogeneous lookup") {
     dice::sparse_map<std::string, int, string_hash, std::equal_to<>> map;
 

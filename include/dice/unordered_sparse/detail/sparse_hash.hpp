@@ -32,6 +32,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -934,6 +935,34 @@ namespace dice::unordered_sparse {
             [[nodiscard]] constexpr const_iterator value(size_type index) const noexcept {
                 DICE_UNORDERED_SPARSE_ASSERT(has_value(index));
                 return values() + index_to_offset(index);
+            }
+
+            /**
+             * Calls `f` with every value, in the order of the buckets, as `value_type &` (`value_type const &` for a
+             * const group). The holes are skipped. Without a hole the values are the slots from `values()` to
+             * `values() + nb_elements_`.
+             */
+            template<typename Self, typename F>
+            constexpr void for_each_value(this Self &self, F &f) {
+                auto *slot = self.values();
+                if constexpr (has_holes) {
+                    if (self.has_hole()) {
+                        // every occupied bucket has a slot, in the order of the buckets, a hole too
+                        bitmap_type const holes = self.bitmap_vals_ & self.bitmap_deleted_vals_;
+                        for (bitmap_type occupied = self.bitmap_vals_; occupied != 0; occupied &= occupied - 1, ++slot) {
+                            bitmap_type const lowest = occupied & (~occupied + 1);
+                            if ((holes & lowest) == 0) {
+                                f(*slot);
+                            }
+                        }
+                        return;
+                    }
+                }
+
+                auto *const end = slot + self.nb_elements_;
+                for (; slot != end; ++slot) {
+                    f(*slot);
+                }
             }
 
             /**
@@ -2197,6 +2226,51 @@ namespace dice::unordered_sparse {
                     return const_iterator(buckets_end(), nullptr, array_size_type{0});
                 } else {
                     return const_iterator(buckets_end(), nullptr);
+                }
+            }
+
+            /**
+             * Calls `f` with every element, in the order of the iterators, as `*it` gives it: as `reference` for a
+             * table that is not const, as `const_reference` for a const table. The loop runs over the groups from the
+             * first one with an element (`table_state::first_nonempty_group`) to the end of the bucket array, and over
+             * the values of each group (`sparse_array::for_each_value`), which lie in one array. In a group without
+             * holes, each step of the loop over the values compares only with the end of the values of the group. A
+             * loop over the iterators also compares each step with `end()`. A table that keeps its elements in the
+             * inline group calls `f` with the inline elements, which lie in one array in the order of the iterators.
+             *
+             * `f` may change the mapped values through the reference and read the table. It must not change the table
+             * in another way. If `f` throws, the exception leaves `for_each`, and the table is unchanged except for
+             * what `f` did.
+             */
+            template<typename Self, typename F>
+            constexpr void for_each(this Self &self, F &f) {
+                using group_type = std::conditional_t<std::is_const_v<Self>, sparse_array const, sparse_array>;
+
+                auto visit = [&f](auto &slot) {
+                    if constexpr (Policy::is_map) {
+                        using reference_type = std::conditional_t<std::is_const_v<Self>, const_reference, reference>;
+                        std::invoke(f, reference_type{Policy::key(slot), Policy::mapped(slot)});
+                    } else {
+                        std::invoke(f, std::as_const(slot));
+                    }
+                };
+
+                if constexpr (has_inline_group) {
+                    if (self.is_inline_) {
+                        // the inline elements lie densely in bucket order, without holes, as the iterators visit them
+                        auto *slot = self.inline_slots();
+                        auto *const end = slot + self.nb_elements_;
+                        for (; slot != end; ++slot) {
+                            visit(*slot);
+                        }
+                        return;
+                    }
+                }
+
+                DICE_UNORDERED_SPARSE_ASSERT(self.first_nonempty_group_is_plausible());
+                group_type *const last = self.buckets_end();
+                for (group_type *group = self.buckets_begin() + self.table().first_nonempty_group; group != last; ++group) {
+                    group->for_each_value(visit);
                 }
             }
 

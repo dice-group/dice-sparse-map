@@ -752,3 +752,243 @@ TEST_CASE("maps with inline elements survive closing and opening at another addr
         CHECK(manager.all_memory_deallocated());
     }
 }
+
+TYPE_TO_STRING_AS("sparse_map<metall, medium, holes>", map_with_holes);
+
+namespace {
+    /// a key and a mapped value as numbers, or a key and 0 for a set
+    using element = std::pair<std::uint64_t, std::uint64_t>;
+
+    [[nodiscard]] std::uint64_t number_of(std::uint64_t value) {
+        return value;
+    }
+
+    [[nodiscard]] std::uint64_t number_of(copied_value const &value) {
+        return value.value;
+    }
+
+    void increment(std::uint64_t &value) {
+        ++value;
+    }
+
+    void increment(copied_value &value) {
+        ++value.value;
+    }
+
+    template<typename Element>
+    [[nodiscard]] element element_of(Element const &e) {
+        if constexpr (requires { e.second; }) {
+            return {e.first, number_of(e.second)};
+        } else {
+            return {e, 0};
+        }
+    }
+
+    /// the elements of `container` in the order of the iterators
+    template<typename Container>
+    [[nodiscard]] std::vector<element> iterated_elements(Container const &container) {
+        std::vector<element> result;
+        for (auto const &e : container) {
+            result.push_back(element_of(e));
+        }
+        return result;
+    }
+
+    /// the elements of `container` in the order of `for_each`
+    template<typename Container>
+    [[nodiscard]] std::vector<element> for_each_elements(Container const &container) {
+        std::vector<element> result;
+        container.for_each([&result](auto const &e) {
+            result.push_back(element_of(e));
+        });
+        return result;
+    }
+
+    /// true if `map` has elements and every element lies in the map object, so in its inline group
+    template<typename Map>
+    [[nodiscard]] bool elements_in_object(Map const &map) {
+        auto const first = reinterpret_cast<std::uintptr_t>(&map);
+        bool all_inside = !map.empty();
+        for (auto const &e : map) {
+            auto const address = reinterpret_cast<std::uintptr_t>(&e.first);
+            all_inside = all_inside && first <= address && address < first + sizeof(Map);
+        }
+        return all_inside;
+    }
+
+    /// true if `outer`, its inner maps and `small` keep their elements in their inline groups
+    [[nodiscard]] bool all_inline(inline_outer_map const &outer, small_inline_map const &small) {
+        bool all_inside = elements_in_object(outer) && elements_in_object(small);
+        for (auto const &e : outer) {
+            all_inside = all_inside && elements_in_object(e.second);
+        }
+        return all_inside;
+    }
+
+    /// the keys of `outer` in the order of the iterators
+    [[nodiscard]] std::vector<std::uint64_t> keys_by_iterators(inline_outer_map const &outer) {
+        std::vector<std::uint64_t> keys;
+        for (auto const &e : outer) {
+            keys.push_back(e.first);
+        }
+        return keys;
+    }
+
+    /// two inline maps of two elements each in `outer`, and two elements in `small`
+    void fill_inline_maps(inline_outer_map &outer, small_inline_map &small) {
+        insert_one(outer[1], 10);
+        insert_one(outer[1], 11);
+        insert_one(outer[2], 20);
+        insert_one(outer[2], 21);
+        insert_one(small, 5);
+        insert_one(small, 6);
+    }
+
+    /**
+     * Checks `for_each` of `small`, of `outer` and of the inner maps that `for_each` of `outer` gives to its `f` against
+     * the iterators.
+     */
+    void check_for_each_of_inline_maps(inline_outer_map const &outer, small_inline_map const &small) {
+        CHECK(for_each_elements(small) == iterated_elements(small));
+        std::vector<std::uint64_t> keys;
+        outer.for_each([&keys](auto const &e) {
+            keys.push_back(e.first);
+            CHECK(for_each_elements(e.second) == iterated_elements(e.second));
+        });
+        CHECK(keys == keys_by_iterators(outer));
+    }
+}  // namespace
+
+// The inline elements of a map lie in the map object, so in the datastore if the map is there, and `for_each` reaches
+// them through the address of the map. After the datastore is mapped at another address, `for_each` visits them in the
+// order of the iterators, also in inline maps that are inline elements of another map, and `for_each` of a map that is
+// not const changes the mapped values.
+TEST_CASE("for_each of maps with inline elements in a metall datastore that is opened again") {
+    datastore_path const store{"for_each_inline"};
+    mapping last_mapping;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *outer = manager.construct<inline_outer_map>("outer")(manager.get_allocator());
+        auto *small = manager.construct<small_inline_map>("small")(manager.get_allocator());
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        fill_inline_maps(*outer, *small);
+        REQUIRE(all_inline(*outer, *small));
+        check_for_each_of_inline_maps(*outer, *small);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        REQUIRE(all_inline(*outer, *small));
+        check_for_each_of_inline_maps(*outer, *small);
+
+        small->for_each([](auto &&e) {
+            ++e.second;
+        });
+        outer->for_each([](auto &&e) {
+            e.second.for_each([](auto &&inner_e) {
+                ++inner_e.second;
+            });
+        });
+        for (std::uint64_t const key : {UINT64_C(5), UINT64_C(6)}) {
+            CHECK(small->at(key) == value_of(key) + 1);
+        }
+        for (std::uint64_t const key : {UINT64_C(10), UINT64_C(11)}) {
+            CHECK(outer->at(1).at(key) == value_of(key) + 1);
+        }
+        for (std::uint64_t const key : {UINT64_C(20), UINT64_C(21)}) {
+            CHECK(outer->at(2).at(key) == value_of(key) + 1);
+        }
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_read_only, store.path.c_str()};
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto const *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto const *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        REQUIRE(all_inline(*outer, *small));
+        check_for_each_of_inline_maps(*outer, *small);
+    }
+}
+
+// `for_each` reaches the elements of every group through the fancy pointers in the group headers. After the datastore
+// is mapped at another address, it visits the elements in the order of the iterators, and `for_each` of a map that is
+// not const changes the mapped values. `for_each` of a const container in a datastore that is open read-only writes
+// nothing.
+TEST_CASE_TEMPLATE("for_each of a container in a metall datastore that is opened again",
+                   container_t,
+                   persistent_map<sparsity::medium>,
+                   persistent_set<sparsity::medium>,
+                   map_with_holes) {
+    datastore_path const store{"for_each"};
+    char const *object_name = "container";
+    mapping last_mapping;
+    std::vector<element> expected;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *container = manager.construct<container_t>(object_name)(manager.get_allocator());
+        REQUIRE(container != nullptr);
+        for (std::uint64_t key = 0; key < num_elements; ++key) {
+            insert_one(*container, key);
+        }
+        // erasures leave holes in `map_with_holes`
+        for (std::uint64_t key = 0; key < num_elements; key += 3) {
+            container->erase(key);
+        }
+        expected = iterated_elements(*container);
+        CHECK(expected.size() == container->size());
+        CHECK(for_each_elements(*container) == expected);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *container = std::get<0>(manager.find<container_t>(object_name));
+        REQUIRE(container != nullptr);
+        CHECK(for_each_elements(*container) == expected);
+
+        if constexpr (is_map_v<container_t>) {
+            container->for_each([](auto &&e) {
+                increment(e.second);
+            });
+            for (auto &e : expected) {
+                ++e.second;
+            }
+        }
+        CHECK(iterated_elements(*container) == expected);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_read_only, store.path.c_str()};
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto const *container = std::get<0>(manager.find<container_t>(object_name));
+        REQUIRE(container != nullptr);
+        CHECK(for_each_elements(*container) == expected);
+        CHECK(iterated_elements(*container) == expected);
+    }
+}
