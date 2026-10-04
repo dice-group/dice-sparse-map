@@ -55,11 +55,13 @@
 /**
  * Marks a function to be always inlined into its caller: `[[clang::always_inline]]` with Clang,
  * `[[gnu::always_inline]]` with GCC, nothing with other compilers. The lookups of the containers (`find`, `contains`,
- * `count`, `at`, `equal_range` and `lookup`) and the functions of the lookup below them use it, except `find_impl` of a
- * table without an inline group. So a lookup in a container with an inline group is inlined with both of its parts,
- * the lookup in the inline group and the lookup in the buckets, and the code of a lookup does not depend on how large
- * the inliner of the compiler finds it. The erasure of an element of the inline group uses it inside the two erasure
- * functions that are never inlined. `doc/design.md` has the details.
+ * `count`, `at`, `equal_range` and `lookup`) and the functions of the lookup below them, down to `find_impl`, use it at
+ * every inline capacity. So every lookup by key is inlined into its caller with the probe, also the lookup of `merge`,
+ * and the code of a lookup does not depend on how large the inliner of the compiler finds it. A lookup in a container
+ * with an inline group is inlined with both of its parts, the lookup in the inline group and the lookup in the
+ * buckets. The erasure by key is left to the compiler: always inlined into a loop of a benchmark, its probe made
+ * Clang 20 keep a variable of the loop on the stack instead of in a register. The erasure of an element of the inline
+ * group uses it inside the two erasure functions that are never inlined. `doc/design.md` has the measurements.
  */
 #if defined(__clang__)
 #define DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[clang::always_inline]]
@@ -3661,7 +3663,7 @@ namespace dice::unordered_sparse {
              */
             template<typename K>
             requires (!has_inline_group)
-            [[nodiscard]] constexpr const_iterator find_impl(K const &key, std::size_t hash) const {
+            DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_impl(K const &key, std::size_t hash) const {
                 if (table().nb_sparse_buckets == 0) {
                     return cend();
                 }
@@ -3691,7 +3693,7 @@ namespace dice::unordered_sparse {
 
             /**
              * Looks for `key`, whose mixed hash is `hash`, in a table with buckets. It is always inlined into
-             * `find_impl`, so that the compiler decides about `find_impl` with the whole lookup in it.
+             * `find_impl`.
              */
             template<typename K>
             DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_in_table(K const &key, std::size_t hash) const {
