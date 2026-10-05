@@ -56,10 +56,10 @@
  * Marks a function to be always inlined into its caller: `[[clang::always_inline]]` with Clang,
  * `[[gnu::always_inline]]` with GCC, nothing with other compilers. The lookups of the containers (`find`, `contains`,
  * `count`, `at`, `equal_range` and `lookup`) and the functions of the lookup below them, down to `find_impl`, use it at
- * every inline capacity. So every lookup by key is inlined into its caller with the probe, also the lookup of `merge`,
- * and the code of a lookup does not depend on how large the inliner of the compiler finds it. A lookup in a container
- * with an inline group is inlined with both of its parts, the lookup in the inline group and the lookup in the
- * buckets. The erasure by key is left to the compiler: always inlined into a loop of a benchmark, its probe made
+ * every inline capacity. So every lookup by key is inlined into its caller with the probe, also the lookups of `merge`
+ * and `find_each`, and the code of a lookup does not depend on how large the inliner of the compiler finds it. A lookup
+ * in a container with an inline group is inlined with both of its parts, the lookup in the inline group and the lookup
+ * in the buckets. The erasure by key is left to the compiler: always inlined into a loop of a benchmark, its probe made
  * Clang 20 keep a variable of the loop on the stack instead of in a register. The erasure of an element of the inline
  * group uses it inside the two erasure functions that are never inlined. `doc/design.md` has the measurements.
  */
@@ -2821,6 +2821,99 @@ namespace dice::unordered_sparse {
                 return self.find_mixed(key, mixed_hash<Hash>(hash));
             }
 
+            /**
+             * Looks up every key of `keys` and calls `f(key, it)` for each, in the order of `keys`. `key` is `*i` for
+             * the iterator `i` of the key in `keys`, `it` is what `find(key)` returns. `f` may read the table. It must
+             * not insert or erase elements or change the table in another way (`clear`, `rehash`, `reserve`,
+             * assignment, `swap`, `merge`), otherwise the behaviour is undefined: whether the table is inline and which
+             * path it takes are decided once, before the first key. `*i` is evaluated once for the lookup and the call
+             * of `f`, and with prefetching once more for the hash.
+             *
+             * In a table of more than `find_each_prefetch_bytes` bytes (`approximate_bytes`), the groups and the values
+             * of the home buckets of the keys ahead are prefetched, so that the cache misses of several keys overlap:
+             * in a pipeline for a trivially destructible `key_type` (`find_each_pipeline`), in blocks of keys for other
+             * key types (`find_each_blocks`). In a smaller table the keys are looked up one after the other, without
+             * prefetching, because there, in most of the measured tables, keys that are not in the table took longer
+             * with the prefetches than with `find` (see `find_each_prefetch_bytes`). A table that keeps its elements
+             * in the inline group looks the keys up there one after the other. Its elements are in the table object,
+             * so there is nothing to prefetch.
+             *
+             * If the hash function or `*i` throws for a key, `f` has been called for the keys before it, except, with
+             * prefetching, for up to `2 * find_each_distance` keys (pipeline) or `find_each_block - 1` keys (blocks)
+             * right before it, whose hashes are taken ahead.
+             */
+            template<typename Self, std::ranges::forward_range R, typename F>
+            constexpr void find_each(this Self &self, R &&keys, F &&f) {
+                auto it = std::ranges::begin(keys);
+                auto const last = std::ranges::end(keys);
+                if constexpr (has_inline_group) {
+                    if (self.is_inline_) {
+                        for (; it != last; ++it) {
+                            auto &&key = *it;
+                            std::invoke(f, std::forward<decltype(key)>(key), self.inline_find_result(self.inline_lookup(key, self.hash_key(key))));
+                        }
+                        return;
+                    }
+                }
+                if (self.approximate_bytes() <= find_each_prefetch_bytes) {
+                    for (; it != last; ++it) {
+                        auto &&key = *it;
+                        std::invoke(f, std::forward<decltype(key)>(key), self.find_in_buckets(key, self.hash_key(key)));
+                    }
+                } else if constexpr (find_each_pipelines) {
+                    self.find_each_pipeline(std::move(it), last, f);
+                } else {
+                    self.find_each_blocks(std::move(it), last, f);
+                }
+            }
+
+            /**
+             * `find_each` prefetches in a pipeline for a trivially destructible `key_type`, and in blocks of keys for
+             * other key types. A key type that owns memory, such as `std::string`, is not trivially destructible.
+             * Measured on a Xeon Platinum 8468V with batches of 1 million keys and tables of 50000 to 16 million
+             * entries, in the tables that `find_each` prefetches in: the pipeline is faster for `std::uint64_t` and
+             * `std::pair<std::uint64_t, std::uint64_t>` keys. The blocks are faster for `std::string` keys of 8 to 135
+             * characters (equal at one size for keys that are in the table), and for keys of 8 to 15 characters that
+             * are in the table. For keys of 8 to 15 characters that are not in the table, the pipeline is up to 4 %
+             * faster. `doc/usage.md` has the measurements.
+             *
+             * The rule comes from these three key types. Other key types were not measured. A key type that refers to
+             * memory outside the table without owning it, such as `std::string_view`, a span, or a pointer whose hash
+             * and equality read what it points to, is trivially destructible and takes the pipeline and 64 MiB. A key
+             * type with a destructor of its own takes the blocks and 24 MiB, also if it owns no memory.
+             */
+            static constexpr bool find_each_pipelines = std::is_trivially_destructible_v<key_type>;
+
+            /**
+             * The pipeline of `find_each` prefetches the values of the home buckets `find_each_distance` keys ahead and
+             * the groups twice as far ahead.
+             */
+            static constexpr std::size_t find_each_distance = 8;
+
+            /**
+             * The number of keys that the blocks of `find_each` look up together.
+             */
+            static constexpr std::size_t find_each_block = 16;
+
+            /**
+             * `find_each` prefetches only in a table that needs more memory than this (`approximate_bytes`): 64 MiB for
+             * the pipeline, 24 MiB for the blocks. In a smaller table, keys that are not in the table took longer with
+             * the prefetches than with `find` in most of the measured tables. Measured on a Xeon Platinum 8468V (2 MiB
+             * L2 cache per core, 97.5 MiB L3 cache) with batches of 1 million keys and tables of 50000 to 16 million
+             * entries, with the prefetches at every size:
+             *  - Pipeline, `std::uint64_t` and `std::pair<std::uint64_t, std::uint64_t>` keys: keys that are not in the
+             *    table took longer than with `find` up to 33 MiB at a load factor of 0.48, and not longer from 48 MiB
+             *    on. At load factors of 0.27 to 0.42 they took longer up to 115 MiB (at most 1.07 times as long above
+             *    64 MiB), and not longer from 145 MiB on.
+             *  - Blocks, `std::string` keys of 8 to 135 characters with 48 bytes of heap per key on average: keys that
+             *    are not in the table took longer up to 20 MiB, and not longer from 26 MiB on. With keys of 8 to 15
+             *    characters, which own no heap, they took longer up to 28 MiB (at most 1.02 times as long above
+             *    24 MiB), and not longer from 39 MiB on.
+             *  - Keys that are in the table were found faster from 2.5 MiB (`std::uint64_t`), 7.4 MiB (`std::pair`) and
+             *    2 MiB (`std::string`) on.
+             */
+            static constexpr std::size_t find_each_prefetch_bytes = find_each_pipelines ? std::size_t{64} << 20U : std::size_t{24} << 20U;
+
             template<typename Self, typename K>
             DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range(this Self &self, K const &key) {
                 return self.equal_range_mixed(key, self.hash_key(key));
@@ -2961,6 +3054,149 @@ namespace dice::unordered_sparse {
                 } else {
                     return self.mutable_iterator(self.find_impl(key, mixed));
                 }
+            }
+
+            /**
+             * `find_mixed` of a table that is not inline, without the test whether it is inline. A table with an inline
+             * group has buckets if it is not inline, so the lookup goes to the buckets directly.
+             */
+            template<typename Self, typename K>
+            DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr auto find_in_buckets(this Self &self, K const &key, std::size_t mixed) {
+                DICE_UNORDERED_SPARSE_ASSERT(!self.is_inline());
+                if constexpr (!has_inline_group) {
+                    return self.find_mixed(key, mixed);
+                } else if constexpr (std::is_const_v<Self>) {
+                    return self.find_in_table(key, mixed);
+                } else {
+                    return self.mutable_iterator(self.find_in_table(key, mixed));
+                }
+            }
+
+            /**
+             * What `find` of an inline table returns for the offset that `inline_lookup` gives: the inline element at
+             * `offset`, or the end if `offset` is `nb_elements_`. It is always inlined, as `find_impl` is.
+             * @return `iterator` for a non-const table, `const_iterator` for a const table
+             */
+            template<typename Self>
+            DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr auto inline_find_result(this Self &self, size_type offset) noexcept {
+                using result_type = std::conditional_t<std::is_const_v<Self>, const_iterator, iterator>;
+                if (offset == self.nb_elements_) {
+                    return result_type(nullptr, nullptr, nullptr);
+                }
+                auto *const slots = self.inline_slots();
+                return result_type(nullptr, slots + offset, slots + self.nb_elements_);
+            }
+
+            /**
+             * @return the bytes of the groups and of the elements of a table with buckets, without the unused capacity
+             * and without memory that the elements own
+             */
+            [[nodiscard]] constexpr std::size_t approximate_bytes() const noexcept {
+                return table().nb_sparse_buckets * sizeof(sparse_array) + nb_elements_ * sizeof(slot_type);
+            }
+
+            /**
+             * `find_each` with prefetching, in a pipeline: while the key at position `i` is looked up, the group of the
+             * key at `i + 2 * find_each_distance` and the value of the home bucket of the key at
+             * `i + find_each_distance` are prefetched.
+             */
+            template<typename Self, typename I, typename S, typename F>
+            constexpr void find_each_pipeline(this Self &self, I it, S const &last, F &f) {
+                // the hash of the key at position `j` is at `hashes[j % ring_size]` from when the key is hashed until
+                // it is looked up
+                constexpr std::size_t ring_size = 2 * find_each_distance;
+                std::array<std::size_t, ring_size> hashes{};
+                auto ahead = it;
+                std::size_t nb_hashed = 0;
+                for (; nb_hashed < ring_size && ahead != last; ++nb_hashed, ++ahead) {
+                    hashes[nb_hashed] = self.hash_key(*ahead);
+                    self.prefetch_group(hashes[nb_hashed]);
+                }
+                for (std::size_t j = 0; j < find_each_distance && j < nb_hashed; ++j) {
+                    self.prefetch_home_value(hashes[j]);
+                }
+
+                for (std::size_t i = 0; it != last; ++i, ++it) {
+                    std::size_t const hash = hashes[i % ring_size];
+                    if (ahead != last) {
+                        // the key at `i + ring_size`
+                        hashes[i % ring_size] = self.hash_key(*ahead);
+                        self.prefetch_group(hashes[i % ring_size]);
+                        ++ahead;
+                        ++nb_hashed;
+                    }
+                    if (i + find_each_distance < nb_hashed) {
+                        self.prefetch_home_value(hashes[(i + find_each_distance) % ring_size]);
+                    }
+                    auto &&key = *it;
+                    std::invoke(f, std::forward<decltype(key)>(key), self.find_in_buckets(key, hash));
+                }
+            }
+
+            /**
+             * `find_each` with prefetching, in blocks of `find_each_block` keys: first all keys of a block are hashed
+             * and their groups are prefetched, then the values of their home buckets are prefetched, then the keys are
+             * looked up.
+             */
+            template<typename Self, typename I, typename S, typename F>
+            constexpr void find_each_blocks(this Self &self, I it, S const &last, F &f) {
+                std::array<std::size_t, find_each_block> hashes{};
+                while (it != last) {
+                    auto const block_begin = it;
+                    std::size_t nb_keys = 0;
+                    for (; nb_keys < find_each_block && it != last; ++nb_keys, ++it) {
+                        hashes[nb_keys] = self.hash_key(*it);
+                        self.prefetch_group(hashes[nb_keys]);
+                    }
+                    for (std::size_t i = 0; i < nb_keys; ++i) {
+                        self.prefetch_home_value(hashes[i]);
+                    }
+                    it = block_begin;
+                    for (std::size_t i = 0; i < nb_keys; ++i, ++it) {
+                        auto &&key = *it;
+                        std::invoke(f, std::forward<decltype(key)>(key), self.find_in_buckets(key, hashes[i]));
+                    }
+                }
+            }
+
+            /**
+             * Prefetches the group of the home bucket of the mixed hash `hash`, outside of a constant evaluation.
+             */
+            constexpr void prefetch_group(std::size_t hash) const noexcept {
+                if !consteval {
+                    if (table().nb_sparse_buckets > 0) {
+                        prefetch(buckets_begin() + sparse_array::sparse_ibucket(bucket_for_hash(hash)));
+                    }
+                }
+            }
+
+            /**
+             * Prefetches the element of the home bucket of the mixed hash `hash` if the bucket holds one, outside of a
+             * constant evaluation. Reads the group.
+             */
+            constexpr void prefetch_home_value(std::size_t hash) const noexcept {
+                if !consteval {
+                    if (table().nb_sparse_buckets > 0) {
+                        std::size_t const ibucket = bucket_for_hash(hash);
+                        sparse_array const &bucket = buckets_begin()[sparse_array::sparse_ibucket(ibucket)];
+                        auto const index = sparse_array::index_in_sparse_bucket(ibucket);
+                        if (bucket.has_value(index)) {
+                            prefetch(bucket.value(index));
+                        }
+                    }
+                }
+            }
+
+            /**
+             * A hint to the CPU to load the cache line of `address`. Does nothing for a compiler without
+             * `__builtin_prefetch`.
+             */
+            static void prefetch(void const *address) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
+                __builtin_prefetch(address);
+#else
+                static_cast<void>(address);
+#endif
             }
 
             template<typename Self, typename K>
@@ -3758,19 +3994,14 @@ namespace dice::unordered_sparse {
             requires has_inline_group
             DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_impl(K const &key, std::size_t hash) const {
                 if (is_inline_) {
-                    size_type const offset = inline_lookup(key, hash);
-                    if (offset == nb_elements_) {
-                        return cend();
-                    }
-                    slot_type const *const slots = inline_slots();
-                    return const_iterator(nullptr, slots + offset, slots + nb_elements_);
+                    return inline_find_result(inline_lookup(key, hash));
                 }
                 return find_in_table(key, hash);
             }
 
             /**
              * Looks for `key`, whose mixed hash is `hash`, in a table with buckets. It is always inlined into
-             * `find_impl`.
+             * `find_impl` and into `find_in_buckets` of `find_each`.
              */
             template<typename K>
             DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_in_table(K const &key, std::size_t hash) const {
@@ -4143,6 +4374,7 @@ namespace dice::unordered_sparse {
              */
             template<typename K>
             DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr size_type inline_lookup(K const &key, std::size_t hash) const {
+                DICE_UNORDERED_SPARSE_ASSERT(is_inline_);
                 if (nb_elements_ == 0) {
                     return 0;
                 }

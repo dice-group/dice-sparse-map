@@ -27,7 +27,7 @@ The interface is the one of `std::unordered_map` and `std::unordered_set`, inclu
 - heterogeneous `find`, `count`, `contains`, `equal_range`, `erase`, `try_emplace`, `insert_or_assign`, `operator[]` and set `insert` (see [heterogeneous lookup](#heterogeneous-lookup)),
 - `lookup` of C++29.
 
-Beyond the standard interface, `for_each` calls a function with every element, and `for_each_while` calls it until the function returns `false`. In a large container, `for_each` is faster than a loop over the iterators, and `for_each_while` is faster than a loop over the iterators with `break` (see [for_each](#for_each) and [for_each_while](#for_each_while)).
+Beyond the standard interface, `for_each` calls a function with every element, and `for_each_while` calls it until the function returns `false`. In a large container, `for_each` is faster than a loop over the iterators, and `for_each_while` is faster than a loop over the iterators with `break` (see [for_each](#for_each) and [for_each_while](#for_each_while)). `find_each` looks up many keys in a row, and in a large container it prefetches the groups and the elements of the keys ahead (see [find_each](#find_each)).
 
 `lookup` returns a reference to the mapped value, or nothing, and never inserts. Its result type is `dice::unordered_sparse::optional_ref<T>`. With a standard library that provides `std::optional<T &>`, this is `std::optional<T &>`. Otherwise it is a type of the library with the same interface.
 
@@ -152,6 +152,28 @@ bool const all_positive = map.for_each_while([&first_negative](auto const &eleme
 });
 // all_positive is false, first_negative is "b"
 ```
+
+## find_each
+
+`find_each(keys, f)` looks up every key of a forward range and calls `f(key, it)` for each, in the order of the keys. `key` is `*i` for the iterator `i` of the key in the range, `it` is what `find(key)` returns: an `iterator`, or a `const_iterator` for a const container. A constraint checks at compile time that `f` can be called with `*i` and the iterator. `find_each` is one member template with an explicit object parameter (`this Self &&self`) for a const container and a container that is not const, as `for_each` of a map. So the constraint is checked only with the iterator type of the call, and a generic `f` whose body compiles only with `iterator` works on a container that is not const. A class with a map or a set as a private or protected base calls `find_each` through a `static_cast` to the map or set type. A direct call does not compile there. In a large container, `find_each` prefetches the groups and the elements of the keys ahead, so that the cache misses of several keys overlap: in a pipeline for a trivially destructible key type, from 64 MiB of groups and elements, and in blocks of 16 keys for other key types (a key type that owns memory, such as `std::string`), from 24 MiB. In a smaller container `find_each` is a loop of `find`, because there, in most of the measured maps, keys that are not in the container took longer with the prefetches (see below). In a container that keeps its elements inline (see [small maps](#small-maps)), `find_each` looks the keys up in the inline group, one after the other. `f` may read the container, for example with `find`, and, in a map, change the mapped values through `it`. It must not insert or erase elements or change the container in another way (`clear`, `rehash`, `reserve`, assignment, `swap`, `merge`). Otherwise the behaviour is undefined. If the hash function or `*i` throws for a key, `f` has been called for the keys before it, except, with prefetching, for up to 16 keys right before it, whose hashes are taken ahead. The keys are `Key`, or, with [heterogeneous lookup](#heterogeneous-lookup), any type that the hash function and the key equality accept.
+
+```c++
+std::uint64_t sum = 0;
+map.find_each(keys, [&](std::uint64_t const &, auto it) {
+    if (it != map.end()) {
+        sum += it->second;
+    }
+});
+```
+
+Measured on a Xeon Platinum 8468V (2 MiB L2 cache per core, 97.5 MiB L3 cache) with batches of 1 million keys and maps (medium sparsity) of 50000 to 16 million entries, with the prefetches at every size:
+
+- Keys that are not in the map, `uint64_t` and `std::pair<uint64_t, uint64_t>` keys in the pipeline: they took longer than with `find` up to 33 MiB at a load factor of 0.48, and not longer from 48 MiB on. At load factors of 0.27 to 0.42 they took longer up to 115 MiB (at most 1.07 times as long above 64 MiB), and not longer from 145 MiB on.
+- Keys that are not in the map, `std::string` keys in blocks: with keys of 8 to 135 characters (48 bytes of heap per key on average) they took longer up to 20 MiB, and not longer from 26 MiB on. With keys of 8 to 15 characters, which own no heap, they took longer up to 28 MiB (at most 1.02 times as long above 24 MiB), and not longer from 39 MiB on.
+- Keys that are in the map were found faster from 2.5 MiB (`uint64_t`), 7.4 MiB (`std::pair`) and 2 MiB (`std::string`) on.
+- In the maps in which `find_each` prefetches (more than 64 MiB with `uint64_t` and `std::pair` keys, more than 24 MiB with `std::string` keys), the pipeline was faster than the blocks for `uint64_t` and `std::pair` keys. The blocks were faster for `std::string` keys of 8 to 135 characters (equal for keys that are in a map of 78 MiB), and for keys of 8 to 15 characters that are in the map. For keys of 8 to 15 characters that are not in the map, the pipeline was up to 4 % faster.
+
+The choice of the variant by `std::is_trivially_destructible_v<Key>` comes from these three key types. Other key types were not measured. A key type that refers to memory outside the container without owning it, such as `std::string_view`, a span, or a pointer whose hash and equality read what it points to, is trivially destructible and takes the pipeline from 64 MiB. A key type with a destructor of its own takes the blocks from 24 MiB, also if it owns no memory.
 
 ## Heterogeneous lookup
 
@@ -299,6 +321,7 @@ A type that keeps a raw pointer, like `std::string`, cannot live in persistent m
 - Make sure that `Key` and `T` have a `noexcept` move constructor. Without it the containers still work, but insertions copy elements and are much slower.
 - Make sure that `Key` and `T` also have a `noexcept` move assignment. Without it, an insertion or an erasure moves the elements of a group by construction and destruction through the allocator, which is slower, most of all with an allocator that has its own `construct` and `destroy`, like the allocator of metall.
 - Use `for_each` for a pass over all elements of a large container. There it is faster than a loop over the iterators. Use `for_each_while` for a pass that can stop early. In a large container it is faster than a loop over the iterators with `break`.
+- Use `find_each` for many lookups in a row. In a large container it prefetches the groups and the elements of the keys ahead, see [find_each](#find_each).
 - The library uses `std::popcount`. Compile with `-mpopcnt` or `-march=native` (x86) so that it becomes one instruction.
 - Define `DICE_UNORDERED_SPARSE_DEBUG` (or `TSL_DEBUG`) to enable internal consistency checks.
 

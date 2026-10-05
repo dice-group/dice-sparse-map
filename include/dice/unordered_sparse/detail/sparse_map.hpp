@@ -62,6 +62,7 @@ namespace dice::unordered_sparse {
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
      *  - `for_each(f)` calls `f` with every element, and `for_each_while(f)` calls it until `f` returns `false`.
      *    Use `for_each` for a pass over all elements and `for_each_while` to stop early.
+     *  - `find_each` looks up many keys in a row, with prefetching in a large map.
      *
      * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
      * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
@@ -819,6 +820,39 @@ namespace dice::unordered_sparse {
         requires is_transparent
         DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr bool contains(K const &key, std::size_t precalculated_hash) const {
             return ht_.contains(key, precalculated_hash);
+        }
+
+        /**
+         * Looks up every key of `keys` and calls `f(key, it)` for each, in the order of `keys`. `key` is `*i` for the
+         * iterator `i` of the key in `keys`, `it` is what `find(key)` returns: an `iterator`, or a `const_iterator` for
+         * a const map. A constraint checks that `f` can be called with `*i` and the iterator. `f` may change the mapped
+         * values through `it`, and it may read the map, for example with `find`. It must not insert or erase elements
+         * or change the map in another way (`clear`, `rehash`, `reserve`, assignment, `swap`, `merge`). Otherwise the
+         * behaviour is undefined.
+         *
+         * In a map of more than 64 MiB of groups and elements with a trivially destructible `key_type`, or of more than
+         * 24 MiB with another key type, the groups and the elements of the keys ahead are prefetched, so that the cache
+         * misses of several keys overlap: in a pipeline, or in blocks of 16 keys. In a smaller map, `find_each` is a
+         * loop of `find`, because there, in most of the maps measured in `doc/usage.md`, keys that are not in the map
+         * took longer with the prefetches than with `find`. A map that keeps its elements inline looks the keys up in
+         * the inline group, one after the other.
+         *
+         * If `Hash` or `*i` throws for a key, `f` has been called for the keys before it, except, with prefetching, for
+         * up to 16 keys right before it, whose hashes are taken ahead.
+         *
+         * The elements of `keys` must be `key_type`, or, if `Hash::is_transparent` and `KeyEqual::is_transparent`
+         * exist, any type that `Hash` and `KeyEqual` accept.
+         *
+         * The same member template serves a map that is const and a map that is not, as for `for_each`. So the
+         * constraint is checked only with the iterator type of the call, and a generic `f` that writes through the
+         * iterator works. A class with the map as a private or protected base calls `find_each` through a
+         * `static_cast` to the map type. A direct call does not compile there.
+         */
+        template<typename Self, std::ranges::forward_range R, typename F>
+        requires (is_transparent || std::same_as<std::remove_cvref_t<std::ranges::range_reference_t<R>>, key_type>)
+                 && std::invocable<F &, std::ranges::range_reference_t<R>, std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const_iterator, iterator>>
+        constexpr void find_each(this Self &&self, R &&keys, F &&f) {
+            self.sparse_map::ht_.find_each(std::forward<R>(keys), std::forward<F>(f));
         }
 
         DICE_UNORDERED_SPARSE_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(key_type const &key) {

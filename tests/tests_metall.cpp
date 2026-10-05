@@ -23,6 +23,7 @@
 #include <functional>
 #include <iterator>
 #include <random>
+#include <ranges>
 #include <scoped_allocator>
 #include <string>
 #include <tuple>
@@ -1178,5 +1179,166 @@ TEST_CASE("for_each_while of maps with inline elements in a metall datastore tha
         REQUIRE(small != nullptr);
         REQUIRE(all_inline(*outer, *small));
         check_for_each_while_of_inline_maps(*outer, *small);
+    }
+}
+
+namespace {
+    /**
+     * Checks `find_each` of `map` with `keys` against `find`: the order of the keys, the key that `f` gets (by address)
+     * and the iterator.
+     * @return the number of keys that were found
+     */
+    template<typename Map>
+    std::size_t check_find_each_against_find(Map const &map, std::vector<std::uint64_t> const &keys) {
+        std::size_t calls = 0;
+        std::size_t hits = 0;
+        map.find_each(keys, [&](std::uint64_t const &key, auto it) {
+            REQUIRE(calls < keys.size());
+            CHECK(&key == &keys[calls]);
+            CHECK(it == map.find(key));
+            if (it != map.end()) {
+                CHECK(it->first == key);
+                ++hits;
+            }
+            ++calls;
+        });
+        CHECK(calls == keys.size());
+        return hits;
+    }
+
+    /**
+     * Checks `find_each` of `small`, of `outer` and of the inner maps that `find_each` of `outer` gives to its `f`
+     * against `find`, with keys that are in the maps of `fill_inline_maps` and keys that are not.
+     */
+    void check_find_each_of_inline_maps(inline_outer_map const &outer, small_inline_map const &small) {
+        CHECK(check_find_each_against_find(small, {5, 7, 6, 5, 0}) == 3);
+        std::size_t inner_hits = 0;
+        CHECK(check_find_each_against_find(outer, {2, 3, 1}) == 2);
+        outer.find_each(std::vector<std::uint64_t>{1, 2}, [&outer, &inner_hits](std::uint64_t const &key, auto it) {
+            REQUIRE(it != outer.end());
+            inner_hits += check_find_each_against_find(it->second, {10 * key + 1, 10 * key + 2, 10 * key});
+        });
+        CHECK(inner_hits == 4);
+    }
+}  // namespace
+
+// `find_each` of a map with inline elements looks the keys up in the inline group in the map object, so in the
+// datastore. After the datastore is mapped at another address, it gives what `find` gives, also in inline maps that are
+// inline elements of another map, and `find_each` of a map that is not const changes the mapped values through `it`.
+TEST_CASE("find_each of maps with inline elements in a metall datastore that is opened again") {
+    datastore_path const store{"find_each_inline"};
+    mapping last_mapping;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *outer = manager.construct<inline_outer_map>("outer")(manager.get_allocator());
+        auto *small = manager.construct<small_inline_map>("small")(manager.get_allocator());
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        fill_inline_maps(*outer, *small);
+        REQUIRE(all_inline(*outer, *small));
+        check_find_each_of_inline_maps(*outer, *small);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        REQUIRE(all_inline(*outer, *small));
+        check_find_each_of_inline_maps(*outer, *small);
+
+        small->find_each(std::vector<std::uint64_t>{6, 7}, [small](std::uint64_t const &, auto it) {
+            if (it != small->end()) {
+                ++it->second;
+            }
+        });
+        CHECK(small->at(5) == value_of(5));
+        CHECK(small->at(6) == value_of(6) + 1);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_read_only, store.path.c_str()};
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto const *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto const *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        REQUIRE(all_inline(*outer, *small));
+        check_find_each_of_inline_maps(*outer, *small);
+        CHECK(small->at(6) == value_of(6) + 1);
+    }
+}
+
+// `find_each` of a map of more than the 64 MiB of groups and elements from which it prefetches for a trivially
+// destructible key type, in a datastore that is open read-only at another address. The prefetches and the lookups only
+// read.
+TEST_CASE("find_each of a large map in a datastore that is open read-only") {
+    using map_type = persistent_map<sparsity::medium>;
+    datastore_path const store{"find_each_read_only"};
+    char const *object_name = "map";
+    // 4.5 million elements of 16 bytes and their groups are about 77 MiB
+    constexpr std::uint64_t nb_elements = 4500000;
+    mapping last_mapping;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *map = manager.construct<map_type>(object_name)(manager.get_allocator());
+        REQUIRE(map != nullptr);
+        for (std::uint64_t i = 0; i < nb_elements; ++i) {
+            map->try_emplace(i * 3, value_of(i * 3));
+        }
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_read_only, store.path.c_str()};
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto const *map = std::get<0>(manager.find<map_type>(object_name));
+        REQUIRE(map != nullptr);
+
+        std::mt19937_64 rng(5);
+        std::vector<std::uint64_t> keys;
+        for (std::size_t i = 0; i < 100003; ++i) {
+            keys.push_back(rng() % (nb_elements * 4));
+        }
+        // the path with prefetching takes every key twice from a range of prvalues, the loop of `find` once
+        std::size_t nb_dereferences = 0;
+        auto const view = keys | std::views::transform([&nb_dereferences](std::uint64_t key) {
+                              ++nb_dereferences;
+                              return key;
+                          });
+        map->find_each(view, [](auto const &, auto) {
+        });
+        CHECK(nb_dereferences == 2 * keys.size());
+
+        std::size_t calls = 0;
+        std::size_t hits = 0;
+        bool all_right = true;
+        map->find_each(keys, [&](std::uint64_t const &key, auto it) {
+            all_right = all_right && calls < keys.size() && &key == &keys[calls] && it == map->find(key);
+            if (it != map->end()) {
+                all_right = all_right && it->first == key && it->second == value_of(key);
+                ++hits;
+            }
+            ++calls;
+        });
+        CHECK(all_right);
+        CHECK(calls == keys.size());
+        CHECK(hits > 0);
+        CHECK(hits < keys.size());
     }
 }
