@@ -132,6 +132,31 @@ namespace dice::sparse_map::tests {
     static_assert(std::is_same_v<map_medium<int, int>::hasher, detail_sparse_hash::default_hash<int>>);
     static_assert(std::is_same_v<set_medium<std::string>::hasher, detail_sparse_hash::default_hash<std::string>>);
 
+    /**
+     * `sparse_map` with `sh::allocation_failure::throwing`, the other parameters as in `sparse_map`. A failed
+     * allocation throws the exception of the allocator. The tests that make an allocation fail and expect the
+     * exception use it.
+     */
+    template<typename Key,
+             typename T,
+             typename Hash = detail_sparse_hash::default_hash<Key>,
+             typename KeyEqual = std::equal_to<Key>,
+             typename Allocator = std::allocator<std::pair<Key, T>>,
+             sh::exception_safety ExceptionSafety = sh::exception_safety::basic,
+             sh::sparsity Sparsity = sh::sparsity::medium>
+    using throwing_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, ExceptionSafety, Sparsity, sh::allocation_failure::throwing>;
+
+    /**
+     * `sparse_set` with `sh::allocation_failure::throwing`, the other parameters as in `sparse_set`.
+     */
+    template<typename Key,
+             typename Hash = detail_sparse_hash::default_hash<Key>,
+             typename KeyEqual = std::equal_to<Key>,
+             typename Allocator = std::allocator<Key>,
+             sh::exception_safety ExceptionSafety = sh::exception_safety::basic,
+             sh::sparsity Sparsity = sh::sparsity::medium>
+    using throwing_set = sparse_set<Key, Hash, KeyEqual, Allocator, ExceptionSafety, Sparsity, sh::allocation_failure::throwing>;
+
 }  // namespace dice::sparse_map::tests
 
 /**

@@ -22,7 +22,8 @@
 /**
  * What a map holds after an allocation or the hash function failed in the middle of an operation. The allocations
  * fail through `tests::bombing_allocator`, the hash function through `throwing_hash`. The elements are
- * `counter::obj`, so a test sees every element that is not destroyed, or destroyed twice.
+ * `counter::obj`, so a test sees every element that is not destroyed, or destroyed twice. The maps that allocate
+ * through `tests::bombing_allocator` are `tests::throwing_map`, so a failed allocation throws `std::bad_alloc`.
  *
  * A rehash moves an element whose move constructor cannot throw and frees each old group right after its elements
  * are moved, so the map is empty if it throws while it moves. It copies an element whose move constructor can throw
@@ -147,27 +148,27 @@ namespace {
     };
 
     template<sh::sparsity Sparsity, typename Hash = test_hash<counter::obj>>
-    using moving_map = sparse_map<counter::obj,
-                                  counter::obj,
-                                  Hash,
-                                  std::equal_to<counter::obj>,
-                                  leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                  sh::exception_safety::basic,
-                                  Sparsity>;
+    using moving_map = throwing_map<counter::obj,
+                                    counter::obj,
+                                    Hash,
+                                    std::equal_to<counter::obj>,
+                                    leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
+                                    sh::exception_safety::basic,
+                                    Sparsity>;
 
     template<typename Hash = test_hash<counter::obj>>
-    using copying_map = sparse_map<copied_obj,
-                                   copied_obj,
-                                   Hash,
-                                   std::equal_to<counter::obj>,
-                                   leak_checking_allocator<std::pair<copied_obj, copied_obj>>>;
+    using copying_map = throwing_map<copied_obj,
+                                     copied_obj,
+                                     Hash,
+                                     std::equal_to<counter::obj>,
+                                     leak_checking_allocator<std::pair<copied_obj, copied_obj>>>;
 
     template<typename Hash = test_hash<std::size_t>>
-    using trivial_map = sparse_map<std::size_t,
-                                   std::size_t,
-                                   Hash,
-                                   std::equal_to<std::size_t>,
-                                   leak_checking_allocator<std::pair<std::size_t, std::size_t>>>;
+    using trivial_map = throwing_map<std::size_t,
+                                     std::size_t,
+                                     Hash,
+                                     std::equal_to<std::size_t>,
+                                     leak_checking_allocator<std::pair<std::size_t, std::size_t>>>;
 
     /// the type in which `Map` stores its elements
     template<typename Map>
@@ -656,13 +657,13 @@ TEST_CASE("a rehash does not swap the hash function") {
 namespace {
 
     /// `moving_map<sh::sparsity::medium>` with `sh::exception_safety::strong`
-    using strong_moving_map = sparse_map<counter::obj,
-                                         counter::obj,
-                                         test_hash<counter::obj>,
-                                         std::equal_to<counter::obj>,
-                                         leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                         sh::exception_safety::strong,
-                                         sh::sparsity::medium>;
+    using strong_moving_map = throwing_map<counter::obj,
+                                           counter::obj,
+                                           test_hash<counter::obj>,
+                                           std::equal_to<counter::obj>,
+                                           leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
+                                           sh::exception_safety::strong,
+                                           sh::sparsity::medium>;
 
     /// what an insert that rehashes did with one allocation budget
     enum class insert_outcome {
