@@ -1,4 +1,5 @@
 #include "fixtures/checksum.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -48,7 +49,7 @@ namespace {
     template<sh::sparsity Sparsity>
     using persistent_map = sparse_map<std::uint64_t,
                                       std::uint64_t,
-                                      std::hash<std::uint64_t>,
+                                      tests::test_hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
                                       sh::power_of_two_growth_policy<2>,
@@ -57,7 +58,7 @@ namespace {
 
     template<sh::sparsity Sparsity>
     using persistent_set = sparse_set<std::uint64_t,
-                                      std::hash<std::uint64_t>,
+                                      tests::test_hash<std::uint64_t>,
                                       std::equal_to<std::uint64_t>,
                                       metall_allocator<std::uint64_t>,
                                       sh::power_of_two_growth_policy<2>,
@@ -317,7 +318,7 @@ namespace {
     /// The outer map passes its allocator to every inner map it constructs (uses-allocator construction).
     using scoped_outer_map = sparse_map<std::uint64_t,
                                         inner_map,
-                                        std::hash<std::uint64_t>,
+                                        tests::test_hash<std::uint64_t>,
                                         std::equal_to<std::uint64_t>,
                                         std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, inner_map>>>>;
 

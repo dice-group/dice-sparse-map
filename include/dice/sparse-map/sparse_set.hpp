@@ -42,6 +42,14 @@ namespace dice::sparse_map {
      * probing. The goal on the hash set is to be the most memory efficient
      * possible, even at low load factor, while keeping reasonable performances.
      *
+     * `Hash` must be avalanching, see `dice::sparse_map::sh::hash_is_avalanching`: a
+     * hash picks its bucket with its low bits as it is. The default
+     * `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` is avalanching for
+     * integers up to 64 bits, floating point numbers, pointers and strings, and
+     * for pairs, tuples and vectors of them. Enums and types with their own
+     * `dice::hash::dice_hash_overload` need an overload that declares
+     * `is_avalanching`, or another hash function.
+     *
      * `GrowthPolicy` is a placeholder. It must be
      * `dice::sparse_map::sh::power_of_two_growth_policy<2>`, the default. The
      * number of buckets is 0 or a power of two and doubles when the table grows.
@@ -78,8 +86,13 @@ namespace dice::sparse_map {
      * the iterators.
      *  - erase: always invalidate the iterators.
      */
-    template<class Key, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>, class GrowthPolicy = dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+    template<class Key, class Hash = detail_sparse_hash::default_hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>, class GrowthPolicy = dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
     class sparse_set {
+        static_assert(sh::hash_is_avalanching_v<Hash>,
+                      "Hash must be avalanching: sparse_set picks the bucket with the low bits of the hash as it is. "
+                      "Mark an avalanching hash function with `using is_avalanching = void;` or with a specialization "
+                      "of dice::sparse_map::sh::hash_is_avalanching. std::hash is not avalanching. "
+                      "dice::hash::DiceHash is avalanching only for some types and policies.");
         static_assert(std::is_same_v<GrowthPolicy, dice::sparse_map::sh::power_of_two_growth_policy<2>>,
                       "GrowthPolicy must be dice::sparse_map::sh::power_of_two_growth_policy<2>. The number of buckets is "
                       "0 or a power of two and doubles when the table grows.");

@@ -23,6 +23,7 @@
  */
 #include <dice/sparse-map/sparse_set.hpp>
 
+#include "fixtures/test_types.hpp"
 #include "fixtures/utils.hpp"
 
 #include <doctest/doctest.h>
@@ -42,16 +43,16 @@ TEST_SUITE("test_sparse_set") {
 
     using test_types = std::tuple<dice::sparse_map::sparse_set<std::int64_t>,
                                   dice::sparse_map::sparse_set<std::string>,
-                                  dice::sparse_map::sparse_set<self_reference_member_test>,
-                                  dice::sparse_map::sparse_set<move_only_test>,
+                                  dice::sparse_map::sparse_set<self_reference_member_test, test_hash<self_reference_member_test>>,
+                                  dice::sparse_map::sparse_set<move_only_test, test_hash<move_only_test>>,
                                   dice::sparse_map::sparse_set<self_reference_member_test,
-                                                               std::hash<self_reference_member_test>,
+                                                               test_hash<self_reference_member_test>,
                                                                std::equal_to<self_reference_member_test>,
                                                                std::allocator<self_reference_member_test>,
                                                                dice::sparse_map::sh::power_of_two_growth_policy<2>,
                                                                dice::sparse_map::sh::exception_safety::strong>,
-                                  dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
-                                  dice::sparse_map::sparse_set<move_only_test, std::hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
+                                  dice::sparse_map::sparse_set<move_only_test, test_hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+                                  dice::sparse_map::sparse_set<move_only_test, test_hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
 
     TEST_CASE_TEMPLATE_DEFINE("test_standard_layout", HSet, test_standard_layout_id) {
         static_assert(std::is_standard_layout_v<HSet>);

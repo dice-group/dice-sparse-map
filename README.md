@@ -3,7 +3,7 @@
 
 The sparse-map library is a C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers. It uses open-addressing with sparse quadratic probing. The goal of the library is to be the most memory efficient possible, even at low load factor, while keeping reasonable performances. You can find an [article](https://smerity.com/articles/2015/google_sparsehash.html) of Stephen Merity which explains the idea behind `google::sparse_hash_map` and this project.
 
-Two classes are provided: `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`. The number of buckets is 0 or a power of two, see [Growth policy](#growth-policy).
+Two classes are provided: `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`. The number of buckets is 0 or a power of two, see [Growth policy](#growth-policy). The hash function must be avalanching, see [Hash function](#hash-function).
 
 A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be found [here](https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html). The benchmark, in its additional tests page, notably includes `google::sparse_hash_map` and `spp::sparse_hash_map` to which `dice::sparse_map::sparse_map` is an alternative. This page also gives some advices on which hash table structure you should try for your use case (useful if you are a bit lost with the multiple hash tables implementations in the `tsl` namespace).
 
@@ -55,9 +55,15 @@ Make sure that your key `Key` and potential value `T` have a `noexcept` move con
 
 The number of buckets is 0 or a power of two and doubles when the table grows. A hash picks its bucket with a mask, <code>hash & (2<sup>n</sup> - 1)</code>, not with a modulo. The template parameter `GrowthPolicy` must be `dice::sparse_map::sh::power_of_two_growth_policy<2>`, the default. Other growth policies do not compile.
 
+### Hash function
+
+A hash picks its bucket with its low bits as it is, without mixing. So the hash function must be avalanching: each bit of the key changes each bit of the hash with a probability of about one half. A `static_assert` checks `dice::sparse_map::sh::hash_is_avalanching<Hash>`. The trait is true if `Hash` declares the member type `is_avalanching`: `using is_avalanching = void;` as in `ankerl::unordered_dense`, or `using is_avalanching = std::true_type;` as in `boost::unordered`. A member type with a `value` that is false, like `std::false_type`, does not count. For a hash function that you cannot change, specialize `dice::sparse_map::sh::hash_is_avalanching`. `std::hash` is not avalanching: for integers, libstdc++ and libc++ return the value itself.
+
+The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). It declares `is_avalanching` for integers up to 64 bits, floating point numbers, pointers and strings, and for pairs, tuples, optionals, vectors and other ordered containers of such types. It does not declare it for enums, for unordered containers, and for a type with its own `dice::hash::dice_hash_overload`, unless that overload declares `is_avalanching` (see the README of dice-hash). For such a key type, pass another hash function.
+
 ### Installation
 
-To use sparse-map, just add the [include](include/) directory to your include path. It is a **header-only** library.
+To use sparse-map, just add the [include](include/) directory to your include path. It is a **header-only** library. It needs the headers of [dice-hash](https://github.com/dice-group/dice-hash) and its dependencies.
 
 If you use CMake, you can also use the `dice::sparse_map::sparse_map` exported target from the [CMakeLists.txt](CMakeLists.txt) with `target_link_libraries`. 
 ```cmake
@@ -110,7 +116,7 @@ int main() {
         it.value() += 2;
     }
     
-    // {d, 6} {a, 3} {e, 7} {c, 5}
+    // The order depends on the hash function.
     for(const auto& key_value : map) {
         std::cout << "{" << key_value.first << ", " << key_value.second << "}" << std::endl;
     }
@@ -120,7 +126,7 @@ int main() {
         std::cout << "Found \"a\"." << std::endl;
     }
     
-    const std::size_t precalculated_hash = std::hash<std::string>()("a");
+    const std::size_t precalculated_hash = map.hash_function()("a");
     // If we already know the hash beforehand, we can pass it as argument to speed-up the lookup.
     if(map.find("a", precalculated_hash) != map.end()) {
         std::cout << "Found \"a\" with hash " << precalculated_hash << "." << std::endl;
@@ -133,7 +139,7 @@ int main() {
     set.insert({1, 9, 0});
     set.insert({2, -1, 9});
     
-    // {0} {1} {2} {9} {-1}
+    // The order depends on the hash function.
     for(const auto& key : set) {
         std::cout << "{" << key << "}" << std::endl;
     }
@@ -194,13 +200,16 @@ struct equal_employee {
     }
 };
 
+// The hash must be avalanching, see "Hash function" above.
 struct hash_employee {
+    using is_avalanching = void;
+    
     std::size_t operator()(const employee& empl) const {
-        return std::hash<int>()(empl.m_id);
+        return dice::hash::DiceHash<int, dice::hash::Policies::wyhash>()(empl.m_id);
     }
     
     std::size_t operator()(int id) const {
-        return std::hash<int>()(id);
+        return dice::hash::DiceHash<int, dice::hash::Policies::wyhash>()(id);
     }
 };
 

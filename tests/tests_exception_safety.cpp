@@ -1,6 +1,7 @@
 #include "fixtures/allocators.hpp"
 #include "fixtures/checksum.hpp"
 #include "fixtures/counter.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 
@@ -59,7 +60,7 @@ namespace {
     template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
     using bombing_map = sparse_map<counter::obj,
                                    counter::obj,
-                                   std::hash<counter::obj>,
+                                   test_hash<counter::obj>,
                                    std::equal_to<counter::obj>,
                                    leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
                                    sh::power_of_two_growth_policy<2>,

@@ -26,12 +26,13 @@ using namespace dice::sparse_map::tests;
  * element on a rehash, so it does not compile with a mapped type that cannot be copied.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_MAP_MOVE_ONLY(name, ...)                                 \
-    TEST_CASE_TEMPLATE(name,                                               \
-                       map_t,                                              \
-                       ::dice::sparse_map::tests::map_medium<__VA_ARGS__>, \
-                       ::dice::sparse_map::tests::map_high<__VA_ARGS__>,   \
-                       ::dice::sparse_map::tests::map_low<__VA_ARGS__>,    \
+#define TEST_CASE_MAP_MOVE_ONLY(name, ...)                                      \
+    TEST_CASE_TEMPLATE(name,                                                    \
+                       map_t,                                                   \
+                       ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,      \
+                       ::dice::sparse_map::tests::map_high<__VA_ARGS__>,        \
+                       ::dice::sparse_map::tests::map_low<__VA_ARGS__>,         \
+                       ::dice::sparse_map::tests::map_avalanching<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
 
 // not_copyable
@@ -214,7 +215,13 @@ TEST_CASE_MAP("create_app_state_with_a_map_member", void *, texture *) {
 
 namespace {
 
+    /**
+     * Hash and key equality in one class. The hash returns the key itself. It is not avalanching, but it is marked as
+     * avalanching, so that the containers accept it.
+     */
     struct hash_with_equal {
+        using is_avalanching = void;
+
         std::size_t operator()(int x) const {
             return static_cast<std::size_t>(x);
         }
@@ -298,7 +305,7 @@ namespace {
         }
     }
 
-    using inner_map = dice::sparse_map::sparse_map<counter::obj, counter::obj>;
+    using inner_map = dice::sparse_map::sparse_map<counter::obj, counter::obj, test_hash<counter::obj>>;
 
 }  // namespace
 
@@ -496,13 +503,21 @@ namespace {
         }
     };
 
+    /**
+     * Returns the value itself. It is not avalanching, but it is marked as avalanching, so that the containers accept
+     * it.
+     */
     struct custom_hash_simple {
+        using is_avalanching = void;
+
         [[nodiscard]] std::size_t operator()(id const &x) const noexcept {
             return x.value;
         }
     };
 
     struct custom_hash_mixing {
+        using is_avalanching = void;
+
         [[nodiscard]] std::size_t operator()(id const &x) const noexcept {
             return checksum::mix(x.value);
         }
@@ -521,10 +536,12 @@ namespace {
      * Hashes the object representation of a `point`.
      */
     struct custom_hash_unique_object_representation {
+        using is_avalanching = void;
+
         [[nodiscard]] std::size_t operator()(point const &f) const noexcept {
             static_assert(std::has_unique_object_representations_v<point>);
             static_assert(sizeof(point) == sizeof(std::uint64_t));
-            return std::hash<std::uint64_t>{}(std::bit_cast<std::uint64_t>(f));
+            return test_hash<std::uint64_t>{}(std::bit_cast<std::uint64_t>(f));
         }
     };
 

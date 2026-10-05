@@ -23,6 +23,7 @@
  */
 #include <dice/sparse-map/sparse_map.hpp>
 
+#include "fixtures/test_types.hpp"
 #include "fixtures/utils.hpp"
 
 #include <doctest/doctest.h>
@@ -628,12 +629,12 @@ TEST_SUITE("test_sparse_map") {
      */
     TEST_CASE("test_extreme_bucket_count_value_construction") {
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
                 std::numeric_limits<std::size_t>::max())),
             std::length_error);
 
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
                 std::numeric_limits<std::size_t>::max() / 2 + 1)),
             std::length_error);
     }
@@ -965,11 +966,13 @@ TEST_SUITE("test_sparse_map") {
         // Use a KeyEqual and Hash where any odd unsigned number 'x' is equal to
         // 'x-1'. Make sure that KeyEqual is called (and not ==).
         struct hash {
+            using is_avalanching = void;
+
             std::size_t operator()(std::uint64_t v) const {
                 if (v % 2u == 1u) {
-                    return std::hash<std::uint64_t>()(v - 1);
+                    return test_hash<std::uint64_t>()(v - 1);
                 } else {
-                    return std::hash<std::uint64_t>()(v);
+                    return test_hash<std::uint64_t>()(v);
                 }
             }
         };
@@ -1005,7 +1008,10 @@ TEST_SUITE("test_sparse_map") {
         // buckets marked as deleted or containing a value to be sure that everything
         // works well in this edge case. Intrusive test (it's tightly coupled with the
         // implementation of the map).
+        // Not avalanching, but marked as avalanching, so that the containers accept it. The key itself picks the bucket.
         struct identity_hash {
+            using is_avalanching = void;
+
             std::size_t operator()(unsigned int value) const {
                 return std::size_t(value);
             }
@@ -1067,17 +1073,19 @@ TEST_SUITE("test_sparse_map") {
 
     TEST_CASE("test_heterogeneous_lookups") {
         struct hash_ptr {
+            using is_avalanching = void;
+
             std::size_t operator()(std::unique_ptr<int> const &p) const {
-                return std::hash<std::uintptr_t>()(
+                return test_hash<std::uintptr_t>()(
                     reinterpret_cast<std::uintptr_t>(p.get()));
             }
 
             std::size_t operator()(std::uintptr_t p) const {
-                return std::hash<std::uintptr_t>()(p);
+                return test_hash<std::uintptr_t>()(p);
             }
 
             std::size_t operator()(int const *const &p) const {
-                return std::hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(p));
+                return test_hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(p));
             }
         };
 

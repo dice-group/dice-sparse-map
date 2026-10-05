@@ -1,4 +1,5 @@
 #include "fixtures/offset_ptr_allocator.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -31,7 +32,7 @@ namespace {
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
     using map_of = sparse_map<std::uint64_t,
                               std::uint64_t,
-                              std::hash<std::uint64_t>,
+                              tests::test_hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<entry_t>,
                               sh::power_of_two_growth_policy<2>,
@@ -40,7 +41,7 @@ namespace {
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
     using set_of = sparse_set<std::uint64_t,
-                              std::hash<std::uint64_t>,
+                              tests::test_hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<std::uint64_t>,
                               sh::power_of_two_growth_policy<2>,

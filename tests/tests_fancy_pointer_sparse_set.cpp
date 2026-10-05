@@ -7,6 +7,7 @@
 #include <dice/sparse-map/sparse_set.hpp>
 
 #include "fixtures/offset_ptr_allocator.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <doctest/doctest.h>
 
@@ -38,7 +39,7 @@ namespace details {
         T,
         key_select<T>,
         void,
-        std::hash<T>,
+        dice::sparse_map::tests::test_hash<T>,
         std::equal_to<T>,
         Alloc,
         dice::sparse_map::sh::exception_safety::basic,
@@ -47,7 +48,7 @@ namespace details {
     template<typename T>
     typename T::set_type default_construct_set() {
         using value_type = typename T::value_type;
-        return typename T::set_type(T::set_type::DEFAULT_INIT_BUCKET_COUNT, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::DEFAULT_MAX_LOAD_FACTOR);
+        return typename T::set_type(T::set_type::DEFAULT_INIT_BUCKET_COUNT, dice::sparse_map::tests::test_hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::DEFAULT_MAX_LOAD_FACTOR);
     }
 
     /** checks if all values of the set are in the initializer_list and then if the lengths are equal.
@@ -238,7 +239,7 @@ TEST_SUITE("fancy_pointers/sparse_hash_set_tests") {
     }
 
     TEST_CASE("full_set") {
-        dice::sparse_map::sparse_set<int, std::hash<int>, std::equal_to<int>, offset_ptr_allocator<int>> set;
+        dice::sparse_map::sparse_set<int, dice::sparse_map::tests::test_hash<int>, std::equal_to<int>, offset_ptr_allocator<int>> set;
         std::vector<int> data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
         set.insert(data.begin(), data.end());
         auto check = [&set](int d) {

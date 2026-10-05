@@ -1,4 +1,5 @@
 #include "fixtures/allocators.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -32,6 +33,8 @@ namespace {
      * Hash whose move, move assignment, swap and call may throw. They throw while `armed` is true.
      */
     struct throwing_hash {
+        using is_avalanching = void;
+
         inline static bool armed = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
         throwing_hash() = default;
@@ -60,7 +63,7 @@ namespace {
             if (armed) {
                 throw std::runtime_error{"throwing_hash call"};
             }
-            return std::hash<int>{}(key);
+            return tests::test_hash<int>{}(key);
         }
     };
 
@@ -85,8 +88,8 @@ namespace {
     using throwing_set = sparse_set<int, throwing_hash>;
 
     /// containers with an allocator that is not always equal and does not propagate, like `std::pmr::polymorphic_allocator`
-    using unequal_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, pmr_like_allocator<std::pair<int, int>>>;
-    using unequal_set = sparse_set<int, std::hash<int>, std::equal_to<int>, pmr_like_allocator<int>>;
+    using unequal_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, pmr_like_allocator<std::pair<int, int>>>;
+    using unequal_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, pmr_like_allocator<int>>;
 
     // the premises of the expectations below
     static_assert(std::allocator_traits<std::allocator<int>>::is_always_equal::value);

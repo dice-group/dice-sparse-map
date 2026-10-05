@@ -1,5 +1,7 @@
 #include <dice/sparse-map/sparse_set.hpp>
 
+#include "fixtures/test_types.hpp"
+
 #include <doctest/doctest.h>
 
 #include <functional>
@@ -23,7 +25,7 @@ namespace details {
         T,
         details::key_select<T>,
         void,
-        std::hash<T>,
+        dice::sparse_map::tests::test_hash<T>,
         std::equal_to<T>,
         Alloc,
         dice::sparse_map::sh::exception_safety::basic,
@@ -33,7 +35,7 @@ namespace details {
 template<typename T>
 void construction() {
     using value_type = typename T::value_type;
-    typename T::set_type(T::set_type::DEFAULT_INIT_BUCKET_COUNT, std::hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::DEFAULT_MAX_LOAD_FACTOR);
+    typename T::set_type(T::set_type::DEFAULT_INIT_BUCKET_COUNT, dice::sparse_map::tests::test_hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::DEFAULT_MAX_LOAD_FACTOR);
 }
 
 

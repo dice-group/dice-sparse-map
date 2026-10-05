@@ -1,4 +1,5 @@
 #include "fixtures/allocators.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -22,10 +23,10 @@ namespace {
     using dice::sparse_map::tests::num_allocations;
 
     template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
-    using counted_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, sh::power_of_two_growth_policy<2>, ExceptionSafety, Sparsity>;
+    using counted_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, sh::power_of_two_growth_policy<2>, ExceptionSafety, Sparsity>;
 
     template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
-    using counted_set = sparse_set<int, std::hash<int>, std::equal_to<int>, counting_allocator<int>, sh::power_of_two_growth_policy<2>, ExceptionSafety, Sparsity>;
+    using counted_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<int>, sh::power_of_two_growth_policy<2>, ExceptionSafety, Sparsity>;
     constexpr auto basic = sh::exception_safety::basic;
     constexpr auto strong = sh::exception_safety::strong;
 
