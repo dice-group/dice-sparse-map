@@ -22,7 +22,7 @@ namespace {
 
 }  // namespace
 
-TEST_SUITE("iterators") {
+TEST_SUITE("iterator_reference") {
     using map_t = sparse_map<std::string, int>;
     using set_t = sparse_set<std::string>;
 
