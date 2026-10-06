@@ -2347,7 +2347,7 @@ namespace dice::sparse_map {
              * Moves `first_nonempty_group_` to the next group that holds an element, after an erase emptied the first
              * one. Reads the headers of the groups in between. Without elements it is `nb_sparse_buckets_` at once.
              */
-            constexpr void skip_empty_first_groups() noexcept {
+            constexpr void advance_first_nonempty_group() noexcept {
                 if (nb_elements_ == 0) {
                     first_nonempty_group_ = nb_sparse_buckets_;
                     return;
@@ -2738,7 +2738,7 @@ namespace dice::sparse_map {
                             --nb_elements_;
                             ++nb_deleted_buckets_;
                             if (sparse_ibucket == first_nonempty_group_ && bucket.empty()) {
-                                skip_empty_first_groups();
+                                advance_first_nonempty_group();
                             }
 
                             return 1;
