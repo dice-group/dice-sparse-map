@@ -24,7 +24,8 @@
  * Without a `Hash` argument, the `medium` configuration takes the default hash function of the
  * containers for the key types that `DiceHash` hashes (see `hashed_by_dice_hash`), and `test_hash<Key>`
  * otherwise. The `std_hash` configuration takes `std::hash<Key>` as it is, which is the identity for
- * integers, so that the tests also run with many collisions. The others take `test_hash<Key>`.
+ * integers, so that the tests also run with a hash function that is not avalanching (for integers, keys
+ * that differ only in the high bits share a bucket). The others take `test_hash<Key>`.
  */
 namespace dice::sparse_map::tests {
 
@@ -71,7 +72,7 @@ namespace dice::sparse_map::tests {
     /**
      * `Hash`, marked as avalanching, so that the containers accept it even if it is not avalanching. The
      * `std_hash` configuration uses it with `std::hash`, which is the identity for integers, so that the
-     * tests also run with a weak hash function and many collisions.
+     * tests also run with a hash function that is not avalanching.
      */
     template<typename Hash>
     struct marked_avalanching : Hash {
@@ -151,7 +152,7 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,        \
                        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>, \
+                       ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,    \
                        ::dice::sparse_map::tests::map_strong<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
 
@@ -166,7 +167,7 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,        \
                        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>, \
+                       ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,    \
                        ::dice::sparse_map::tests::set_strong<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__>)
 

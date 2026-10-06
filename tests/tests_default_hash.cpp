@@ -118,13 +118,17 @@ TEST_CASE("the default hash function is DiceHash with the policy wyhash") {
 }
 
 // The bucket of an element is the low bits of its hash, so the hash values of the default hash function are part of
-// the persisted layout of a map or set (`pobr_version`). A change of these values needs a new `pobr_version`.
-TEST_CASE("the hash values of the default hash function are fixed") {
+// the persisted layout of a map or set (`pobr_version`). A change of these values needs a new `pobr_version`. The values
+// are those of a 64-bit `std::size_t`. `0.0` and `-0.0` are hashed by their bytes, so they have different hashes.
+TEST_CASE("the hash values of the default hash function are fixed" * doctest::skip(sizeof(std::size_t) != 8)) {
     using dice::sparse_map::detail_sparse_hash::default_hash;
     CHECK(default_hash<int>{}(42) == UINT64_C(4255536615297185153));
     CHECK(default_hash<std::uint64_t>{}(UINT64_C(0x0123456789ABCDEF)) == UINT64_C(13776401956960274376));
     CHECK(default_hash<std::string>{}("dice-sparse-map") == UINT64_C(5717576923377682419));
     CHECK(default_hash<int_string>{}(int_string{7, "seven"}) == UINT64_C(14797354364008599459));
+    CHECK(default_hash<double>{}(1.5) == UINT64_C(12665816438049873277));
+    CHECK(default_hash<double>{}(0.0) == UINT64_C(5623925482976029411));
+    CHECK(default_hash<double>{}(-0.0) == UINT64_C(17095540470322395955));
 }
 
 TEST_CASE("hash_is_avalanching reads the member type is_avalanching") {
