@@ -6,18 +6,18 @@ How to use `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`: th
 
 ## The header and the names
 
-`#include <dice/sparse-map/sparse_map.hpp>` gives `dice::sparse_map::sparse_map`, and `#include <dice/sparse-map/sparse_set.hpp>` gives `dice::sparse_map::sparse_set`. `<dice/sparse-map/version.hpp>` has `dice::sparse_map::pobr_version` and the version of the library. The names that configure the containers are in `dice::sparse_map::sh`: `sh::sparsity`, `sh::allocation_failure`, `sh::hash_is_avalanching`, `sh::power_of_two_growth_policy` and `sh::exception_safety`. The default hash function comes from [dice-hash](https://github.com/dice-group/dice-hash), so the headers need the headers of dice-hash.
+`#include <dice/sparse-map/sparse_map.hpp>` gives `dice::sparse_map::sparse_map`, and `#include <dice/sparse-map/sparse_set.hpp>` gives `dice::sparse_map::sparse_set`. `<dice/sparse-map/version.hpp>` has `dice::sparse_map::pobr_version` and the version of the library. The names that configure the containers are in `dice::sparse_map::sh`: `sh::sparsity`, `sh::allocation_failure` and `sh::hash_is_avalanching`. The default hash function comes from [dice-hash](https://github.com/dice-group/dice-hash), so the headers need the headers of dice-hash.
 
 The template parameters are:
 
 ```c++
-sparse_map<Key, T, Hash, KeyEqual, Allocator, GrowthPolicy, ExceptionSafety, Sparsity, AllocationFailure>
-sparse_set<Key, Hash, KeyEqual, Allocator, GrowthPolicy, ExceptionSafety, Sparsity, AllocationFailure>
+sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>
+sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>
 ```
 
-The defaults are `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>`, `std::equal_to<Key>`, `std::allocator<std::pair<Key, T>>` (`std::allocator<Key>` for the set), `sh::power_of_two_growth_policy<2>`, `sh::exception_safety::basic`, `sh::sparsity::medium` and `sh::allocation_failure::terminating`.
+The defaults are `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>`, `std::equal_to<Key>`, `std::allocator<std::pair<Key, T>>` (`std::allocator<Key>` for the set), `sh::sparsity::medium` and `sh::allocation_failure::terminating`.
 
-`GrowthPolicy` and `ExceptionSafety` are placeholders. `GrowthPolicy` must be `sh::power_of_two_growth_policy<2>`: the bucket count is 0 or a power of two and doubles when the table grows. Other growth policies do not compile. Both values of `sh::exception_safety` are accepted and have no effect, the guarantee follows from the type of the elements (see [exception safety](#exception-safety)).
+The bucket count is 0 or a power of two and doubles when the table grows. The exception guarantee follows from the type of the elements (see [exception safety](#exception-safety)).
 
 ## The interface
 
@@ -86,7 +86,7 @@ int main() {
 
 ### constexpr
 
-All member functions are `constexpr`. A map or a set works in a constant expression if its hash function, key equality, allocator and elements do, for example with `std::allocator` and a hash function with a `constexpr` call operator that is marked as avalanching. The default hash function `dice::hash::DiceHash` is not `constexpr`, so a map or a set in a constant expression needs another hash function.
+All member functions are `constexpr`. A map or a set works in a constant expression if its hash function, key equality, allocator and elements do. The default hash function `dice::hash::DiceHash` is not `constexpr`, so a map or a set in a constant expression needs another hash function.
 
 ## Differences compared to `std::unordered_map`
 
@@ -151,7 +151,7 @@ int main() {
 
 The bucket count is 0 or a power of two, and a hash picks its bucket with a mask on its low bits, as it is, without mixing. So the hash function must be avalanching: every bit of the input changes about half of the bits of the output. `std::hash` is not avalanching: for integers, libstdc++ and libc++ return the value itself.
 
-A `static_assert` checks `dice::sparse_map::sh::hash_is_avalanching_v<Hash>`. The trait is true if `Hash` declares the member type `is_avalanching`: `using is_avalanching = void;` as in `ankerl::unordered_dense`, or `using is_avalanching = std::true_type;` as in `boost::unordered`. A member type with a `value` that is false, like `std::false_type`, does not count. For a hash function that you cannot change, specialize `dice::sparse_map::sh::hash_is_avalanching`.
+A `static_assert` checks `dice::sparse_map::sh::hash_is_avalanching_v<Hash>`. The trait is true if `Hash` has the public member type `is_avalanching`, its own or of a public base: `using is_avalanching = void;` as in `ankerl::unordered_dense`, or `using is_avalanching = std::true_type;` as in `boost::unordered`. A member type with a `value` that is false, like `std::false_type`, does not count. For a hash function that you cannot change, specialize `dice::sparse_map::sh::hash_is_avalanching`.
 
 ```c++
 struct my_hash {
@@ -163,7 +163,7 @@ struct my_hash {
 };
 ```
 
-The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). It declares `is_avalanching` for integers up to 64 bits, floating point numbers, pointers and strings, and for pairs, tuples, optionals, vectors and other ordered containers of such types. It does not declare it for enums, for unordered containers, and for a type with its own `dice::hash::dice_hash_overload`, unless that overload declares `is_avalanching` (see the README of dice-hash). For such a key type, pass another hash function.
+The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). `DiceHash` declares `is_avalanching` if its policy does, for every key type: `wyhash`, `xxh3` and `rapidhash` do, `Martinus` does not. A `dice::hash::dice_hash_overload` for your own key type must keep the avalanche of the policy, for example by returning `dice_hash_templates<Policy>::dice_hash` of its members (see the README of dice-hash). The default hash function does not guard against `0.0` and `-0.0`: they compare equal but have different hashes, so they can be two keys. A hash picks the bucket, so the hash values of `DiceHash` are part of the persisted layout of a map: a dice-hash version that changes them needs a new `pobr_version`. `tests_default_hash` checks some of them.
 
 ## Sparsity
 
@@ -188,7 +188,7 @@ In both modes a size limit of the container throws `std::length_error`, and an a
 
 ## Exception safety
 
-`ExceptionSafety` has no effect, the guarantee follows from the type of the elements. If the insertion of one element throws, the container holds the same elements as before, except in one case where it is empty. It comes from a rehash, which an insertion, `merge`, `rehash` or `reserve` can do. Calling `reserve` beforehand avoids rehashes. How a rehash transfers the elements depends on their type:
+The guarantee follows from the type of the elements. If the insertion of one element throws, the container holds the same elements as before, except in one case: a rehash can leave the container empty. An insertion, `merge`, `rehash` or `reserve` can rehash. Calling `reserve` beforehand avoids rehashes. How a rehash transfers the elements depends on their type:
 
 - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old buckets is freed while they are moved. If the hash function throws while the elements are moved, or the allocator with `sh::allocation_failure::throwing`, the container is empty. Any other exception leaves the container unchanged.
 - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and the new buckets are in memory at the same time. An exception leaves the container unchanged.
