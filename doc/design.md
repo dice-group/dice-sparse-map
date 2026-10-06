@@ -22,7 +22,7 @@ The position of the value of a bucket in the values array is the number of occup
 
 A bucket with both bits set is a hole. Holes exist only for elements whose move constructor can throw (see below). The slot of a hole in the values array holds no value, but it counts as occupied for the position of the values after it.
 
-The table holds an array of groups. Bucket `i` is in group `i / 64`, at position `i % 64`. The table also keeps the index of its first group with a value, so `begin()` takes constant time. `begin()` only reads this index, so it also works on a read-only mapping. An insertion can lower the index. An erasure that empties the group at the index looks for the next group with a value. So erasing in the order of iteration, `while (!map.empty()) map.erase(map.begin());`, reads each group once in total.
+The table holds an array of groups. Bucket `i` is in group `i / 64`, at position `i % 64`. The table also keeps the index of its first group with a value, so `begin()` takes constant time. `begin()` writes nothing, so it also works on a read-only mapping. An insertion can lower the index. An erasure that empties the group at the index looks for the next group with a value. So erasing in the order of iteration, `while (!map.empty()) map.erase(map.begin());`, reads each group once in total.
 
 ## Insertion and erasure in a group
 
@@ -33,15 +33,15 @@ How the values move depends on the move assignment of the elements:
 - Nothrow move assignable elements move by move assignment, as in `std::vector::insert` and `std::vector::erase`. An insertion moves the last value into a new slot behind it, moves the others one place to the back by assignment and assigns the new value into its place. An erasure moves the values after it one place to the front by assignment and destroys the last value. So, besides the new value in a temporary, only one value is constructed or destroyed through the allocator. For a trivially copyable element, libstdc++ does the assignments with one `memmove`.
 - Other elements are constructed at their new place and destroyed at their old place through the allocator, one by one.
 
-When the values array is full, an insertion allocates one that is 2, 4 or 8 slots larger and moves the values into it, one by one through the allocator. If the elements are trivially copyable and trivially move constructible and the allocator has no `construct` and no `destroy` of its own, the group copies them as bytes with `std::memcpy` instead, also when the group is copied or moved into a new values array.
+For these elements, when the values array is full, an insertion allocates one that is 2, 4 or 8 slots larger and moves the values into it, one by one through the allocator. If the elements are trivially copyable and trivially move constructible and the allocator has no `construct` and no `destroy` of its own, the group copies them as bytes with `std::memcpy` instead, also when the group is copied or moved into a new values array.
 
 If the move constructor of the elements can throw, no value is moved inside the values array:
 
 - An erasure destroys the value and leaves a hole. When the last value of a group is erased, the group frees its values array.
 - An insertion into a hole constructs the new value in its slot.
-- Any other insertion allocates a new values array, copies the values into it and constructs the new value there. The holes of the group become deleted buckets.
+- Any other insertion allocates a new values array with exactly one slot more than the group has values, copies the values into it and constructs the new value there. The holes of the group become deleted buckets. The sparsity does not apply.
 
-So an erasure never throws, and an insertion keeps the strong exception guarantee. A hole keeps its memory until an insertion of the last kind or a rehash. A copy of the container has no holes and holds its elements in memory of the exact size.
+So an erasure moves nothing and does not throw in the group (`erase(key)` can still throw from the hash function or the key equality), and an insertion keeps the strong exception guarantee. A hole keeps its memory until an insertion of the last kind, a rehash, or the erasure of the last value of the group. A copy of the container has no holes and holds its elements in memory of the exact size.
 
 ## Hashing and probing
 
@@ -50,11 +50,11 @@ The bucket count is 0 or a power of two. A hash picks its bucket with a mask on 
 Collisions are resolved with quadratic probing. Probe number `i` goes `i` buckets further than probe number `i - 1`.
 
 - A lookup and an erasure follow the probe sequence until they find the key, or reach an empty bucket that is not deleted, or the number of probes reaches the bucket count.
-- An insertion follows the probe sequence like a lookup. A deleted bucket on the way is not enough to know that the key is absent, so the search goes on until an empty bucket. It remembers the first deleted bucket, and the new element goes there. If there is none, the new element goes into the empty bucket.
+- An insertion follows the probe sequence like a lookup. A deleted bucket on the way is not enough to know that the key is absent, so the search goes on until an empty bucket, or until the number of probes reaches the bucket count. It remembers the first deleted bucket, and the new element goes there. If there is none, the new element goes into the empty bucket.
 
 ## Growth and rehash
 
-A new container has no buckets. The default maximum load factor is 0.5. `max_load_factor(float)` clamps its argument to [0.1, 0.8]. When the number of elements has reached the maximum load factor times the bucket count, the next insertion doubles the bucket count.
+A new container has no buckets. The default maximum load factor is 0.5. `max_load_factor(float)` clamps its argument to [0.1, 0.8]. When the number of elements has reached the maximum load factor times the bucket count, the next insertion doubles the bucket count (a container without buckets gets 2).
 
 A rehash builds a new table and inserts every element into it, which calls the hash function once per element. How the elements get there depends on their type:
 
@@ -67,7 +67,7 @@ An insertion that needs a rehash constructs the new element first, because its k
 
 ## Deleted buckets
 
-An erasure marks the bucket as deleted (a tombstone), so that a later lookup goes on past it. A hole counts as a deleted bucket. An insertion can reuse a deleted bucket. The deleted buckets are removed with a rehash to the same bucket count. It happens when the number of elements plus the number of deleted buckets reaches `max_load_factor + 0.5 * (1 - max_load_factor)` of the bucket count, which is 0.75 with the default maximum load factor.
+An erasure marks the bucket as deleted (a tombstone), so that a later lookup goes on past it. A hole counts as a deleted bucket. An insertion can reuse a deleted bucket. The deleted buckets are removed with a rehash to the same bucket count. The next insertion of a new key does it when the number of elements plus the number of deleted buckets reaches `max_load_factor + 0.5 * (1 - max_load_factor)` of the bucket count, which is 0.75 with the default maximum load factor.
 
 ## Iterators
 

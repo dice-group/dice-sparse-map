@@ -1,16 +1,16 @@
-# dice-sparse-map -- A hash table (almost) at vector size
+# dice-sparse-map: a hash table (almost) at vector size
 
 `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set` are hash tables for C++23 that need little more memory than a `std::vector` of the same elements.
 
-- **Memory efficient:** only about 20 % more memory than a `std::vector` of the same elements (15 to 26 % measured for elements of 16 bytes, less for larger ones, see the [benchmarks](#benchmarks)). The peak during a build is at most about 5 % higher.
-- **mmap-able to disk:** supports persistent allocators like [metall](https://github.com/LLNL/metall) through fancy pointers. The map, the set and their elements are standard layout.
-- **Rich C++26 interface** like `std::unordered_map` and `std::unordered_set` (see the [differences](doc/usage.md#differences-compared-to-stdunordered_map)).
+- **Memory efficient:** only about 20 % more memory than a `std::vector` of the same elements (15 to 26 % measured for elements of 16 bytes at 1 to 10 million entries, less for larger ones, see the [benchmarks](#benchmarks)). For elements with a `noexcept` move constructor, the peak during a build is at most about 5 % higher than the memory after it.
+- **mmap-able to disk:** supports persistent allocators like [metall](https://github.com/LLNL/metall) through fancy pointers. The map, the set and their elements are standard layout if the hash function, the key equality, the allocator, its pointer type, the key and the mapped type are.
+- **The interface of `std::unordered_map` and `std::unordered_set` up to C++26** (see the [differences](doc/usage.md#differences-compared-to-stdunordered_map)).
 
 Compromises:
 
 - **Speed traded for memory:** lookups, insertions and iteration are slower than in flat and dense maps like `ankerl::unordered_dense::map` (see the [benchmarks](#benchmarks)).
 - **Needs an avalanching hash function:** the bucket comes from the low bits of the hash as it is. A `static_assert` rejects a hash function that is not marked as avalanching. The default hash function `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` is marked for every key type it hashes, and a `dice_hash_overload` for your own key type must keep the avalanche (see [hash functions](doc/usage.md#hash-functions)).
-- **Allocation failure ends the process:** by default a failed allocation calls `std::abort()`. With `sh::allocation_failure::throwing` the exception of the allocator propagates (see [allocation failure](doc/usage.md#allocation-failure)).
+- **Allocation failure ends the process:** by default a failed allocation calls `std::abort()`. With `dice::sparse_map::sh::allocation_failure::throwing` the exception of the allocator propagates (see [allocation failure](doc/usage.md#allocation-failure)).
 - **Exception safety:** if a rehash of elements with a `noexcept` move constructor throws (the hash function, or the allocator with `sh::allocation_failure::throwing`), the exception reaches the caller and the map is empty, so refill it or drop it. Elements whose move can throw are copied and stay unchanged.
 
 ## Usage

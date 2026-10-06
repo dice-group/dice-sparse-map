@@ -1,4 +1,5 @@
-// The examples of README.md and doc/usage.md, so that they keep compiling and doing what the docs say.
+// The examples of README.md and doc/usage.md, so that they keep compiling and doing what the docs say. Not here:
+// the sketch of a hash function in doc/usage.md (it names no real hash) and the metall alias (it needs metall).
 
 #include <dice/hash/DiceHash.hpp>
 #include <dice/sparse-map/sparse_map.hpp>
@@ -72,6 +73,15 @@ TEST_CASE("example") {
     set.insert({1, 9, 0});
     set.insert({2, -1, 9});
     CHECK(set == dice::sparse_map::sparse_set<int>{0, 1, 2, 9, -1});
+}
+
+TEST_CASE("binding the elements") {
+    dice::sparse_map::sparse_map<int, int> map = {{1, 1}, {2, 1}, {3, 1}};
+    for (auto &&[key, value] : map) {
+        value = 2;
+    }
+    map.find(1)->second = 3;
+    CHECK(map == dice::sparse_map::sparse_map<int, int>{{1, 3}, {2, 2}, {3, 2}});
 }
 
 TEST_CASE("heterogeneous lookup") {

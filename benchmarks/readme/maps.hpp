@@ -77,8 +77,6 @@ namespace dice::sparse_map::bench::readme {
                                                      default_hash<Key>,
                                                      std::equal_to<Key>,
                                                      std::allocator<std::pair<Key, mapped_t>>,
-                                                     sh::power_of_two_growth_policy<2>,
-                                                     sh::exception_safety::basic,
                                                      sparsity>;
 
         template<typename Key>
@@ -87,8 +85,6 @@ namespace dice::sparse_map::bench::readme {
                                                     typename plain<Key>::hasher,
                                                     typename plain<Key>::key_equal,
                                                     allocator<std::pair<Key, mapped_t>>,
-                                                    sh::power_of_two_growth_policy<2>,
-                                                    sh::exception_safety::basic,
                                                     sparsity>;
     };
 
