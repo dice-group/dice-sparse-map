@@ -1771,7 +1771,7 @@ namespace dice::sparse_map {
                 return key_equal_(key1, key2);
             }
 
-            [[nodiscard]] constexpr static key_type const &key_of(const_iterator it) noexcept {
+            [[nodiscard]] static constexpr key_type const &key_of(const_iterator it) noexcept {
                 return Access::key(*it.slot_);
             }
 
