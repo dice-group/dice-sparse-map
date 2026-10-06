@@ -112,11 +112,13 @@ namespace dice::sparse_map {
          * of about one half. `sparse_map` and `sparse_set` pick the bucket with the low bits of the hash as it is, so
          * they accept only hash functions for which this trait is true.
          *
-         * The trait is true if `Hash` declares the member type `is_avalanching`, and false if `Hash` does not declare
-         * it or if that type has a `value` that is false (like `std::false_type`). So `using is_avalanching = void;`
-         * as in `ankerl::unordered_dense` and `using is_avalanching = std::true_type;` as in `boost::unordered` both
-         * mark a hash function. Specialize the trait to mark a hash function that you cannot change. `std::hash` is not avalanching: for integers, libstdc++ and libc++
-         * return the value itself. `dice::hash::DiceHash` declares `is_avalanching` if its policy does.
+         * The trait is true if `Hash` declares the public member type `is_avalanching`, and false if `Hash` does not
+         * declare it, if it is not accessible, or if that type has a `value` that is false (like `std::false_type`).
+         * A `value` must be a constant expression. So `using is_avalanching = void;` as in `ankerl::unordered_dense`
+         * and `using is_avalanching = std::true_type;` as in `boost::unordered` both mark a hash function. Specialize
+         * the trait to mark a hash function that you cannot change. `std::hash` is not avalanching: for integers,
+         * libstdc++ and libc++ return the value itself. `dice::hash::DiceHash` declares `is_avalanching` if its policy
+         * does.
          */
         template<typename Hash>
         struct hash_is_avalanching : std::bool_constant<detail_sparse_hash::declares_is_avalanching<Hash>()> {};
