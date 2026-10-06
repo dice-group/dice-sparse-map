@@ -42,6 +42,18 @@
 namespace dice::sparse_map::tests {
 
     /**
+     * Inserts `key` into a map or a set. A map maps `key` to itself.
+     */
+    template<typename Container, typename Key>
+    void insert_one(Container &container, Key const &key) {
+        if constexpr (requires { typename Container::mapped_type; }) {
+            container.try_emplace(key, key);
+        } else {
+            container.insert(key);
+        }
+    }
+
+    /**
      * Hash that returns the value itself. It is not avalanching, but it is marked as avalanching, so that the
      * containers accept it. Keys that differ only in high bits collide on purpose.
      */

@@ -1,4 +1,5 @@
 #include "fixtures/test_types.hpp"
+#include "fixtures/utils.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -56,15 +57,6 @@ namespace {
     using map_t = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, explicit_allocator<std::pair<int, int>>>;
     using set_t = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, explicit_allocator<int>>;
 
-    template<typename Container>
-    void insert_one(Container &container, int key) {
-        if constexpr (requires { typename Container::mapped_type; }) {
-            container.try_emplace(key, key);
-        } else {
-            container.insert(key);
-        }
-    }
-
     /// the elements 0 to 9 as `value_type`
     template<typename Container>
     auto elements() {
@@ -91,7 +83,7 @@ TEST_CASE_TEMPLATE("a container works with an allocator whose converting constru
 
     auto container = container_t{alloc_1};
     for (int key = 0; key < 100; ++key) {
-        insert_one(container, key);
+        tests::insert_one(container, key);
     }
     container.erase(container.begin());
     container.rehash(1024);
