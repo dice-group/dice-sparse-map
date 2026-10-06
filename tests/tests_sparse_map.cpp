@@ -1269,21 +1269,10 @@ TEST_SUITE("test_sparse_map") {
 
     /**
      * Insertions whose arguments refer to an element of the same map. The new element is constructed before the
-     * elements of its group move or the table rehashes.
-     *
-     * `avalanching_identity_hash` is not avalanching, but marked as avalanching, so that the containers accept it: key
-     * `k` is in bucket `k`.
+     * elements of its group move or the table rehashes. With `identity_hash`, key `k` is in bucket `k`.
      */
-    struct avalanching_identity_hash {
-        using is_avalanching = void;
-
-        [[nodiscard]] std::size_t operator()(int key) const noexcept {
-            return static_cast<std::size_t>(key);
-        }
-    };
-
     TEST_CASE("try_emplace with a mapped value that refers to an element of the same group") {
-        auto map = dice::sparse_map::sparse_map<int, std::string, avalanching_identity_hash>{};
+        auto map = dice::sparse_map::sparse_map<int, std::string, identity_hash<int>>{};
         map.reserve(16);
         auto const original = std::string(100, 'x');
         map.try_emplace(1, original);
@@ -1296,7 +1285,7 @@ TEST_SUITE("test_sparse_map") {
     }
 
     TEST_CASE("try_emplace with a mapped value that refers to an element, when the insertion grows the table") {
-        auto map = dice::sparse_map::sparse_map<int, std::string, avalanching_identity_hash>{};
+        auto map = dice::sparse_map::sparse_map<int, std::string, identity_hash<int>>{};
         auto const original = std::string(100, 'x');
         map.try_emplace(1, original);
         REQUIRE(map.bucket_count() == 2);  // the threshold is 1, so the next insertion grows the table
@@ -1312,7 +1301,7 @@ TEST_SUITE("test_sparse_map") {
      * Not avalanching, but marked as avalanching, so that the containers accept it: the key "a" is in bucket 0, "b" in
      * bucket 1 and so on.
      */
-    struct avalanching_first_letter_hash {
+    struct first_letter_hash {
         using is_avalanching = void;
 
         [[nodiscard]] std::size_t operator()(std::string const &key) const noexcept {
@@ -1323,7 +1312,7 @@ TEST_SUITE("test_sparse_map") {
     // The key refers to the mapped value of "c", a `std::string`. When the group shifts, that value is moved, and the
     // place it leaves holds an empty string.
     TEST_CASE("operator[] with a key that refers to an element of the same group") {
-        auto map = dice::sparse_map::sparse_map<std::string, std::string, avalanching_first_letter_hash>{};
+        auto map = dice::sparse_map::sparse_map<std::string, std::string, first_letter_hash>{};
         map.reserve(16);
         map["c"] = "b";  // the mapped value of key "c" is the key of the next element
 
