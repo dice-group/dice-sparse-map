@@ -25,6 +25,7 @@ class Recipe(ConanFile):
         self.requires("dice-hash/0.5.2@dice-group/fix-remove-error-value", transitive_headers=True)
         if self.options.with_test_deps:
             self.test_requires("boost/1.91.0")
+            self.test_requires("dice-template-library/2.9.0")
             self.test_requires("doctest/2.4.12")
             self.test_requires("nanobench/4.3.11")
             self.test_requires("metall/0.35")

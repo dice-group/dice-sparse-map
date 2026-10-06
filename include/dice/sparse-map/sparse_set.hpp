@@ -50,25 +50,28 @@ namespace dice::sparse_map {
      * The number of buckets is 0 or a power of two and doubles when the table
      * grows. A hash picks its bucket with a mask.
      *
-     * `ExceptionSafety` defines the exception guarantee provided by the class. By
-     * default only the basic exception safety is guaranteed which mean that all
-     * resources used by the hash set will be freed (no memory leaks) but the hash
-     * set may end-up in an undefined state if an exception is thrown (undefined
-     * here means that some elements may be missing). This can ONLY happen on rehash
-     * (either on insert or if `rehash` is called explicitly) and will occur if the
-     * Allocator can't allocate memory (`std::bad_alloc`) or if the copy constructor
-     * (when a nothrow move constructor is not available) throws an exception. This
-     * can be avoided by calling `reserve` beforehand. This basic guarantee is
-     * similar to the one of `google::sparse_hash_map` and `spp::sparse_hash_map`.
-     * It is possible to ask for the strong exception guarantee with
-     * `dice::sh::exception_safety::strong`, the drawback is that the set will be
-     * slower on rehashes and will also need more memory on rehashes.
+     * The exception guarantee follows from the type of the elements. If the insertion of one element throws, the set
+     * holds the same elements as before, except in one case: a rehash can leave the set empty. An insertion, `rehash`
+     * or `reserve` can rehash. `reserve` avoids rehashes.
+     * How a rehash transfers the elements depends on their type:
+     * - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old
+     *   buckets is freed while they are moved. If the hash function throws while the elements are moved, or the
+     *   allocator with `allocation_failure::throwing`, the set is empty. Any other exception leaves the set unchanged.
+     * - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and
+     *   the new buckets are in memory at the same time. An exception leaves the set unchanged.
      *
      * `Sparsity` defines how much the hash set will compromise between insertion
      * speed and memory usage. A high sparsity means less memory usage but longer
      * insertion times, and vice-versa for low sparsity. The default
      * `dice::sh::sparsity::medium` sparsity offers a good compromise. It doesn't
      * change the lookup speed.
+     *
+     * `AllocationFailure` says what happens when an allocation of the table fails, that is when the allocator
+     * throws. With the default `dice::sparse_map::sh::allocation_failure::terminating` the process ends with
+     * `std::abort()`. With `dice::sparse_map::sh::allocation_failure::throwing` the exception of the allocator
+     * propagates, and the guarantees above hold for it. A move assignment between unequal allocators that do not
+     * propagate is `noexcept`, so there the exception ends in `std::terminate`. A size limit of the table throws
+     * `std::length_error` in both modes.
      *
      * `Key` must be nothrow move constructible and/or copy constructible.
      *
@@ -81,7 +84,7 @@ namespace dice::sparse_map {
      * the iterators.
      *  - erase: always invalidate the iterators.
      */
-    template<class Key, class Hash = detail_sparse_hash::default_hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+    template<class Key, class Hash = detail_sparse_hash::default_hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<Key>, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium, dice::sparse_map::sh::allocation_failure AllocationFailure = dice::sparse_map::sh::allocation_failure::terminating>
     class sparse_set {
         static_assert(sh::hash_is_avalanching_v<Hash>,
                       "Hash must be avalanching: sparse_set picks the bucket with the low bits of the hash as it is. "
@@ -103,7 +106,7 @@ namespace dice::sparse_map {
             }
         };
 
-        using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, void, Hash, KeyEqual, Allocator, ExceptionSafety, Sparsity>;
+        using ht = detail_sparse_hash::sparse_hash<Key, KeySelect, void, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>;
 
     public:
         using key_type = typename ht::key_type;

@@ -54,8 +54,8 @@ namespace details {
         dice::sparse_map::tests::test_hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::sparse_map::sh::exception_safety::basic,
-        dice::sparse_map::sh::sparsity::medium>;
+        dice::sparse_map::sh::sparsity::medium,
+        dice::sparse_map::sh::allocation_failure::terminating>;
 
     template<typename T>
     typename T::map_type default_construct_map() {

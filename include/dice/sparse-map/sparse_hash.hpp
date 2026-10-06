@@ -31,6 +31,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -54,15 +55,26 @@
 namespace dice::sparse_map {
 
     namespace sh {
-        enum class exception_safety {
-            basic,
-            strong
-        };
-
         enum class sparsity {
             high,
             medium,
             low
+        };
+
+        /**
+         * What `sparse_map` and `sparse_set` do when an allocation of the table fails, that is when the `allocate`
+         * of the allocator throws.
+         *
+         * - `terminating`: the process ends with `std::abort()`.
+         * - `throwing`: the exception of the allocator propagates (`std::bad_alloc` for `std::allocator`).
+         *
+         * In both cases a size limit of the table throws `std::length_error`. An allocation that an element makes
+         * itself, for example in the copy constructor of a `std::string`, is an exception of the element and
+         * propagates in both cases.
+         */
+        enum class allocation_failure {
+            terminating,
+            throwing
         };
     }  // namespace sh
 
@@ -155,6 +167,50 @@ namespace dice::sparse_map {
         }
 
         /**
+         * Allocates `n` objects with `alloc`. With `sh::allocation_failure::terminating` any exception of the
+         * allocator other than `std::length_error` ends the process with `std::abort()`, as in `allocate_with`. With
+         * `sh::allocation_failure::throwing` every exception propagates.
+         */
+        template<dice::sparse_map::sh::allocation_failure AllocationFailure, typename Allocator>
+        [[nodiscard]] typename std::allocator_traits<Allocator>::pointer allocate(
+            Allocator &alloc,
+            typename std::allocator_traits<Allocator>::size_type n) {
+            if constexpr (AllocationFailure == dice::sparse_map::sh::allocation_failure::terminating) {
+                try {
+                    return std::allocator_traits<Allocator>::allocate(alloc, n);
+                } catch (std::length_error const &) {
+                    throw;
+                } catch (...) {
+                    std::abort();
+                }
+            } else {
+                return std::allocator_traits<Allocator>::allocate(alloc, n);
+            }
+        }
+
+        /**
+         * Calls `f`, which allocates through a container of the standard library, like `std::vector::resize`. With
+         * `sh::allocation_failure::terminating` any exception of `f` other than `std::length_error` ends the process
+         * with `std::abort()`. With `sh::allocation_failure::throwing` every exception propagates. Use it only where
+         * the elements of the container construct and move without exceptions, so that only the allocator and the
+         * size limit of the container can throw.
+         */
+        template<dice::sparse_map::sh::allocation_failure AllocationFailure, typename F>
+        void allocate_with(F &&f) {
+            if constexpr (AllocationFailure == dice::sparse_map::sh::allocation_failure::terminating) {
+                try {
+                    std::forward<F>(f)();
+                } catch (std::length_error const &) {
+                    throw;
+                } catch (...) {
+                    std::abort();
+                }
+            } else {
+                std::forward<F>(f)();
+            }
+        }
+
+        /**
          * WARNING: the sparse_array class doesn't free the ressources allocated through
          * the allocator passed in parameter in each method. You have to manually call
          * `clear(Allocator&)` when you don't need a sparse_array object anymore.
@@ -183,7 +239,7 @@ namespace dice::sparse_map {
          *
          * TODO Check to use std::realloc and std::memmove when possible
          */
-        template<typename T, typename Allocator, dice::sparse_map::sh::sparsity Sparsity>
+        template<typename T, typename Allocator, dice::sparse_map::sh::sparsity Sparsity, dice::sparse_map::sh::allocation_failure AllocationFailure>
         class sparse_array {
         public:
             using value_type = T;
@@ -293,8 +349,8 @@ namespace dice::sparse_map {
                   last_array_(false) {
                 if (capacity_ > 0) {
                     auto alloc = const_cast<Allocator &>(const_alloc);
-                    values_ = alloc.allocate(capacity_);
-                    DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                    values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
+                    DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate throws or aborts on a failure
                 }
             }
 
@@ -312,8 +368,8 @@ namespace dice::sparse_map {
                 }
 
                 auto alloc = const_cast<Allocator &>(const_alloc);
-                values_ = alloc.allocate(capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
+                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate throws or aborts on a failure
                 try {
                     for (size_type i = 0; i < other.nb_elements_; i++) {
                         construct_value(alloc, values_ + i, other.values_[i]);
@@ -353,8 +409,8 @@ namespace dice::sparse_map {
                 }
 
                 auto alloc = const_cast<Allocator &>(const_alloc);
-                values_ = alloc.allocate(capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
+                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate throws or aborts on a failure
                 try {
                     for (size_type i = 0; i < other.nb_elements_; i++) {
                         construct_value(alloc, values_ + i, std::move(other.values_[i]));
@@ -596,7 +652,7 @@ namespace dice::sparse_map {
              * case on EACH insertion we allocate a new area of nb_elements_ + 1 where we
              * copy the values of values_ into it and put the new value there. On
              * success, we set values_ to this new area. Even if slower, it's the only
-             * way to preserve to strong exception guarantee.
+             * way to keep the strong exception guarantee.
              */
             template<typename... Args, typename U = value_type, typename std::enable_if<std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
@@ -637,7 +693,7 @@ namespace dice::sparse_map {
             void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
                 DICE_SPARSE_MAP_ASSERT(new_capacity > nb_elements_);
 
-                pointer new_values = alloc.allocate(new_capacity);
+                pointer new_values = detail_sparse_hash::allocate<AllocationFailure>(alloc, new_capacity);
                 // Allocate should throw if there is a failure
                 DICE_SPARSE_MAP_ASSERT(new_values != nullptr);
 
@@ -667,7 +723,7 @@ namespace dice::sparse_map {
             void insert_at_offset_realloc(allocator_type &alloc, size_type offset, size_type new_capacity, Args &&...value_args) {
                 DICE_SPARSE_MAP_ASSERT(new_capacity > nb_elements_);
 
-                value_type *new_values = alloc.allocate(new_capacity);
+                value_type *new_values = detail_sparse_hash::allocate<AllocationFailure>(alloc, new_capacity);
                 // Allocate should throw if there is a failure
                 DICE_SPARSE_MAP_ASSERT(new_values != nullptr);
 
@@ -709,7 +765,7 @@ namespace dice::sparse_map {
              * std::is_nothrow_move_constructible<value_type>::value is false. Copy all
              * the values except the one at offset into a new heap area. On success, we
              * set values_ to this new area. Even if slower, it's the only way to
-             * preserve to strong exception guarantee.
+             * keep the strong exception guarantee.
              */
             template<typename... Args, typename U = value_type, typename std::enable_if<std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
@@ -736,7 +792,7 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(nb_elements_ > 1);
                 size_type const new_capacity = nb_elements_ - 1;
 
-                value_type *new_values = alloc.allocate(new_capacity);
+                value_type *new_values = detail_sparse_hash::allocate<AllocationFailure>(alloc, new_capacity);
                 // Allocate should throw if there is a failure
                 DICE_SPARSE_MAP_ASSERT(new_values != nullptr);
 
@@ -785,8 +841,8 @@ namespace dice::sparse_map {
          * parameter and returns a reference to the value. `ValueSelect` should be void
          * if there is no value (in a set for example).
          *
-         * The strong exception guarantee only holds if `ExceptionSafety` is set to
-         * `dice::sh::exception_safety::strong`.
+         * A rehash that throws leaves the table unchanged or empty, depending on the type of the elements
+         * and on what throws. See `rehash_impl`.
          *
          * `ValueType` must be nothrow move constructible and/or copy constructible.
          * Behaviour is undefined if the destructor of `ValueType` throws.
@@ -810,7 +866,7 @@ namespace dice::sparse_map {
          * standard layout type whenever `Hash`, `KeyEqual`, `Allocator` and the bucket container are standard
          * layout themselves. The members are marked potentially overlapping, so empty ones still cost no space.
          */
-        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, dice::sparse_map::sh::exception_safety ExceptionSafety, dice::sparse_map::sh::sparsity Sparsity>
+        template<class ValueType, class KeySelect, class ValueSelect, class Hash, class KeyEqual, class Allocator, dice::sparse_map::sh::sparsity Sparsity, dice::sparse_map::sh::allocation_failure AllocationFailure>
         class sparse_hash {
         private:
             template<typename U>
@@ -836,7 +892,7 @@ namespace dice::sparse_map {
             using const_iterator = sparse_iterator<true>;
 
         private:
-            using sparse_array = dice::sparse_map::detail_sparse_hash::sparse_array<ValueType, Allocator, Sparsity>;
+            using sparse_array = dice::sparse_map::detail_sparse_hash::sparse_array<ValueType, Allocator, Sparsity, AllocationFailure>;
 
             using sparse_buckets_allocator = typename std::allocator_traits<
                 allocator_type>::template rebind_alloc<sparse_array>;
@@ -994,8 +1050,9 @@ namespace dice::sparse_map {
                      * We can't use `vector(size_type count, const T& value, const Allocator&
                      * alloc)` as it requires the value T to be copyable.
                      */
-                    sparse_buckets_data_.resize(
-                        sparse_array::nb_sparse_buckets(bucket_count));
+                    detail_sparse_hash::allocate_with<AllocationFailure>([&] {
+                        sparse_buckets_data_.resize(sparse_array::nb_sparse_buckets(bucket_count));
+                    });
                     sparse_buckets_ = sparse_buckets_data_.data();
 
                     DICE_SPARSE_MAP_ASSERT(!sparse_buckets_data_.empty());
@@ -1612,7 +1669,9 @@ namespace dice::sparse_map {
 
             // TODO encapsulate sparse_buckets_data_ to avoid the managing the allocator
             void copy_buckets_from(sparse_hash const &other) {
-                sparse_buckets_data_.reserve(other.sparse_buckets_data_.size());
+                detail_sparse_hash::allocate_with<AllocationFailure>([&] {
+                    sparse_buckets_data_.reserve(other.sparse_buckets_data_.size());
+                });
 
                 try {
                     for (auto const &bucket : other.sparse_buckets_data_) {
@@ -1627,7 +1686,9 @@ namespace dice::sparse_map {
             }
 
             void move_buckets_from(sparse_hash &&other) {
-                sparse_buckets_data_.reserve(other.sparse_buckets_data_.size());
+                detail_sparse_hash::allocate_with<AllocationFailure>([&] {
+                    sparse_buckets_data_.reserve(other.sparse_buckets_data_.size());
+                });
 
                 try {
                     for (auto &&bucket : other.sparse_buckets_data_) {
@@ -1820,42 +1881,70 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(nb_deleted_buckets_ == 0);
             }
 
-            template<dice::sparse_map::sh::exception_safety U = ExceptionSafety,
-                     typename std::enable_if<U == dice::sparse_map::sh::exception_safety::basic>::type
-                         * = nullptr>
+            /**
+             * True if a rehash copies the elements and frees the old groups at the end, see `rehash_impl`.
+             */
+            static constexpr bool copy_on_rehash = !std::is_nothrow_move_constructible_v<value_type>;
+
+            /**
+             * Moves or copies all elements into a new table with at least `count` buckets. How depends on the type of
+             * the elements.
+             *
+             * An element whose move constructor cannot throw is moved, one old group after the other. Each old group
+             * is freed right after its elements are moved. If the hash function or the allocator throws while the
+             * elements are moved, the table is cleared, so it is empty afterwards. An exception of the allocator
+             * before, while the new table allocates its buckets, leaves the table unchanged.
+             *
+             * An element whose move constructor can throw is copied. The old groups are freed at the end, so the old
+             * and the new groups are in memory at the same time. The table stays untouched until all copies are made,
+             * so an exception leaves it unchanged.
+             *
+             * The table takes the new buckets with `swap_storage`, which cannot throw.
+             *
+             * The allocator throws here only with `sh::allocation_failure::throwing`. With
+             * `sh::allocation_failure::terminating` a failed allocation ends the process.
+             */
             void rehash_impl(size_type count) {
                 sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
 
-                for (auto &bucket : sparse_buckets_data_) {
-                    for (auto &val : bucket) {
-                        new_table.insert_on_rehash(std::move(val));
+                if constexpr (copy_on_rehash) {
+                    for (auto const &bucket : sparse_buckets_data_) {
+                        for (auto const &value : bucket) {
+                            new_table.insert_on_rehash(value);
+                        }
                     }
-
-                    // TODO try to reuse some of the memory
-                    bucket.clear(alloc_);
+                } else {
+                    try {
+                        for (auto &bucket : sparse_buckets_data_) {
+                            for (auto &value : bucket) {
+                                new_table.insert_on_rehash(std::move(value));
+                            }
+                            bucket.clear(alloc_);
+                        }
+                    } catch (...) {
+                        clear();
+                        throw;
+                    }
                 }
 
-                new_table.swap(*this);
+                swap_storage(new_table);
             }
 
             /**
-             * TODO: For now we copy each element into the new map. We could move
-             * them if they are nothrow_move_constructible without triggering
-             * any exception if we reserve enough space in the sparse arrays beforehand.
+             * Swaps the buckets and the counters with `other`, which has the same allocator, hash function, key
+             * equality and maximum load factor. Unlike `swap`, it cannot throw.
              */
-            template<dice::sparse_map::sh::exception_safety U = ExceptionSafety,
-                     typename std::enable_if<
-                         U == dice::sparse_map::sh::exception_safety::strong>::type * = nullptr>
-            void rehash_impl(size_type count) {
-                sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
-
-                for (auto const &bucket : sparse_buckets_data_) {
-                    for (auto const &val : bucket) {
-                        new_table.insert_on_rehash(val);
-                    }
-                }
-
-                new_table.swap(*this);
+            void swap_storage(sparse_hash &other) noexcept {
+                using std::swap;
+                swap(mask_, other.mask_);
+                swap(sparse_buckets_data_, other.sparse_buckets_data_);
+                sparse_buckets_ = sparse_buckets_data_.empty() ? static_empty_sparse_bucket_ptr() : sparse_buckets_data_.data();
+                other.sparse_buckets_ = other.sparse_buckets_data_.empty() ? static_empty_sparse_bucket_ptr() : other.sparse_buckets_data_.data();
+                swap(bucket_count_, other.bucket_count_);
+                swap(nb_elements_, other.nb_elements_);
+                swap(nb_deleted_buckets_, other.nb_deleted_buckets_);
+                swap(load_threshold_rehash_, other.load_threshold_rehash_);
+                swap(load_threshold_clear_deleted_, other.load_threshold_clear_deleted_);
             }
 
             template<typename K>
