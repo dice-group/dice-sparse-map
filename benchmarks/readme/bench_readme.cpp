@@ -59,8 +59,8 @@
 #include "alloc_timeline.hpp"
 #include "count_alloc.hpp"
 #include "disk_usage.hpp"
-#include "max_rss.hpp"
 #include "maps.hpp"
+#include "max_rss.hpp"
 
 #include <array>
 #include <bit>
@@ -135,8 +135,7 @@ namespace {
     /// reports a failed check and ends the process
     [[noreturn]] void fail(char const *what) {
         std::fflush(stdout);
-        std::fprintf(stderr, "FAILED %s %s %s %.*s: %s\n", variant_name, key_name, map_desc::name,
-                     static_cast<int>(current_work.size()), current_work.data(), what);
+        std::fprintf(stderr, "FAILED %s %s %s %.*s: %s\n", variant_name, key_name, map_desc::name, static_cast<int>(current_work.size()), current_work.data(), what);
         std::fflush(stderr);
         std::_Exit(3);
     }
@@ -204,9 +203,8 @@ namespace {
      */
     constexpr std::size_t min_key_length = 8;
     constexpr std::size_t max_key_length = 135;
-    constexpr std::string_view key_filler =
-            "service.name/attribute.count/http.status_code/db.query.duration_ms/net.peer.address.family/"
-            "process.runtime.description/log.record.uid/k8s.pod.namespace";
+    constexpr std::string_view key_filler = "service.name/attribute.count/http.status_code/db.query.duration_ms/net.peer.address.family/"
+                                            "process.runtime.description/log.record.uid/k8s.pod.namespace";
     static_assert(key_filler.size() >= max_key_length);
 
     template<typename Key>
@@ -652,23 +650,25 @@ namespace {
             auto const path = fresh_datastore_path();
             std::fflush(stdout);
             double const bytes = max_rss::of(
-                    [&](max_rss::probe &probe) {
-                        context ctx{path};
-                        probe.start();
-                        auto map = ctx.make<map_t>();
-                        fill(map, p.present);
-                        keep(map.size());
-                        probe.stop();
-                        if (map.size() != n) {
-                            fail("size after fill");
-                        }
-                    },
-                    [&](max_rss::probe &probe) {
-                        context ctx{path};
-                        probe.start();
-                        probe.stop();
-                    },
-                    [&] { remove_datastore(path); });
+                [&](max_rss::probe &probe) {
+                    context ctx{path};
+                    probe.start();
+                    auto map = ctx.make<map_t>();
+                    fill(map, p.present);
+                    keep(map.size());
+                    probe.stop();
+                    if (map.size() != n) {
+                        fail("size after fill");
+                    }
+                },
+                [&](max_rss::probe &probe) {
+                    context ctx{path};
+                    probe.start();
+                    probe.stop();
+                },
+                [&] {
+                    remove_datastore(path);
+                });
             if (bytes < 0.0) {
                 fail("peak resident set (is /proc/self/clear_refs writable?)");
             }
