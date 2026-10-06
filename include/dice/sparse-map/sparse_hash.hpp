@@ -765,14 +765,10 @@ namespace dice::sparse_map {
                 return values() + offset;
             }
 
-        private:
-            [[nodiscard]] constexpr value_type *values() noexcept {
-                return std::to_address(values_);
-            }
-
-            [[nodiscard]] constexpr value_type const *values() const noexcept {
-                return std::to_address(values_);
-            }
+            /*
+             * Functions on a range of values: the values of a group, or of another range of slots that holds the values
+             * of the occupied buckets of a group in bucket order.
+             */
 
             /**
              * Allocates storage for `capacity_` values from `const_alloc` and fills it with the values of `other`: a
@@ -818,6 +814,92 @@ namespace dice::sparse_map {
                 if (count > 0) {
                     std::memcpy(static_cast<void *>(target), static_cast<void const *>(source), count * sizeof(value_type));
                 }
+            }
+
+            /**
+             * Inserts a value constructed from `value_args` at `offset` into the `nb_values` values at `values`. The
+             * range must have room for one more value behind its values. The values from `offset` on move one place to
+             * the back (see `shifts_by_assignment`). If the construction of the new value throws, the range is
+             * unchanged.
+             *
+             * The arguments may refer to a value of the range: the new value is constructed before a value moves.
+             */
+            template<typename... Args>
+            static constexpr void insert_into_range(
+                allocator_type &alloc,
+                value_type *values,
+                size_type nb_values,
+                size_type offset,
+                Args &&...value_args
+            ) {
+                // checked here instead of at class scope, so that `value_type` may be incomplete there. The shift
+                // below cannot be undone, so a `value_type` that can throw while it is transferred would leave the
+                // range in a broken state.
+                static_assert(nothrow_transferable<value_type>);
+                DICE_SPARSE_MAP_ASSERT(offset <= nb_values);
+
+                if (offset == nb_values) {
+                    construct_value(alloc, values + offset, std::forward<Args>(value_args)...);
+                    return;
+                }
+
+                // The arguments may refer to a value of this range that the shift below moves, so the new value is
+                // constructed before the shift.
+                value_holder<value_type, allocator_type> new_value(alloc, std::forward<Args>(value_args)...);
+
+                if constexpr (shifts_by_assignment) {
+                    // as `std::vector::insert`: the last value is moved into a new slot behind it, the others move one
+                    // place to the back by assignment, and the new value is assigned into its place
+                    construct_value(alloc, values + nb_values, forward_or_copy<value_type>(std::move(values[nb_values - 1])));
+                    std::move_backward(values + offset, values + nb_values - 1, values + nb_values);
+                    values[offset] = std::move(new_value.get());
+                } else {
+                    for (size_type i = nb_values; i > offset; --i) {
+                        construct_value(alloc, values + i, forward_or_copy<value_type>(std::move(values[i - 1])));
+                        destroy_value(alloc, values + i - 1);
+                    }
+
+                    // `new_value` holds the value in `alloc`, so this transfer moves it and allocates nothing
+                    construct_value(alloc, values + offset, forward_or_copy<value_type>(std::move(new_value.get())));
+                }
+            }
+
+            /**
+             * Erases the value at `offset` of the `nb_values` values at `values`. The values after it move one place to
+             * the front (see `shifts_by_assignment`).
+             */
+            static constexpr void erase_from_range(
+                allocator_type &alloc,
+                value_type *values,
+                size_type nb_values,
+                size_type offset
+            ) noexcept {
+                // see `insert_into_range`: this function is `noexcept`, so a transfer that throws would terminate
+                static_assert(nothrow_transferable<value_type>);
+                DICE_SPARSE_MAP_ASSERT(offset < nb_values);
+
+                if constexpr (shifts_by_assignment) {
+                    // as `std::vector::erase`: the values after `offset` move one place to the front by assignment,
+                    // and the last value, now moved from, is destroyed
+                    std::move(values + offset + 1, values + nb_values, values + offset);
+                    destroy_value(alloc, values + nb_values - 1);
+                } else {
+                    destroy_value(alloc, values + offset);
+
+                    for (size_type i = offset + 1; i < nb_values; ++i) {
+                        construct_value(alloc, values + i - 1, forward_or_copy<value_type>(std::move(values[i])));
+                        destroy_value(alloc, values + i);
+                    }
+                }
+            }
+
+        private:
+            [[nodiscard]] constexpr value_type *values() noexcept {
+                return std::to_address(values_);
+            }
+
+            [[nodiscard]] constexpr value_type const *values() const noexcept {
+                return std::to_address(values_);
             }
 
             template<typename... Args>
@@ -897,34 +979,8 @@ namespace dice::sparse_map {
 
             template<typename... Args>
             constexpr void insert_at_offset_no_realloc(allocator_type &alloc, size_type offset, Args &&...value_args) {
-                DICE_SPARSE_MAP_ASSERT(offset <= nb_elements_);
                 DICE_SPARSE_MAP_ASSERT(nb_elements_ < capacity_);
-
-                value_type *const raw_values = values();
-                if (offset == nb_elements_) {
-                    construct_value(alloc, raw_values + offset, std::forward<Args>(value_args)...);
-                    return;
-                }
-
-                // The arguments may refer to a value of this group that the shift below moves, so the new value is
-                // constructed before the shift.
-                value_holder<value_type, allocator_type> new_value(alloc, std::forward<Args>(value_args)...);
-
-                if constexpr (shifts_by_assignment) {
-                    // as `std::vector::insert`: the last value is moved into a new slot behind it, the others move one
-                    // place to the back by assignment, and the new value is assigned into its place
-                    construct_value(alloc, raw_values + nb_elements_, std::move(raw_values[nb_elements_ - 1]));
-                    std::move_backward(raw_values + offset, raw_values + nb_elements_ - 1, raw_values + nb_elements_);
-                    raw_values[offset] = std::move(new_value.get());
-                } else {
-                    for (size_type i = nb_elements_; i > offset; --i) {
-                        construct_value(alloc, raw_values + i, forward_or_copy<value_type>(std::move(raw_values[i - 1])));
-                        destroy_value(alloc, raw_values + i - 1);
-                    }
-
-                    // `new_value` holds the value in `alloc`, so this transfer moves it and allocates nothing
-                    construct_value(alloc, raw_values + offset, forward_or_copy<value_type>(std::move(new_value.get())));
-                }
+                insert_into_range(alloc, values(), nb_elements_, offset, std::forward<Args>(value_args)...);
             }
 
             template<typename... Args>
@@ -975,24 +1031,7 @@ namespace dice::sparse_map {
              * `shifts_by_assignment`).
              */
             constexpr void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
-                // see `insert_at_offset`: this function is `noexcept`, so a transfer that throws would terminate
-                static_assert(nothrow_transferable<value_type>);
-                DICE_SPARSE_MAP_ASSERT(offset < nb_elements_);
-                value_type *const raw_values = values();
-
-                if constexpr (shifts_by_assignment) {
-                    // as `std::vector::erase`: the values after `offset` move one place to the front by assignment,
-                    // and the last value, now moved from, is destroyed
-                    std::move(raw_values + offset + 1, raw_values + nb_elements_, raw_values + offset);
-                    destroy_value(alloc, raw_values + nb_elements_ - 1);
-                } else {
-                    destroy_value(alloc, raw_values + offset);
-
-                    for (size_type i = offset + 1; i < nb_elements_; ++i) {
-                        construct_value(alloc, raw_values + i - 1, forward_or_copy<value_type>(std::move(raw_values[i])));
-                        destroy_value(alloc, raw_values + i);
-                    }
-                }
+                erase_from_range(alloc, values(), nb_elements_, offset);
             }
             pointer values_ = nullptr;
 
