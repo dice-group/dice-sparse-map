@@ -48,7 +48,12 @@ namespace {
      */
     template<typename F>
     [[nodiscard]] bool expect_abort(F &&f) {
-        std::unique_ptr<std::FILE, decltype(&std::fclose)> const child_stderr_file{std::tmpfile(), &std::fclose};
+        struct close_file {
+            void operator()(std::FILE *file) const noexcept {
+                std::fclose(file);
+            }
+        };
+        std::unique_ptr<std::FILE, close_file> const child_stderr_file{std::tmpfile()};
         if (child_stderr_file == nullptr) {
             return false;
         }
