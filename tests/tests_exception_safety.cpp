@@ -367,7 +367,7 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
 }
 
 // skipped: when `sparse_hash::operator=(sparse_hash const &)` throws, the target keeps the growth
-// policy of the source, but only the bucket groups it copied so far, and `m_sparse_buckets` still
+// policy of the source, but only the bucket groups it copied so far, and `sparse_buckets_` still
 // points to the memory of the old bucket vector. `find` then asserts in `bucket_for_hash`, or reads
 // freed memory, and `insert` writes there.
 TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map" * doctest::skip(),
