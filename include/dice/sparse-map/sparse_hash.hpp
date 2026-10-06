@@ -222,8 +222,8 @@ namespace dice::sparse_map {
         };
 
         /**
-         * `u` as it is, or as a const lvalue if `T` cannot be constructed from it. A type with a deleted move
-         * constructor is then copied, as `std::pair` does.
+         * Forwards `u` if `T` has a constructor for `U &&`. Otherwise returns `u` as a const lvalue, so that a `T`
+         * with a deleted move constructor is copied, as in `std::pair`.
          */
         template<typename T, typename U>
         [[nodiscard]] decltype(auto) forward_or_copy(U &&u) noexcept {
@@ -232,6 +232,17 @@ namespace dice::sparse_map {
             } else {
                 return std::as_const(u);
             }
+        }
+
+        /**
+         * `std::make_from_tuple<T>(args)` with uses-allocator construction, see `std::make_obj_using_allocator`.
+         */
+        template<typename T, typename Alloc, typename Tuple>
+        [[nodiscard]] T make_from_tuple_using_allocator(Alloc const &alloc, Tuple &&args) {
+            return std::apply([&alloc](auto &&...unpacked) {
+                return std::make_obj_using_allocator<T>(alloc, std::forward<decltype(unpacked)>(unpacked)...);
+            },
+                              std::forward<Tuple>(args));
         }
 
         /**
@@ -261,28 +272,16 @@ namespace dice::sparse_map {
                   value(forward_or_copy<T>(std::get<1>(std::forward<P>(pair)))) {
             }
 
-            map_slot(map_slot const &) = default;
-            map_slot(map_slot &&) = default;
-            map_slot &operator=(map_slot const &) = default;
-            map_slot &operator=(map_slot &&) = default;
-            ~map_slot() = default;
-
             template<typename Alloc, typename... KeyArgs, typename... ValueArgs>
             map_slot(std::allocator_arg_t, Alloc const &alloc, std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
-                : key(std::apply([&alloc](auto &&...args) {
-                      return std::make_obj_using_allocator<Key>(alloc, std::forward<decltype(args)>(args)...);
-                  },
-                                 std::move(key_args))),
-                  value(std::apply([&alloc](auto &&...args) {
-                      return std::make_obj_using_allocator<T>(alloc, std::forward<decltype(args)>(args)...);
-                  },
-                                   std::move(value_args))) {
+                : key(make_from_tuple_using_allocator<Key>(alloc, std::move(key_args))),
+                  value(make_from_tuple_using_allocator<T>(alloc, std::move(value_args))) {
             }
 
             template<typename Alloc, PairLike P>
             map_slot(std::allocator_arg_t, Alloc const &alloc, P &&pair)
-                : key(std::make_obj_using_allocator<Key>(alloc, std::get<0>(std::forward<P>(pair)))),
-                  value(std::make_obj_using_allocator<T>(alloc, std::get<1>(std::forward<P>(pair)))) {
+                : key(std::make_obj_using_allocator<Key>(alloc, forward_or_copy<Key>(std::get<0>(std::forward<P>(pair))))),
+                  value(std::make_obj_using_allocator<T>(alloc, forward_or_copy<T>(std::get<1>(std::forward<P>(pair))))) {
             }
 
             template<typename Alloc>
@@ -293,8 +292,8 @@ namespace dice::sparse_map {
 
             template<typename Alloc>
             map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot &&other)
-                : key(std::make_obj_using_allocator<Key>(alloc, std::move(other.key))),
-                  value(std::make_obj_using_allocator<T>(alloc, std::move(other.value))) {
+                : key(std::make_obj_using_allocator<Key>(alloc, forward_or_copy<Key>(std::move(other.key)))),
+                  value(std::make_obj_using_allocator<T>(alloc, forward_or_copy<T>(std::move(other.value)))) {
             }
         };
 
@@ -989,8 +988,7 @@ namespace dice::sparse_map {
             public:
                 using iterator_concept = std::forward_iterator_tag;
                 /**
-                 * A map iterator returns a proxy reference, so it meets only the Cpp17InputIterator requirements.
-                 * It models `std::forward_iterator`.
+                 * `std::input_iterator_tag` for a map, because `*it` is a proxy.
                  */
                 using iterator_category = std::conditional_t<Access::is_map, std::input_iterator_tag, std::forward_iterator_tag>;
                 using value_type = typename sparse_hash::value_type;

@@ -27,7 +27,7 @@ A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be
   - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and the new buckets are in memory at the same time. An exception leaves the map unchanged.
 - Iterator invalidation doesn't behave in the same way, any operation modifying the hash table invalidate them (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sparse__map.html#details) for details).
 - References and pointers to keys or values in the map are invalidated in the same way as iterators to these keys-values.
-- For iterators of a map, `operator*()` returns a proxy reference `std::pair<const Key &, T &>` (`std::pair<const Key &, const T &>` for `const_iterator`) instead of `std::pair<const Key, T> &`, and `operator->()` returns a proxy, so `it->second` is a mutable reference to the value. `*it` is not an lvalue: bind it with `auto &&` or `const auto &`, not with `auto &`. Example:
+- For iterators of a map, `*it` is a proxy `std::pair<const Key &, T &>` (`std::pair<const Key &, const T &>` for `const_iterator`), not `std::pair<const Key, T> &`. `it->second` is a mutable reference to the value. `*it` is not an lvalue: bind it with `auto &&` or `const auto &`, not with `auto &`. Example:
 ```c++
 dice::sparse_map::sparse_map<int, int> map = {{1, 1}, {2, 1}, {3, 1}};
 for(auto it = map.begin(); it != map.end(); ++it) {

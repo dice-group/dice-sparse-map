@@ -57,8 +57,8 @@ namespace dice::sparse_map {
      *    not as `std::pair`. The iterators return a proxy reference: `*it` is `std::pair<Key const &, T &>`,
      *    and `it->second` is a mutable reference to the mapped value. Bind it with `auto &&` or `auto const &`,
      *    not with `auto &`.
-     *  - The iterators are forward iterators. They model `std::forward_iterator`, but a map iterator meets only
-     *    the Cpp17InputIterator requirements, because its reference type is not `value_type &`.
+     *  - The iterators model `std::forward_iterator`. A map iterator has the `iterator_category`
+     *    `std::input_iterator_tag`, because `*it` is a proxy, not `value_type &`.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - `emplace` constructs the element first and inserts it if its key is not in the map.
      *  - Heterogeneous lookup and erasure are enabled by `KeyEqual::is_transparent` alone.
