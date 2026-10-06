@@ -22,7 +22,7 @@ class Recipe(ConanFile):
     }
 
     def requirements(self):
-        self.requires("dice-hash/0.5.2@dice-group/feature-is-avalanching", transitive_headers=True)
+        self.requires("dice-hash/0.5.2@dice-group/fix-remove-error-value", transitive_headers=True)
         if self.options.with_test_deps:
             self.test_requires("boost/1.91.0")
             self.test_requires("doctest/2.4.12")
