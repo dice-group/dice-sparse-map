@@ -41,7 +41,7 @@ If the move constructor of the elements can throw, no value is moved inside the 
 - An insertion into a hole constructs the new value in its slot.
 - Any other insertion allocates a new values array, copies the values into it and constructs the new value there. The holes of the group become deleted buckets.
 
-So an erasure never throws, and an insertion keeps the strong exception guarantee. A hole keeps its memory until an insertion of the last kind or a rehash. A copy of the container has no holes.
+So an erasure never throws, and an insertion keeps the strong exception guarantee. A hole keeps its memory until an insertion of the last kind or a rehash. A copy of the container has no holes and holds its elements in memory of the exact size.
 
 ## Hashing and probing
 
