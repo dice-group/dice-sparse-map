@@ -23,7 +23,7 @@
  * constructor can throw. `counter::obj` aborts the program when a destroyed object is compared, copied or destroyed
  * again, so a test that takes a hole for an element ends there.
  *
- * `bucket_hash` puts key `k` into bucket `k` of a table with more than `k` buckets, so a test knows which keys share
+ * `tests::bucket_hash` puts key `k` into bucket `k` of a table with more than `k` buckets, so a test knows which keys share
  * a group: the keys 0 to 63 are in group 0, 64 to 127 in group 1 and so on. `leak_checking_allocator` counts the
  * bytes of the groups and of their storage, so a test sees how many slots the groups hold. The containers are
  * `tests::throwing_map` and a `sparse_set` with `sh::allocation_failure::throwing`, so an allocation that `bomb_after`
@@ -32,18 +32,6 @@
 namespace {
     using namespace dice::sparse_map;
     using namespace dice::sparse_map::tests;
-
-    /**
-     * The hash of a key is its number. It is not avalanching, but it is marked as avalanching, so that the containers
-     * accept it.
-     */
-    struct bucket_hash {
-        using is_avalanching = void;
-
-        std::size_t operator()(counter::obj const &key) const {
-            return key.get_for_hash();
-        }
-    };
 
     using map_t = throwing_map<copied_obj, copied_obj, bucket_hash, std::equal_to<counter::obj>, leak_checking_allocator<std::pair<copied_obj, copied_obj>>>;
     using set_t = sparse_set<copied_obj, bucket_hash, std::equal_to<counter::obj>, leak_checking_allocator<copied_obj>, sh::sparsity::medium, sh::allocation_failure::throwing>;

@@ -150,6 +150,18 @@ namespace dice::sparse_map::tests {
     };
 
     /**
+     * The hash of a `counter::obj` is its number, so key `k` lands in bucket `k` of a table with more than `k`
+     * buckets. It is not avalanching, but it is marked as avalanching, so that the containers accept it.
+     */
+    struct bucket_hash {
+        using is_avalanching = void;
+
+        std::size_t operator()(counter::obj const &key) const {
+            return key.get_for_hash();
+        }
+    };
+
+    /**
      * `counter::obj` whose move constructor can throw, so that a container copies it where it would move a
      * `counter::obj`. Its move operations copy. Hash it like a `counter::obj`, for example with
      * `test_hash<counter::obj>`, and compare it with `std::equal_to<counter::obj>`.

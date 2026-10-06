@@ -425,32 +425,9 @@ TEST_CASE("a map of maps with std::scoped_allocator_adaptor survives closing and
 }
 
 namespace {
-    /**
-     * A value whose move constructor can throw, without a pointer, so that it can live in a datastore. A map copies
-     * it instead of moving it, and an erase leaves a hole in the group.
-     */
-    struct copied_value {
-        std::uint64_t value = 0;
-
-        explicit copied_value(std::uint64_t v) noexcept
-            : value(v) {
-        }
-
-        copied_value(copied_value const &) = default;
-
-        copied_value(copied_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
-        }
-
-        copied_value &operator=(copied_value const &) = default;
-
-        copied_value &operator=(copied_value &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
-            value = other.value;
-            return *this;
-        }
-
-        ~copied_value() = default;
-    };
+    /// a value whose move constructor can throw, without a pointer, so that it can live in a datastore. A map copies
+    /// it instead of moving it, and an erase leaves a hole in the group.
+    using copied_value = tests::copied_value<std::uint64_t>;
 
     using map_with_holes = sparse_map<std::uint64_t,
                                       copied_value,

@@ -1085,20 +1085,6 @@ TEST_CASE("a merge copies an element whose move constructor can throw, so that t
     CHECK(completed);
 }
 
-namespace {
-    /**
-     * The hash of a key is its number, so key `k` lands in bucket `k`. It is not avalanching, but it is marked as
-     * avalanching, so that the containers accept it.
-     */
-    struct bucket_hash {
-        using is_avalanching = void;
-
-        std::size_t operator()(counter::obj const &key) const {
-            return key.get_for_hash();
-        }
-    };
-}  // namespace
-
 // `merge` erases an element from the source after it inserted it into the target, and that erase does not throw. So
 // an exception, here from the insertion of the next element, leaves every element in exactly one of the two maps.
 TEST_CASE("a merge that throws leaves every element whose move constructor can throw in exactly one map") {

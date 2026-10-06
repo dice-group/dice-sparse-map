@@ -95,28 +95,8 @@ namespace constant_evaluation {
         return map.size() == 100 && map.bucket_count() >= 1024 && all_found;
     }
 
-    /**
-     * A value whose move constructor can throw, so a rehash copies it.
-     */
-    struct copied_value {
-        int value = 0;
-
-        constexpr explicit copied_value(int v) noexcept
-            : value(v) {
-        }
-
-        constexpr copied_value(copied_value const &other) noexcept
-            : value(other.value) {
-        }
-
-        constexpr copied_value(copied_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
-        }
-
-        constexpr copied_value &operator=(copied_value const &) = default;
-        constexpr copied_value &operator=(copied_value &&) = default;
-        constexpr ~copied_value() = default;
-    };
+    /// a value whose move constructor can throw, so a rehash copies it
+    using copied_value = tests::copied_value<int>;
 
     /**
      * A rehash copies the elements of this map and frees the old groups at the end: their move constructor can throw.
