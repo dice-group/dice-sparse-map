@@ -56,6 +56,11 @@ of 64 buckets grows when it is full (2, 4 or 8), so it trades memory for insert 
 `sparse_map` and `unordered_dense` both use `ankerl::unordered_dense::hash`, so that a comparison of the
 two open addressing tables shows the tables and not the hashes. `std::unordered_map` uses `std::hash`.
 
+The macro `DICE_SPARSE_MAP_BENCH_INLINE_CAPACITY` sets the inline capacity of `sparse_map` and
+`sparse_set` in every benchmark (see [small maps](../doc/usage.md#small-maps)), for the elements that can be
+inline. Without it the capacity is 0. The README benchmark in [readme/](readme/README.md) keeps the
+capacity 0.
+
 Before the timed runs of a container type, `quick_overall`, `find_all`, `set` and `find_random` build,
 search and destroy three maps of that type with 1, 2 and 3 elements (`use_small_maps` in
 `workloads.hpp`). So a container with its own code path for small maps has that path in use in the

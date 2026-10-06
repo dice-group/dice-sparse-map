@@ -140,9 +140,18 @@ TEST_CASE_MAP("an_empty_table_answers_without_probing", std::string, int) {
     // NOLINTNEXTLINE(llvm-else-after-return,readability-else-after-return)
     REQUIRE_THROWS_AS(static_cast<void>(map.at(key, hash)), std::out_of_range);
 
-    // emptied by erasing rather than never filled: buckets exist, elements do not
+    // emptied by erasing rather than never filled: buckets exist, elements do not. A map with an inline capacity
+    // keeps its first elements inline, without buckets, so it gets one more element than fits inline.
     map[key] = 1;
+    std::size_t const num_others = dice::sparse_map::tests::inline_capacity_of_v<map_t>;
+    for (std::size_t i = 0; i < num_others; ++i) {
+        map[long_key("other " + std::to_string(i))] = 2;
+    }
     map.erase(key);
+    for (std::size_t i = 0; i < num_others; ++i) {
+        map.erase(long_key("other " + std::to_string(i)));
+    }
+    REQUIRE(map.empty());
     REQUIRE(map.bucket_count() != 0);
     REQUIRE(map.find(key, hash) == map.end());
 }
