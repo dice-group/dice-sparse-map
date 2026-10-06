@@ -117,6 +117,16 @@ TEST_CASE("the default hash function is DiceHash with the policy wyhash") {
     CHECK(std::is_same_v<dice::sparse_map::sparse_set<std::string>::hasher, dice::hash::DiceHash<std::string, wyhash>>);
 }
 
+// The bucket of an element is the low bits of its hash, so the hash values of the default hash function are part of
+// the persisted layout of a map or set (`pobr_version`). A change of these values needs a new `pobr_version`.
+TEST_CASE("the hash values of the default hash function are fixed") {
+    using dice::sparse_map::detail_sparse_hash::default_hash;
+    CHECK(default_hash<int>{}(42) == UINT64_C(4255536615297185153));
+    CHECK(default_hash<std::uint64_t>{}(UINT64_C(0x0123456789ABCDEF)) == UINT64_C(13776401956960274376));
+    CHECK(default_hash<std::string>{}("dice-sparse-map") == UINT64_C(5717576923377682419));
+    CHECK(default_hash<int_string>{}(int_string{7, "seven"}) == UINT64_C(14797354364008599459));
+}
+
 TEST_CASE("hash_is_avalanching reads the member type is_avalanching") {
     CHECK(sh::hash_is_avalanching_v<marked_void>);
     CHECK(sh::hash_is_avalanching_v<marked_true>);

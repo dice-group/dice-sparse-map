@@ -3,7 +3,7 @@
 
 The sparse-map library is a C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers. It uses open-addressing with sparse quadratic probing. The goal of the library is to be the most memory efficient possible, even at low load factor, while keeping reasonable performances. You can find an [article](https://smerity.com/articles/2015/google_sparsehash.html) of Stephen Merity which explains the idea behind `google::sparse_hash_map` and this project.
 
-Two classes are provided: `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`. The number of buckets is 0 or a power of two, see [Growth policy](#growth-policy). The hash function must be avalanching, see [Hash function](#hash-function).
+Two classes are provided: `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`. The number of buckets is 0 or a power of two, see [Bucket count](#bucket-count). The hash function must be avalanching, see [Hash function](#hash-function).
 
 A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be found [here](https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html). The benchmark, in its additional tests page, notably includes `google::sparse_hash_map` and `spp::sparse_hash_map` to which `dice::sparse_map::sparse_map` is an alternative. This page also gives some advices on which hash table structure you should try for your use case (useful if you are a bit lost with the multiple hash tables implementations in the `tsl` namespace).
 
@@ -51,7 +51,7 @@ On Windows with MSVC, the detection is done at runtime.
 #### Move constructor
 Make sure that your key `Key` and potential value `T` have a `noexcept` move constructor. The library will work without it but insertions will be much slower if the copy constructor is expensive (the structure often needs to move some values around on insertion).
 
-### Growth policy
+### Bucket count
 
 The number of buckets is 0 or a power of two and doubles when the table grows. A hash picks its bucket with a mask, <code>hash & (2<sup>n</sup> - 1)</code>, not with a modulo.
 
@@ -59,7 +59,7 @@ The number of buckets is 0 or a power of two and doubles when the table grows. A
 
 A hash picks its bucket with its low bits as it is, without mixing. So the hash function must be avalanching: each bit of the key changes each bit of the hash with a probability of about one half. A `static_assert` checks `dice::sparse_map::sh::hash_is_avalanching<Hash>`. The trait is true if `Hash` declares the member type `is_avalanching`: `using is_avalanching = void;` as in `ankerl::unordered_dense`, or `using is_avalanching = std::true_type;` as in `boost::unordered`. A member type with a `value` that is false, like `std::false_type`, does not count. For a hash function that you cannot change, specialize `dice::sparse_map::sh::hash_is_avalanching`. `std::hash` is not avalanching: for integers, libstdc++ and libc++ return the value itself.
 
-The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). `DiceHash` declares `is_avalanching` if its policy does, for every key type: `wyhash`, `xxh3` and `rapidhash` do, `Martinus` does not. A `dice::hash::dice_hash_overload` for your own key type must keep the avalanche of the policy, for example by returning `dice_hash_templates<Policy>::dice_hash` of its members (see the README of dice-hash). The default hash function does not guard against `0.0` and `-0.0`: they compare equal but have different hashes, so they can be two keys.
+The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). `DiceHash` declares `is_avalanching` if its policy does, for every key type: `wyhash`, `xxh3` and `rapidhash` do, `Martinus` does not. A `dice::hash::dice_hash_overload` for your own key type must keep the avalanche of the policy, for example by returning `dice_hash_templates<Policy>::dice_hash` of its members (see the README of dice-hash). The default hash function does not guard against `0.0` and `-0.0`: they compare equal but have different hashes, so they can be two keys. A hash picks the bucket, so the hash values of `DiceHash` are part of the persisted layout of a map: a dice-hash version that changes them needs a new `pobr_version`. `tests_default_hash` checks some of them.
 
 ### Installation
 
