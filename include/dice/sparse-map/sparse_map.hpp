@@ -84,7 +84,8 @@ namespace dice::sparse_map {
      * destroys it in place and leaves a hole: the memory of the element stays with its group of 64 buckets. A new
      * element in the bucket of a hole takes that memory without an allocation. The group gives the memory of its
      * holes back when it gets a new element in another bucket (it then copies its elements into new memory of the
-     * exact size), when it is rehashed, and when its last element is erased. A copy of the map has no holes. The
+     * exact size), when it is rehashed, and when its last element is erased. A copy of the map has no holes and
+     * holds its elements in memory of the exact size. The
      * clean-up rehash, which also removes the marks of erased elements, bounds the number of holes.
      *
      * `Sparsity` trades insertion speed for memory. A group grows its storage by 2 (`sh::sparsity::high`),

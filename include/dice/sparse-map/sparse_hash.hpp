@@ -558,8 +558,8 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Copies `other` into storage from `const_alloc`. The holes of `other` become deleted buckets without a
-             * slot.
+             * Copies `other` into storage from `const_alloc`. With holes, the storage holds the values only: the holes
+             * of `other` become deleted buckets without a slot.
              */
             constexpr sparse_array(sparse_array const &other, Allocator const &const_alloc)
                 : bitmap_vals_(other.bitmap_vals_),
@@ -569,6 +569,7 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
                 if constexpr (has_holes) {
                     bitmap_vals_ = other.value_bitmap();
+                    capacity_ = other.nb_elements_;
                 }
                 if (capacity_ == 0) {
                     return;
@@ -603,8 +604,8 @@ namespace dice::sparse_map {
 
             /**
              * Moves the values of `other` into storage from `const_alloc`, or copies them if their move constructor
-             * can throw. `other` keeps its values, the moved ones in a moved-from state. The holes of `other` become
-             * deleted buckets without a slot.
+             * can throw. `other` keeps its values, the moved ones in a moved-from state. With holes, the storage holds
+             * the values only: the holes of `other` become deleted buckets without a slot.
              */
             constexpr sparse_array(sparse_array &&other, Allocator const &const_alloc)
                 : bitmap_vals_(other.bitmap_vals_),
@@ -614,6 +615,7 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
                 if constexpr (has_holes) {
                     bitmap_vals_ = other.value_bitmap();
+                    capacity_ = other.nb_elements_;
                 }
                 if (capacity_ == 0) {
                     return;
@@ -819,21 +821,12 @@ namespace dice::sparse_map {
             }
 
             /**
-             * With holes. Linear in the offset of the slot: it clears one bit of the occupied bitmap per slot before
-             * `slot`, up to 63 steps.
+             * With holes. Linear in the offset of the slot, see `offset_to_index`.
              * @return the index of the bucket whose value is in the slot `slot`
              */
             [[nodiscard]] constexpr size_type index_of(value_type const *slot) const noexcept {
                 static_assert(has_holes);
-                auto const offset = static_cast<size_type>(slot - values());
-                DICE_SPARSE_MAP_ASSERT(offset < popcount(bitmap_vals_));
-
-                bitmap_type bitmap = bitmap_vals_;
-                for (size_type i = 0; i < offset; ++i) {
-                    bitmap &= bitmap - 1;  // clears the lowest set bit
-                }
-
-                auto const index = static_cast<size_type>(std::countr_zero(bitmap));
+                auto const index = offset_to_index(static_cast<size_type>(slot - values()));
                 DICE_SPARSE_MAP_ASSERT(has_value(index));
                 return index;
             }
@@ -904,7 +897,7 @@ namespace dice::sparse_map {
             /**
              * Without holes only.
              */
-            constexpr iterator erase(allocator_type &alloc, iterator position) {
+            constexpr iterator erase(allocator_type &alloc, iterator position) noexcept {
                 auto const offset = static_cast<size_type>(position - begin());
                 return erase(alloc, position, offset_to_index(offset));
             }
@@ -914,7 +907,7 @@ namespace dice::sparse_map {
              * only, a group with holes erases with `erase_in_place`.
              * @return iterator to the next value, or `end()`
              */
-            constexpr iterator erase(allocator_type &alloc, iterator position, size_type index) {
+            constexpr iterator erase(allocator_type &alloc, iterator position, size_type index) noexcept {
                 DICE_SPARSE_MAP_ASSERT(has_value(index));
                 DICE_SPARSE_MAP_ASSERT(!has_deleted_value(index));
 
@@ -974,10 +967,11 @@ namespace dice::sparse_map {
             }
 
             /**
-             * @return the index of the occupied bucket whose value is at `offset`
+             * Linear in `offset`: it clears one bit of the occupied bitmap per slot before `offset`, up to 63 steps.
+             * @return the index of the occupied bucket whose slot is at `offset`
              */
             [[nodiscard]] constexpr size_type offset_to_index(size_type offset) const noexcept {
-                DICE_SPARSE_MAP_ASSERT(offset < nb_elements_);
+                DICE_SPARSE_MAP_ASSERT(offset < popcount(bitmap_vals_));
 
                 bitmap_type bitmap = bitmap_vals_;
                 for (size_type i = 0; i < offset; ++i) {
@@ -1973,7 +1967,7 @@ namespace dice::sparse_map {
              * the elements after it in its group are moved, which does not throw.
              * @return iterator to the element after the erased one
              */
-            constexpr iterator erase(iterator pos) {
+            constexpr iterator erase(iterator pos) noexcept {
                 DICE_SPARSE_MAP_ASSERT(pos != end() && nb_elements_ > 0);
                 sparse_array *bucket = pos.bucket_;
                 if constexpr (has_holes) {
@@ -2013,7 +2007,7 @@ namespace dice::sparse_map {
                 }
             }
 
-            constexpr iterator erase(const_iterator pos) {
+            constexpr iterator erase(const_iterator pos) noexcept {
                 return erase(mutable_iterator(pos));
             }
 
