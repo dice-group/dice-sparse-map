@@ -568,6 +568,8 @@ namespace dice::sparse_map {
                   last_array_(other.last_array_) {
                 DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
                 if constexpr (has_holes) {
+                    // the slots in use, holes included, fit the storage of `other`
+                    DICE_SPARSE_MAP_ASSERT(popcount(other.bitmap_vals_) <= other.capacity_);
                     bitmap_vals_ = other.value_bitmap();
                     capacity_ = other.nb_elements_;
                 }
@@ -614,6 +616,8 @@ namespace dice::sparse_map {
                   last_array_(other.last_array_) {
                 DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
                 if constexpr (has_holes) {
+                    // the slots in use, holes included, fit the storage of `other`
+                    DICE_SPARSE_MAP_ASSERT(popcount(other.bitmap_vals_) <= other.capacity_);
                     bitmap_vals_ = other.value_bitmap();
                     capacity_ = other.nb_elements_;
                 }

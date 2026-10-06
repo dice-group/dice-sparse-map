@@ -85,8 +85,8 @@ namespace dice::sparse_map {
      * element in the bucket of a hole takes that memory without an allocation. The group gives the memory of its
      * holes back when it gets a new element in another bucket (it then copies its elements into new memory of the
      * exact size), when it is rehashed, and when its last element is erased. A copy of the map has no holes and
-     * holds its elements in memory of the exact size. The
-     * clean-up rehash, which also removes the marks of erased elements, bounds the number of holes.
+     * holds its elements in memory of the exact size. The clean-up rehash, which also removes the marks of erased
+     * elements, bounds the number of holes.
      *
      * `Sparsity` trades insertion speed for memory. A group grows its storage by 2 (`sh::sparsity::high`),
      * 4 (`sh::sparsity::medium`, default) or 8 (`sh::sparsity::low`) elements at a time. High sparsity means
@@ -485,11 +485,11 @@ namespace dice::sparse_map {
             return ht_.try_emplace_hint(hint, std::forward<K>(k), std::forward<Args>(args)...);
         }
 
-        constexpr iterator erase(iterator pos) {
+        constexpr iterator erase(iterator pos) noexcept {
             return ht_.erase(pos);
         }
 
-        constexpr iterator erase(const_iterator pos) {
+        constexpr iterator erase(const_iterator pos) noexcept {
             return ht_.erase(pos);
         }
 

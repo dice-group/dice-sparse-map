@@ -919,16 +919,19 @@ TEST_CASE("merge between maps with holes") {
         CHECK(source.erase(key(counts, 6)) == 1);
 
         // 3 and 67 fill the holes of the target without an allocation, 100 needs one, 5 and 70 stay in the source
+        auto const allocations = nb_allocations;
         {
             auto const bomb = bomb_after{1};
             CHECK_NOTHROW(target.merge(source));
         }
+        CHECK(nb_allocations == allocations + 1);
         CHECK(iterated_keys(target) == concat({range(0, 10), range(64, 74), {100}}));
         CHECK(iterated_keys(source) == std::vector<std::size_t>{5, 70});
         check_consistent(target, counts, 128);
         check_consistent(source, counts, 128);
 
-        // the other direction: the elements of the target fill the holes of the source, 3 the hole it left
+        // the other direction: the first element of each group (0 and 64) compacts the holes of the source, the other
+        // elements go into empty buckets and into the former holes (3, 4, 6, 67 and 100) with copying insertions
         source.merge(target);
         CHECK(iterated_keys(source) == concat({range(0, 10), range(64, 74), {100}}));
         CHECK(iterated_keys(target) == std::vector<std::size_t>{5, 70});
