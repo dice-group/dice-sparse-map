@@ -77,7 +77,7 @@ namespace {
      * The hash of a key is its number, so key `k` lands in bucket `k`. It is not avalanching, but it is marked as
      * avalanching, so that the containers accept it.
      */
-    struct key_hash {
+    struct identity_key_hash {
         using is_avalanching = void;
 
         std::size_t operator()(throwing_move_key const &key) const noexcept {
@@ -256,7 +256,7 @@ TEST_CASE("trivially copyable values: copy and move into a table with an unequal
 }
 
 TEST_CASE("a trivially copyable key whose move can throw: a copy of a set with a hole keeps its keys") {
-    using set_t = dice::sparse_map::sparse_set<throwing_move_key, key_hash>;
+    using set_t = dice::sparse_map::sparse_set<throwing_move_key, identity_key_hash>;
     auto set = set_t{};
     make_hole(set);
     check_keys_after_hole(set);
@@ -267,7 +267,7 @@ TEST_CASE("a trivially copyable key whose move can throw: a copy of a set with a
 
 TEST_CASE("a trivially copyable key whose move can throw: copy and move of a set with a hole into a table with an unequal allocator") {
     using alloc_t = pmr_like_allocator<throwing_move_key>;
-    using set_t = dice::sparse_map::sparse_set<throwing_move_key, key_hash, std::equal_to<throwing_move_key>, alloc_t>;
+    using set_t = dice::sparse_map::sparse_set<throwing_move_key, identity_key_hash, std::equal_to<throwing_move_key>, alloc_t>;
     auto set = set_t(alloc_t(1));
     make_hole(set);
 

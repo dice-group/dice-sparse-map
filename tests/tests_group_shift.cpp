@@ -48,18 +48,6 @@ namespace {
     template<typename T>
     using group_t = detail_sparse_hash::sparse_array<T, construct_counting_allocator<T>, sh::sparsity::medium, sh::allocation_failure::terminating>;
 
-    /**
-     * The hash of a key is its number, so key `k` lands in bucket `k`. It is not avalanching, but it is marked as
-     * avalanching, so that the containers accept it.
-     */
-    struct bucket_hash {
-        using is_avalanching = void;
-
-        std::size_t operator()(counter::obj const &key) const {
-            return key.get_for_hash();
-        }
-    };
-
     using map_t = sparse_map<counter::obj, counter::obj, bucket_hash, std::equal_to<counter::obj>, construct_counting_allocator<std::pair<counter::obj, counter::obj>>>;
 
     /**
