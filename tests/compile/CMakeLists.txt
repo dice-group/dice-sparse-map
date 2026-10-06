@@ -12,7 +12,6 @@ file(GENERATE OUTPUT "${compile_flags_file}"
         CONTENT "\"-I$<JOIN:$<TARGET_PROPERTY:dice_sparse_map_compile_flags,INCLUDE_DIRECTORIES>,\"\n\"-I>\"\n")
 
 set(hash_message "Hash must be avalanching")
-set(growth_policy_message "GrowthPolicy must be dice::sparse_map::sh::power_of_two_growth_policy<2>")
 
 function(add_compile_test file)
     get_filename_component(name "${file}" NAME_WE)
@@ -35,5 +34,3 @@ add_compile_test(pass/overload_with_specialization.cpp)
 add_compile_test(fail/map_std_hash.cpp "${hash_message}")
 add_compile_test(fail/set_std_hash.cpp "${hash_message}")
 add_compile_test(fail/map_overload_without_marker.cpp "${hash_message}")
-add_compile_test(fail/map_growth_policy.cpp "${growth_policy_message}")
-add_compile_test(fail/set_growth_policy.cpp "${growth_policy_message}")

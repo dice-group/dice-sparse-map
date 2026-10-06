@@ -53,7 +53,7 @@ Make sure that your key `Key` and potential value `T` have a `noexcept` move con
 
 ### Growth policy
 
-The number of buckets is 0 or a power of two and doubles when the table grows. A hash picks its bucket with a mask, <code>hash & (2<sup>n</sup> - 1)</code>, not with a modulo. The template parameter `GrowthPolicy` must be `dice::sparse_map::sh::power_of_two_growth_policy<2>`, the default. Other growth policies do not compile.
+The number of buckets is 0 or a power of two and doubles when the table grows. A hash picks its bucket with a mask, <code>hash & (2<sup>n</sup> - 1)</code>, not with a modulo.
 
 ### Hash function
 

@@ -95,7 +95,6 @@ namespace dice::sparse_map::bench {
                                                    table_hash<Key>,
                                                    std::equal_to<Key>,
                                                    Alloc<std::pair<Key, T>>,
-                                                   sh::power_of_two_growth_policy<2>,
                                                    sh::exception_safety::basic,
                                                    sparsity>;
 
@@ -104,7 +103,6 @@ namespace dice::sparse_map::bench {
                                                    table_hash<Key>,
                                                    std::equal_to<Key>,
                                                    Alloc<Key>,
-                                                   sh::power_of_two_growth_policy<2>,
                                                    sh::exception_safety::basic,
                                                    sparsity>;
     };

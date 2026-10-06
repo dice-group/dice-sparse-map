@@ -56,17 +56,17 @@ TEST_SUITE("test_sparse_map") {
         dice::sparse_map::sparse_map<self_reference_member_test, self_reference_member_test, mod_hash<9>>,
 
         // Other sparsity levels and the strong exception guarantee for move-only and copy-only types
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>,
-        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
-        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::strong>,
+        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>,
+        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::exception_safety::strong>,
 
         // Strong exception guarantee
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::strong>,
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::strong>,
 
         // Others sparsity
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
 
     /**
      * layout
@@ -629,12 +629,12 @@ TEST_SUITE("test_sparse_map") {
      */
     TEST_CASE("test_extreme_bucket_count_value_construction") {
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>>(
                 std::numeric_limits<std::size_t>::max())),
             std::length_error);
 
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>>(
                 std::numeric_limits<std::size_t>::max() / 2 + 1)),
             std::length_error);
     }
