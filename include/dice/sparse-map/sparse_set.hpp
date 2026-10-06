@@ -100,7 +100,7 @@ namespace dice::sparse_map {
                       "dice::hash::DiceHash is avalanching only for some policies.");
 
     private:
-        using ht = detail_sparse_hash::sparse_hash<detail_sparse_hash::set_policy<Key>, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>;
+        using ht = detail_sparse_hash::sparse_hash<detail_sparse_hash::set_access<Key>, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>;
 
         template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
         friend struct sparse_set;

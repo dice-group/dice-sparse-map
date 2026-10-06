@@ -230,7 +230,7 @@ namespace dice::sparse_map {
          * return `std::pair<Key, T> const &`. The mapped value is mutable through `iterator::value()`.
          */
         template<typename Key, typename T>
-        struct map_policy {
+        struct map_access {
             static constexpr bool is_map = true;
 
             using key_type = Key;
@@ -261,7 +261,7 @@ namespace dice::sparse_map {
          * Element access of `sparse_hash` for a set. The elements are stored as `Key`.
          */
         template<typename Key>
-        struct set_policy {
+        struct set_access {
             static constexpr bool is_map = false;
 
             using key_type = Key;
@@ -836,7 +836,7 @@ namespace dice::sparse_map {
         /**
          * The hash table behind `sparse_map` and `sparse_set`.
          *
-         * `Policy` is `map_policy<Key, T>` or `set_policy<Key>`. It defines the public element type
+         * `Access` is `map_access<Key, T>` or `set_access<Key>`. It defines the public element type
          * (`value_type`), the stored element type (`slot_type`) and the reference types of the iterators.
          *
          * A rehash that throws leaves the table unchanged or empty, depending on the type of the elements
@@ -861,7 +861,7 @@ namespace dice::sparse_map {
          * whenever `Hash`, `KeyEqual`, the allocator and the allocator's pointer type are standard layout.
          * Empty members take no space.
          */
-        template<typename Policy, typename Hash, typename KeyEqual, typename Allocator, sh::sparsity sparsity, sh::allocation_failure AllocationFailure>
+        template<typename Access, typename Hash, typename KeyEqual, typename Allocator, sh::sparsity sparsity, sh::allocation_failure AllocationFailure>
         struct sparse_hash {
         private:
             template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
@@ -871,13 +871,13 @@ namespace dice::sparse_map {
             template<bool is_const>
             struct sparse_iterator;
 
-            using key_type = typename Policy::key_type;
-            using value_type = typename Policy::value_type;
+            using key_type = typename Access::key_type;
+            using value_type = typename Access::value_type;
             using hasher = Hash;
             using key_equal = KeyEqual;
             using allocator_type = Allocator;
-            using reference = typename Policy::reference;
-            using const_reference = typename Policy::const_reference;
+            using reference = typename Access::reference;
+            using const_reference = typename Access::const_reference;
             using size_type = typename std::allocator_traits<allocator_type>::size_type;
             using difference_type = typename std::allocator_traits<allocator_type>::difference_type;
             using pointer = typename std::allocator_traits<allocator_type>::pointer;
@@ -886,7 +886,7 @@ namespace dice::sparse_map {
             using const_iterator = sparse_iterator<true>;
 
         private:
-            using slot_type = typename Policy::slot_type;
+            using slot_type = typename Access::slot_type;
             using slot_allocator_type = typename std::allocator_traits<allocator_type>::template rebind_alloc<slot_type>;
             using slot_allocator_traits = std::allocator_traits<slot_allocator_type>;
             using sparse_array = detail_sparse_hash::sparse_array<slot_type, slot_allocator_type, sparsity, AllocationFailure>;
@@ -972,16 +972,16 @@ namespace dice::sparse_map {
                  * @return the key of the element
                  */
                 [[nodiscard]] key_type const &key() const noexcept {
-                    return Policy::key(*slot_);
+                    return Access::key(*slot_);
                 }
 
                 /**
                  * @return the mapped value of the element of a map, mutable through `iterator`
                  */
-                template<bool map = Policy::is_map>
-                requires map
-                [[nodiscard]] auto &value() const noexcept {
-                    return Policy::mapped(*slot_);
+                [[nodiscard]] auto &value() const noexcept
+                    requires Access::is_map
+                {
+                    return Access::mapped(*slot_);
                 }
 
                 sparse_iterator &operator++() noexcept {
@@ -1233,16 +1233,16 @@ namespace dice::sparse_map {
             }
 
             std::pair<iterator, bool> insert(value_type const &value) {
-                return insert_impl(Policy::key_of_value(value), value);
+                return insert_impl(Access::key_of_value(value), value);
             }
 
             std::pair<iterator, bool> insert(value_type &&value) {
-                return insert_impl(Policy::key_of_value(value), std::move(value));
+                return insert_impl(Access::key_of_value(value), std::move(value));
             }
 
             template<typename V>
             iterator insert_hint(const_iterator hint, V &&value) {
-                if (hint != cend() && compare_keys(key_of(hint), Policy::key_of_value(value))) {
+                if (hint != cend() && compare_keys(key_of(hint), Access::key_of_value(value))) {
                     return mutable_iterator(hint);
                 }
 
@@ -1264,7 +1264,7 @@ namespace dice::sparse_map {
             std::pair<iterator, bool> insert_or_assign(K &&key, M &&obj) {
                 auto it = try_emplace(std::forward<K>(key), std::forward<M>(obj));
                 if (!it.second) {
-                    Policy::mapped(*it.first.slot_) = std::forward<M>(obj);
+                    Access::mapped(*it.first.slot_) = std::forward<M>(obj);
                 }
 
                 return it;
@@ -1274,7 +1274,7 @@ namespace dice::sparse_map {
             iterator insert_or_assign_hint(const_iterator hint, K &&key, M &&obj) {
                 if (hint != cend() && compare_keys(key_of(hint), key)) {
                     auto it = mutable_iterator(hint);
-                    Policy::mapped(*it.slot_) = std::forward<M>(obj);
+                    Access::mapped(*it.slot_) = std::forward<M>(obj);
 
                     return it;
                 }
@@ -1398,21 +1398,21 @@ namespace dice::sparse_map {
              * once for several lookups.
              */
             template<typename Self, typename K>
-            requires Policy::is_map
+            requires Access::is_map
             auto &at(this Self &self, K const &key) {
                 return self.at_hashed(key, self.hash_key(key));
             }
 
             template<typename Self, typename K>
-            requires Policy::is_map
+            requires Access::is_map
             auto &at(this Self &self, K const &key, std::size_t hash) {
                 return self.at_hashed(key, hash);
             }
 
             template<typename K>
-            requires Policy::is_map
+            requires Access::is_map
             auto &operator[](K &&key) {
-                return Policy::mapped(*try_emplace(std::forward<K>(key)).first.slot_);
+                return Access::mapped(*try_emplace(std::forward<K>(key)).first.slot_);
             }
 
             template<typename K>
@@ -1545,7 +1545,7 @@ namespace dice::sparse_map {
                     throw std::out_of_range("Couldn't find key.");
                 }
 
-                return Policy::mapped(*it.slot_);
+                return Access::mapped(*it.slot_);
             }
 
             template<typename Self, typename K>
@@ -1584,7 +1584,7 @@ namespace dice::sparse_map {
             }
 
             [[nodiscard]] static key_type const &key_of(const_iterator it) noexcept {
-                return Policy::key(*it.slot_);
+                return Access::key(*it.slot_);
             }
 
             /**
@@ -1798,7 +1798,7 @@ namespace dice::sparse_map {
 
                     if (bucket.has_value(index_in_sparse_bucket)) {
                         slot_type *const slot = bucket.value(index_in_sparse_bucket);
-                        if (compare_keys(key, Policy::key(*slot))) {
+                        if (compare_keys(key, Access::key(*slot))) {
                             return {iterator(&bucket, slot), false};
                         }
                     } else if (bucket.has_deleted_value(index_in_sparse_bucket) && probe < bucket_count_) {
@@ -1835,7 +1835,7 @@ namespace dice::sparse_map {
                     } else {
                         clear_deleted_buckets();
                     }
-                    return insert_impl_hashed(Policy::key(new_slot.get()), hash, std::move(new_slot.get()));
+                    return insert_impl_hashed(Access::key(new_slot.get()), hash, std::move(new_slot.get()));
                 }
 
                 sparse_array &bucket = buckets_begin()[sparse_ibucket];
@@ -1863,7 +1863,7 @@ namespace dice::sparse_map {
 
                     if (bucket.has_value(index_in_sparse_bucket)) {
                         slot_type *const slot = bucket.value(index_in_sparse_bucket);
-                        if (compare_keys(key, Policy::key(*slot))) {
+                        if (compare_keys(key, Access::key(*slot))) {
                             bucket.erase(alloc_, slot, index_in_sparse_bucket);
                             --nb_elements_;
                             ++nb_deleted_buckets_;
@@ -1894,7 +1894,7 @@ namespace dice::sparse_map {
 
                     if (bucket.has_value(index_in_sparse_bucket)) {
                         slot_type const *const slot = bucket.value(index_in_sparse_bucket);
-                        if (compare_keys(key, Policy::key(*slot))) {
+                        if (compare_keys(key, Access::key(*slot))) {
                             return const_iterator(&bucket, slot);
                         }
                     } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= bucket_count_) {
@@ -1985,7 +1985,7 @@ namespace dice::sparse_map {
              */
             template<typename S>
             void insert_on_rehash(S &&slot_value) {
-                std::size_t ibucket = bucket_for_hash(hash_key(Policy::key(slot_value)));
+                std::size_t ibucket = bucket_for_hash(hash_key(Access::key(slot_value)));
                 sparse_array *const raw_buckets = buckets_begin();
 
                 for (std::size_t probe = 0;;) {
@@ -2000,7 +2000,7 @@ namespace dice::sparse_map {
                         return;
                     }
 
-                    DICE_SPARSE_MAP_ASSERT(!compare_keys(Policy::key(slot_value), Policy::key(*bucket.value(index_in_sparse_bucket))));
+                    DICE_SPARSE_MAP_ASSERT(!compare_keys(Access::key(slot_value), Access::key(*bucket.value(index_in_sparse_bucket))));
 
                     ++probe;
                     ibucket = next_bucket(ibucket, probe);

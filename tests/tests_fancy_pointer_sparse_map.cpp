@@ -26,7 +26,7 @@ using dice::sparse_map::tests::offset_ptr_allocator;
 namespace details {
     template<typename Key, typename T, typename Alloc>
     using sparse_map = dice::sparse_map::detail_sparse_hash::sparse_hash<
-        dice::sparse_map::detail_sparse_hash::map_policy<Key, T>,
+        dice::sparse_map::detail_sparse_hash::map_access<Key, T>,
         dice::sparse_map::tests::test_hash<Key>,
         std::equal_to<Key>,
         Alloc,

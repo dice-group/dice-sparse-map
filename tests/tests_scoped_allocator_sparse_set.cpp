@@ -11,7 +11,7 @@
 namespace details {
     template<typename T, typename Alloc>
     using sparse_set = dice::sparse_map::detail_sparse_hash::sparse_hash<
-        dice::sparse_map::detail_sparse_hash::set_policy<T>,
+        dice::sparse_map::detail_sparse_hash::set_access<T>,
         dice::sparse_map::tests::test_hash<T>,
         std::equal_to<T>,
         Alloc,
