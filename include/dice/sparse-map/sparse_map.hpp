@@ -50,10 +50,7 @@ namespace dice::sparse_map {
      * The number of buckets is 0 or a power of two and doubles when the table
      * grows. A hash picks its bucket with a mask.
      *
-     * `ExceptionSafety` is a placeholder. Both values of `dice::sparse_map::sh::exception_safety` are accepted
-     * and have no effect. The exception guarantee follows from the type of the elements.
-     *
-     * If the insertion of one element throws, the map holds the same elements as before, except in one case where it
+     * The exception guarantee follows from the type of the elements. If the insertion of one element throws, the map holds the same elements as before, except in one case where it
      * is empty. It comes from a rehash, which an insertion, `rehash` or `reserve` can do. `reserve` avoids rehashes.
      * How a rehash transfers the elements depends on their type:
      * - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old
@@ -86,7 +83,7 @@ namespace dice::sparse_map {
      * insert, invalidate the iterators.
      *  - erase: always invalidate the iterators.
      */
-    template<class Key, class T, class Hash = detail_sparse_hash::default_hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium, dice::sparse_map::sh::allocation_failure AllocationFailure = dice::sparse_map::sh::allocation_failure::terminating>
+    template<class Key, class T, class Hash = detail_sparse_hash::default_hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium, dice::sparse_map::sh::allocation_failure AllocationFailure = dice::sparse_map::sh::allocation_failure::terminating>
     class sparse_map {
         static_assert(sh::hash_is_avalanching_v<Hash>,
                       "Hash must be avalanching: sparse_map picks the bucket with the low bits of the hash as it is. "

@@ -35,7 +35,6 @@ namespace {
                               tests::test_hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<entry_t>,
-                              sh::exception_safety::basic,
                               Sparsity>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
@@ -43,7 +42,6 @@ namespace {
                               tests::test_hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<std::uint64_t>,
-                              sh::exception_safety::basic,
                               Sparsity>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>

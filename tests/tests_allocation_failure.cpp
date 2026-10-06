@@ -207,7 +207,6 @@ TEST_CASE("the default of AllocationFailure is terminating") {
                                     detail_sparse_hash::default_hash<int>,
                                     std::equal_to<int>,
                                     std::allocator<std::pair<int, int>>,
-                                    sh::exception_safety::basic,
                                     sh::sparsity::medium,
                                     sh::allocation_failure::terminating>>);
     CHECK(std::is_same_v<sparse_set<int>,
@@ -215,7 +214,6 @@ TEST_CASE("the default of AllocationFailure is terminating") {
                                     detail_sparse_hash::default_hash<int>,
                                     std::equal_to<int>,
                                     std::allocator<int>,
-                                    sh::exception_safety::basic,
                                     sh::sparsity::medium,
                                     sh::allocation_failure::terminating>>);
 }

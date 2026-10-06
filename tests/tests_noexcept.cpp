@@ -104,14 +104,14 @@ namespace {
     template<typename Container>
     struct with_throwing_allocation_failure;
 
-    template<typename K, typename T, typename H, typename E, typename A, sh::exception_safety S, sh::sparsity P>
-    struct with_throwing_allocation_failure<sparse_map<K, T, H, E, A, S, P, sh::allocation_failure::terminating>> {
-        using type = sparse_map<K, T, H, E, A, S, P, sh::allocation_failure::throwing>;
+    template<typename K, typename T, typename H, typename E, typename A, sh::sparsity P>
+    struct with_throwing_allocation_failure<sparse_map<K, T, H, E, A, P, sh::allocation_failure::terminating>> {
+        using type = sparse_map<K, T, H, E, A, P, sh::allocation_failure::throwing>;
     };
 
-    template<typename K, typename H, typename E, typename A, sh::exception_safety S, sh::sparsity P>
-    struct with_throwing_allocation_failure<sparse_set<K, H, E, A, S, P, sh::allocation_failure::terminating>> {
-        using type = sparse_set<K, H, E, A, S, P, sh::allocation_failure::throwing>;
+    template<typename K, typename H, typename E, typename A, sh::sparsity P>
+    struct with_throwing_allocation_failure<sparse_set<K, H, E, A, P, sh::allocation_failure::terminating>> {
+        using type = sparse_set<K, H, E, A, P, sh::allocation_failure::throwing>;
     };
 
     /**

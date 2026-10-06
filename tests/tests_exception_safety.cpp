@@ -11,13 +11,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
-#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 /**
  * What a map holds after an allocation or the hash function failed in the middle of an operation. The allocations
@@ -153,7 +151,6 @@ namespace {
                                     Hash,
                                     std::equal_to<counter::obj>,
                                     leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                    sh::exception_safety::basic,
                                     Sparsity>;
 
     template<typename Hash = test_hash<counter::obj>>
@@ -650,113 +647,6 @@ TEST_CASE("a rehash does not swap the hash function") {
     for (std::size_t key = 0; key < 100; ++key) {
         auto const it = map.find(key);
         all_found = all_found && it != map.end() && it->second == std::to_string(key);
-    }
-    CHECK(all_found);
-}
-
-namespace {
-
-    /// `moving_map<sh::sparsity::medium>` with `sh::exception_safety::strong`
-    using strong_moving_map = throwing_map<counter::obj,
-                                           counter::obj,
-                                           test_hash<counter::obj>,
-                                           std::equal_to<counter::obj>,
-                                           leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                           sh::exception_safety::strong,
-                                           sh::sparsity::medium>;
-
-    /// what an insert that rehashes did with one allocation budget
-    enum class insert_outcome {
-        completed,
-        unchanged,
-        emptied
-    };
-
-    /**
-     * Fills a new `Map` until the next insert rehashes it, then inserts a new key with the allocation budgets 0, 1, 2
-     * and so on, until the insert completes.
-     * @return the outcome for each budget
-     */
-    template<typename Map>
-    std::vector<insert_outcome> insert_outcomes(counter &counts) {
-        std::vector<insert_outcome> outcomes;
-        for (int budget = 0; budget < max_budget; ++budget) {
-            auto map = Map{};
-            fill_until_next_insert_rehashes(map, counts, 200);
-            auto const size_before = map.size();
-            auto const checksum_before = checksum::map(map);
-            try {
-                auto const bomb = bomb_after{budget};
-                insert_key(map, counts, size_before);
-                outcomes.push_back(insert_outcome::completed);
-                break;
-            } catch (std::bad_alloc const &) {
-                bool const unchanged = map.size() == size_before && checksum::map(map) == checksum_before;
-                outcomes.push_back(unchanged ? insert_outcome::unchanged : insert_outcome::emptied);
-            }
-        }
-        return outcomes;
-    }
-
-    /// the bytes that a rehash of `map` to twice its bucket count needs on top of the memory that was in use before
-    template<typename Map>
-    std::size_t rehash_extra_bytes(Map &map) {
-        auto const bytes_before = live_bytes;
-        peak_bytes = live_bytes;
-        map.rehash(map.bucket_count() * 2);
-        return peak_bytes - bytes_before;
-    }
-
-}  // namespace
-
-// `ExceptionSafety` is a placeholder. With `exception_safety::strong` a rehash moves elements whose move constructor
-// cannot throw and frees each old group while it moves, as with `exception_safety::basic`. So both need the same
-// memory, a failed allocation has the same effect on both, and a mapped type that cannot be copied works.
-TEST_CASE("exception_safety::strong is accepted and behaves like basic") {
-    using basic_moving_map = moving_map<sh::sparsity::medium>;
-    auto counts = counter{};
-    {
-        auto basic = basic_moving_map{};
-        auto strong = strong_moving_map{};
-        for (std::size_t key = 0; key < 10000; ++key) {
-            insert_key(basic, counts, key);
-            insert_key(strong, counts, key);
-        }
-        auto const basic_extra = rehash_extra_bytes(basic);
-        auto const strong_extra = rehash_extra_bytes(strong);
-        CHECK(strong_extra == basic_extra);
-        CHECK(checksum::map(strong) == checksum::map(basic));
-    }
-
-    auto const basic_outcomes = insert_outcomes<basic_moving_map>(counts);
-    auto const strong_outcomes = insert_outcomes<strong_moving_map>(counts);
-    CHECK(strong_outcomes == basic_outcomes);
-    CHECK(std::ranges::count(strong_outcomes, insert_outcome::emptied) > 0);
-    CHECK(alive(counts) == 0);
-    CHECK(live_blocks == 0);
-
-    using unique_value = std::unique_ptr<std::size_t>;
-    auto move_only = sparse_map<std::size_t,
-                                unique_value,
-                                test_hash<std::size_t>,
-                                std::equal_to<std::size_t>,
-                                std::allocator<std::pair<std::size_t, unique_value>>,
-                                sh::exception_safety::strong>{};
-    auto set = sparse_set<std::size_t,
-                          test_hash<std::size_t>,
-                          std::equal_to<std::size_t>,
-                          std::allocator<std::size_t>,
-                          sh::exception_safety::strong>{};
-    for (std::size_t key = 0; key < 100; ++key) {
-        move_only.try_emplace(key, std::make_unique<std::size_t>(key));
-        set.insert(key);
-    }
-    move_only.rehash(move_only.bucket_count() * 2);
-    set.rehash(set.bucket_count() * 2);
-    bool all_found = true;
-    for (std::size_t key = 0; key < 100; ++key) {
-        auto const it = move_only.find(key);
-        all_found = all_found && it != move_only.end() && *it->second == key && set.contains(key);
     }
     CHECK(all_found);
 }

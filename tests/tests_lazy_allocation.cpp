@@ -23,10 +23,10 @@ namespace {
     using dice::sparse_map::tests::num_allocations;
 
     template<sh::sparsity Sparsity>
-    using counted_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, sh::exception_safety::basic, Sparsity>;
+    using counted_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, Sparsity>;
 
     template<sh::sparsity Sparsity>
-    using counted_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<int>, sh::exception_safety::basic, Sparsity>;
+    using counted_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<int>, Sparsity>;
 
     /// the sparsity levels, with `test_hash` and an allocator that counts
     using counted_containers = std::tuple<counted_map<sh::sparsity::high>,

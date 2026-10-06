@@ -55,16 +55,6 @@
 namespace dice::sparse_map {
 
     namespace sh {
-        /**
-         * The values of the `ExceptionSafety` template parameter of `sparse_map` and `sparse_set`. Both are
-         * accepted and have no effect. The exception guarantee follows from the type of the elements, see the
-         * class documentation of `sparse_map`.
-         */
-        enum class exception_safety {
-            basic,
-            strong
-        };
-
         enum class sparsity {
             high,
             medium,

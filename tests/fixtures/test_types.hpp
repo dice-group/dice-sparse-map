@@ -99,34 +99,34 @@ namespace dice::sparse_map::tests {
                                                     test_hash<Key>>;
 
     template<typename Key, typename T, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_medium = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using map_medium = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_high = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::high>;
+    using map_high = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::high>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_low = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::low>;
+    using map_low = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::low>;
 
     template<typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_std_hash = sparse_map<Key, T, marked_avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using map_std_hash = sparse_map<Key, T, marked_avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_offset_ptr = sparse_map<Key, T, Hash, KeyEqual, offset_ptr_allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::high>;
+    using map_offset_ptr = sparse_map<Key, T, Hash, KeyEqual, offset_ptr_allocator<std::pair<Key, T>>, sh::sparsity::high>;
 
     template<typename Key, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_medium = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using set_medium = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::sparsity::medium>;
 
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_high = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::high>;
+    using set_high = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::sparsity::high>;
 
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_low = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::low>;
+    using set_low = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::sparsity::low>;
 
     template<typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_std_hash = sparse_set<Key, marked_avalanching<Hash>, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using set_std_hash = sparse_set<Key, marked_avalanching<Hash>, KeyEqual, std::allocator<Key>, sh::sparsity::medium>;
 
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_offset_ptr = sparse_set<Key, Hash, KeyEqual, offset_ptr_allocator<Key>, sh::exception_safety::basic, sh::sparsity::high>;
+    using set_offset_ptr = sparse_set<Key, Hash, KeyEqual, offset_ptr_allocator<Key>, sh::sparsity::high>;
 
     // The default hash function runs in the `medium` configuration for integer and string keys.
     static_assert(std::is_same_v<map_medium<int, int>::hasher, detail_sparse_hash::default_hash<int>>);
@@ -142,9 +142,8 @@ namespace dice::sparse_map::tests {
              typename Hash = detail_sparse_hash::default_hash<Key>,
              typename KeyEqual = std::equal_to<Key>,
              typename Allocator = std::allocator<std::pair<Key, T>>,
-             sh::exception_safety ExceptionSafety = sh::exception_safety::basic,
              sh::sparsity Sparsity = sh::sparsity::medium>
-    using throwing_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, ExceptionSafety, Sparsity, sh::allocation_failure::throwing>;
+    using throwing_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, sh::allocation_failure::throwing>;
 
     /**
      * `sparse_set` with `sh::allocation_failure::throwing`, the other parameters as in `sparse_set`.
@@ -153,9 +152,8 @@ namespace dice::sparse_map::tests {
              typename Hash = detail_sparse_hash::default_hash<Key>,
              typename KeyEqual = std::equal_to<Key>,
              typename Allocator = std::allocator<Key>,
-             sh::exception_safety ExceptionSafety = sh::exception_safety::basic,
              sh::sparsity Sparsity = sh::sparsity::medium>
-    using throwing_set = sparse_set<Key, Hash, KeyEqual, Allocator, ExceptionSafety, Sparsity, sh::allocation_failure::throwing>;
+    using throwing_set = sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, sh::allocation_failure::throwing>;
 
 }  // namespace dice::sparse_map::tests
 
