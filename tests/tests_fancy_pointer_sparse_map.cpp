@@ -6,6 +6,7 @@
 #include <dice/sparse-map/sparse_map.hpp>
 
 #include "fixtures/offset_ptr_allocator.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <doctest/doctest.h>
 
@@ -50,19 +51,17 @@ namespace details {
         std::pair<Key, T>,
         key_select<Key, T>,
         value_select<Key, T>,
-        std::hash<T>,
+        dice::sparse_map::tests::test_hash<T>,
         std::equal_to<T>,
         Alloc,
-        dice::sparse_map::sh::power_of_two_growth_policy<2>,
         dice::sparse_map::sh::exception_safety::basic,
-        dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::probing::quadratic>;
+        dice::sparse_map::sh::sparsity::medium>;
 
     template<typename T>
     typename T::map_type default_construct_map() {
         using key_type = typename T::key_type;
         return typename T::map_type(T::map_type::DEFAULT_INIT_BUCKET_COUNT,
-                                    std::hash<key_type>(),
+                                    dice::sparse_map::tests::test_hash<key_type>(),
                                     std::equal_to<key_type>(),
                                     typename T::allocator_type(),
                                     T::map_type::DEFAULT_MAX_LOAD_FACTOR);
@@ -203,7 +202,7 @@ TEST_SUITE("fancy_pointers/sparse_hash_map_tests") {
     }
 
     TEST_CASE("full_map") {
-        dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, offset_ptr_allocator<std::pair<int, int>>> map;
+        dice::sparse_map::sparse_map<int, int, dice::sparse_map::tests::test_hash<int>, std::equal_to<int>, offset_ptr_allocator<std::pair<int, int>>> map;
         std::vector<std::pair<int, int>> data = {
             {0, 1},
             {2, 3},

@@ -41,13 +41,14 @@ namespace dice::sparse_map {
      * probing. The goal on the hash map is to be the most memory efficient
      * possible, even at low load factor, while keeping reasonable performances.
      *
-     * `GrowthPolicy` defines how the map grows and consequently how a hash value is
-     * mapped to a bucket. By default the map uses
-     * `dice::sh::power_of_two_growth_policy`. This policy keeps the number of
-     * buckets to a power of two and uses a mask to map the hash to a bucket instead
-     * of the slow modulo. Other growth policies are available and you may define
-     * your own growth policy, check `dice::sh::power_of_two_growth_policy` for the
-     * interface.
+     * `Hash` must be avalanching, see `dice::sparse_map::sh::hash_is_avalanching`: a
+     * hash picks its bucket with its low bits as it is. The default
+     * `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` declares
+     * `is_avalanching` for every key type. A `dice::hash::dice_hash_overload` for
+     * your own key type must keep the avalanche of the policy.
+     *
+     * The number of buckets is 0 or a power of two and doubles when the table
+     * grows. A hash picks its bucket with a mask.
      *
      * `ExceptionSafety` defines the exception guarantee provided by the class. By
      * default only the basic exception safety is guaranteed which mean that all
@@ -80,8 +81,14 @@ namespace dice::sparse_map {
      * insert, invalidate the iterators.
      *  - erase: always invalidate the iterators.
      */
-    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, class GrowthPolicy = dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
+    template<class Key, class T, class Hash = detail_sparse_hash::default_hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>, dice::sparse_map::sh::exception_safety ExceptionSafety = dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
     class sparse_map {
+        static_assert(sh::hash_is_avalanching_v<Hash>,
+                      "Hash must be avalanching: sparse_map picks the bucket with the low bits of the hash as it is. "
+                      "Mark an avalanching hash function with `using is_avalanching = void;` or with a specialization "
+                      "of dice::sparse_map::sh::hash_is_avalanching. std::hash is not avalanching. "
+                      "dice::hash::DiceHash is avalanching only for some policies.");
+
     private:
         class KeySelect {
         public:
@@ -118,10 +125,8 @@ namespace dice::sparse_map {
             Hash,
             KeyEqual,
             Allocator,
-            GrowthPolicy,
             ExceptionSafety,
-            Sparsity,
-            dice::sparse_map::sh::probing::quadratic>;
+            Sparsity>;
 
     public:
         using key_type = typename ht::key_type;
@@ -780,13 +785,6 @@ namespace dice::sparse_map {
     private:
         ht ht_;
     };
-
-    /**
-     * Same as `dice::sparse_map<Key, T, Hash, KeyEqual, Allocator,
-     * dice::sh::prime_growth_policy>`.
-     */
-    template<class Key, class T, class Hash = std::hash<Key>, class KeyEqual = std::equal_to<Key>, class Allocator = std::allocator<std::pair<Key, T>>>
-    using sparse_pg_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, dice::sparse_map::sh::prime_growth_policy>;
 
 }  // namespace dice::sparse_map
 
