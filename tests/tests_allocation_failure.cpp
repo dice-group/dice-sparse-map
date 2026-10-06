@@ -9,10 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
-#include <cstdlib>
-#include <exception>
 #include <functional>
-#include <initializer_list>
 #include <iostream>
 #include <memory>
 #include <new>
@@ -22,17 +19,16 @@
 #include <utility>
 
 #if __has_include(<sys/wait.h>)
-#include <cerrno>
-#include <csignal>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <dice/template-library/sandbox.hpp>
+
 #include <unistd.h>
 #endif
 
 /**
  * What `sparse_map` and `sparse_set` do when an allocation of the table fails. With the default
  * `sh::allocation_failure::terminating` the process ends with `std::abort()`. Each case runs the operation in a child
- * process and checks that the child ends with `SIGABRT` and writes nothing to stderr. There is one case for each place
+ * process (`DICE_SANDBOX` of the dice-template-library) and checks that the child ends with `SIGABRT` and writes
+ * nothing to stderr. There is one case for each place
  * where a group or the vector of the groups allocates. The cases are skipped where `<sys/wait.h>` is missing.
  * `tests_exception_safety` checks `sh::allocation_failure::throwing`.
  */
@@ -44,66 +40,37 @@ namespace {
     constexpr bool can_fork = true;
 
     /**
-     * Runs `f` in a child process and waits for it. In the child, `SIGABRT` and the signals of a crash have the
-     * default action, so the child ends with the signal and not with the crash report of doctest. The child exits with
-     * 0 if `f` returns, with 1 if `f` throws and with 2 if `std::terminate` is called. The tests compile the internal
-     * checks of the library in, and a failed check also ends with `SIGABRT`, but it writes a message to stderr. So
-     * the parent reads the stderr of the child and prints it if it is not empty.
+     * Runs `f` in a child process with `DICE_SANDBOX` and waits for it. The child returns 0 if `f` returns and 1 if
+     * `f` throws, so an exception does not end it with `SIGABRT`. The tests compile the internal checks of the library
+     * in, and a failed check also ends with `SIGABRT`, but it writes a message to stderr. So the child writes its
+     * stderr to a temporary file, and the parent prints the content if it is not empty.
      * @return true if the child ended with the signal `SIGABRT` and wrote nothing to stderr
      */
     template<typename F>
     [[nodiscard]] bool expect_abort(F &&f) {
-        std::cout.flush();
-        std::cerr.flush();
-        std::fflush(nullptr);
-        std::array<int, 2> child_stderr_pipe{};
-        if (pipe(child_stderr_pipe.data()) != 0) {
+        std::unique_ptr<std::FILE, decltype(&std::fclose)> const child_stderr_file{std::tmpfile(), &std::fclose};
+        if (child_stderr_file == nullptr) {
             return false;
         }
-        pid_t const pid = fork();
-        if (pid == 0) {
-            close(child_stderr_pipe[0]);
-            dup2(child_stderr_pipe[1], STDERR_FILENO);
-            close(child_stderr_pipe[1]);
-            for (int const signal_number : {SIGABRT, SIGSEGV, SIGBUS, SIGFPE, SIGILL}) {
-                std::signal(signal_number, SIG_DFL);
-            }
-            std::set_terminate([] {
-                std::_Exit(2);
-            });
+        auto const result = DICE_SANDBOX {
+            dup2(fileno(child_stderr_file.get()), STDERR_FILENO);
             try {
                 std::forward<F>(f)();
             } catch (...) {
-                std::_Exit(1);
+                return 1;
             }
-            std::_Exit(0);
-        }
-        close(child_stderr_pipe[1]);
-        if (pid < 0) {
-            close(child_stderr_pipe[0]);
-            return false;
-        }
+            return 0;
+        };
+        std::rewind(child_stderr_file.get());
         std::string child_stderr;
         std::array<char, 256> buffer{};
-        while (true) {
-            ssize_t const n = read(child_stderr_pipe[0], buffer.data(), buffer.size());
-            if (n > 0) {
-                child_stderr.append(buffer.data(), static_cast<std::size_t>(n));
-            } else if (n == 0 || errno != EINTR) {
-                break;
-            }
-        }
-        close(child_stderr_pipe[0]);
-        int status = 0;
-        while (waitpid(pid, &status, 0) < 0) {
-            if (errno != EINTR) {
-                return false;
-            }
+        while (std::size_t const n = std::fread(buffer.data(), 1, buffer.size(), child_stderr_file.get())) {
+            child_stderr.append(buffer.data(), n);
         }
         if (!child_stderr.empty()) {
             std::cerr << "stderr of the child: " << child_stderr << '\n';
         }
-        return WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT && child_stderr.empty();
+        return result == dice::template_library::SubProcessResult::Aborted && child_stderr.empty();
     }
 #else
     constexpr bool can_fork = false;
