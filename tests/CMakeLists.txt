@@ -3,8 +3,9 @@ find_package(Boost REQUIRED)
 find_package(Metall REQUIRED)
 find_package(nanobench REQUIRED)
 
-# doctest main and the nanobench implementation, compiled once and linked into every test
-add_library(dice_sparse_map_test_main OBJECT test_main.cpp)
+# doctest main, the nanobench implementation and the counter fixture, compiled once and linked into every test
+add_library(dice_sparse_map_test_main OBJECT test_main.cpp fixtures/counter.cpp)
+target_include_directories(dice_sparse_map_test_main PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(dice_sparse_map_test_main PUBLIC
         doctest::doctest
         nanobench::nanobench
