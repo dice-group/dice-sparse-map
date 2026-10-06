@@ -1,5 +1,5 @@
-// A key type with its own dice_hash_overload that does not declare is_avalanching compiles with the default hash
-// function if the user specializes dice::sparse_map::sh::hash_is_avalanching for it.
+// DiceHash with the policy Martinus declares no is_avalanching. A map with it compiles if the user specializes
+// dice::sparse_map::sh::hash_is_avalanching for it.
 #include <dice/sparse-map/sparse_map.hpp>
 
 #include <cstddef>
@@ -22,11 +22,11 @@ namespace dice::hash {
 }  // namespace dice::hash
 
 template<>
-struct dice::sparse_map::sh::hash_is_avalanching<dice::hash::DiceHash<node_id, dice::hash::Policies::wyhash>>
+struct dice::sparse_map::sh::hash_is_avalanching<dice::hash::DiceHash<node_id, dice::hash::Policies::Martinus>>
     : std::true_type {};
 
 int main() {
-    dice::sparse_map::sparse_map<node_id, int> map;
+    dice::sparse_map::sparse_map<node_id, int, dice::hash::DiceHash<node_id, dice::hash::Policies::Martinus>> map;
     map[node_id{1}] = 1;
     return map.size() == 1 ? 0 : 1;
 }

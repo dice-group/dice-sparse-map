@@ -56,7 +56,7 @@ namespace dice::sparse_map::tests {
      * `std::hash<Key>` mixed with one multiplication by the golden ratio constant (the mixing of
      * `ankerl::unordered_dense`), marked as avalanching. It is the hash function of the configurations
      * other than `medium` and `avalanching`, of `medium` for key types that the default hash function
-     * of the containers does not mark, and of the tests that need a marked hash function based on
+     * of the containers does not hash, and of the tests that need a marked hash function based on
      * `std::hash`.
      */
     template<typename Key>
@@ -78,10 +78,21 @@ namespace dice::sparse_map::tests {
     };
 
     /**
-     * The default hash function of the containers if it is avalanching for `Key`, otherwise `test_hash<Key>`.
+     * True for the key types that `dice::hash::DiceHash` hashes without an overload of the user: arithmetic types,
+     * pointers, `std::string`, and pairs of them. For other key types of the tests, like the counters and the
+     * move-only types, `DiceHash` does not compile.
      */
     template<typename Key>
-    using default_or_test_hash = std::conditional_t<sh::hash_is_avalanching_v<detail_sparse_hash::default_hash<Key>>,
+    inline constexpr bool hashed_by_dice_hash = std::is_arithmetic_v<Key> || std::is_pointer_v<Key> || std::is_same_v<Key, std::string>;
+
+    template<typename First, typename Second>
+    inline constexpr bool hashed_by_dice_hash<std::pair<First, Second>> = hashed_by_dice_hash<First> && hashed_by_dice_hash<Second>;
+
+    /**
+     * The default hash function of the containers if it hashes `Key`, otherwise `test_hash<Key>`.
+     */
+    template<typename Key>
+    using default_or_test_hash = std::conditional_t<hashed_by_dice_hash<Key>,
                                                     detail_sparse_hash::default_hash<Key>,
                                                     test_hash<Key>>;
 

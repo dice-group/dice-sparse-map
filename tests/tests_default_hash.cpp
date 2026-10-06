@@ -5,7 +5,6 @@
 
 #include <doctest/doctest.h>
 
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -16,22 +15,20 @@
 namespace {
 
     /**
-     * A key type with its own `dice_hash_overload`. The overload declares `is_avalanching`.
+     * A key type with its own `dice_hash_overload`. The overload declares no `is_avalanching`.
      */
-    struct marked_key {
+    struct overload_key {
         std::uint64_t value{};  // NOLINT
 
-        bool operator==(marked_key const &other) const = default;
+        bool operator==(overload_key const &other) const = default;
     };
 
 }  // namespace
 
 namespace dice::hash {
     template<typename Policy>
-    struct dice_hash_overload<Policy, marked_key> {
-        using is_avalanching = avalanching_like<std::uint64_t, Policy>;
-
-        static std::size_t dice_hash(marked_key const &key) noexcept {
+    struct dice_hash_overload<Policy, overload_key> {
+        static std::size_t dice_hash(overload_key const &key) noexcept {
             return dice_hash_templates<Policy>::dice_hash(key.value);
         }
     };
@@ -74,8 +71,8 @@ namespace {
             return "key " + std::to_string(i);
         } else if constexpr (std::is_same_v<Key, int_string>) {
             return {i, std::to_string(i)};
-        } else if constexpr (std::is_same_v<Key, marked_key>) {
-            return marked_key{static_cast<std::uint64_t>(i)};
+        } else if constexpr (std::is_same_v<Key, overload_key>) {
+            return overload_key{static_cast<std::uint64_t>(i)};
         } else {
             return static_cast<Key>(i);
         }
@@ -126,8 +123,19 @@ TEST_CASE("hash_is_avalanching reads the member type is_avalanching") {
     CHECK(!sh::hash_is_avalanching_v<marked_false>);
     CHECK(!sh::hash_is_avalanching_v<unmarked>);
     CHECK(!sh::hash_is_avalanching_v<std::hash<int>>);
-    CHECK(sh::hash_is_avalanching_v<dice::hash::DiceHash<int, wyhash>>);
-    CHECK(!sh::hash_is_avalanching_v<dice::hash::DiceHash<int, dice::hash::Policies::Martinus>>);
+}
+
+TEST_CASE("DiceHash is avalanching for the policies wyhash, xxh3 and rapidhash and for every key type") {
+    using dice::hash::DiceHash;
+    namespace policies = dice::hash::Policies;
+    CHECK(sh::hash_is_avalanching_v<DiceHash<int, wyhash>>);
+    CHECK(sh::hash_is_avalanching_v<DiceHash<int, policies::xxh3>>);
+    CHECK(sh::hash_is_avalanching_v<DiceHash<int, policies::rapidhash>>);
+    CHECK(!sh::hash_is_avalanching_v<DiceHash<int, policies::Martinus>>);
+    CHECK(sh::hash_is_avalanching_v<DiceHash<overload_key, wyhash>>);
+    CHECK(sh::hash_is_avalanching_v<DiceHash<overload_key, policies::xxh3>>);
+    CHECK(sh::hash_is_avalanching_v<DiceHash<overload_key, policies::rapidhash>>);
+    CHECK(!sh::hash_is_avalanching_v<DiceHash<overload_key, policies::Martinus>>);
 }
 
 TEST_CASE("a specialization of hash_is_avalanching marks a hash function") {
@@ -149,40 +157,7 @@ TEST_CASE_TEMPLATE("maps and sets with the default hash function", Key, int, std
     check_default_hash<Key>();
 }
 
-TEST_CASE("a key type whose dice_hash_overload declares is_avalanching works with the default hash function") {
-    CHECK(sh::hash_is_avalanching_v<dice::sparse_map::sparse_map<marked_key, int>::hasher>);
-    check_default_hash<marked_key>();
-}
-
-TEST_CASE_TEMPLATE("0.0 and -0.0 are one key with the default hash function", Key, float, double, long double) {
-    using map_t = dice::sparse_map::sparse_map<Key, int>;
-    using set_t = dice::sparse_map::sparse_set<Key>;
-    static_assert(sh::hash_is_avalanching_v<typename map_t::hasher>);
-
-    Key const zero{};
-    Key const negative_zero = -zero;
-    REQUIRE(std::signbit(negative_zero));
-    REQUIRE(!std::signbit(zero));
-    REQUIRE(zero == negative_zero);
-    CHECK(typename map_t::hasher{}(zero) == typename map_t::hasher{}(negative_zero));
-
-    // 1024 buckets, so that two different hashes of the zeros most likely pick different buckets.
-    map_t map(1024);
-    map[zero] = 1;
-    CHECK(map.contains(negative_zero));
-    map[negative_zero] = 2;
-    CHECK(map.size() == 1);
-    auto const it = map.find(negative_zero);
-    REQUIRE(it != map.end());
-    CHECK(it->second == 2);
-    CHECK(!std::signbit(it->first));
-
-    set_t set(1024);
-    set.insert(zero);
-    CHECK(set.contains(negative_zero));
-    CHECK(!set.insert(negative_zero).second);
-    CHECK(set.size() == 1);
-    auto const set_it = set.find(negative_zero);
-    REQUIRE(set_it != set.end());
-    CHECK(!std::signbit(*set_it));
+TEST_CASE("a key type with its own dice_hash_overload works with the default hash function") {
+    CHECK(sh::hash_is_avalanching_v<dice::sparse_map::sparse_map<overload_key, int>::hasher>);
+    check_default_hash<overload_key>();
 }

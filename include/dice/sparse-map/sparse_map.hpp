@@ -44,10 +44,8 @@ namespace dice::sparse_map {
      * `Hash` must be avalanching, see `dice::sparse_map::sh::hash_is_avalanching`: a
      * hash picks its bucket with its low bits as it is. The default
      * `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` is avalanching for
-     * integers up to 64 bits, floating point numbers, pointers and strings, and
-     * for pairs, tuples and vectors of them. Enums and types with their own
-     * `dice::hash::dice_hash_overload` need an overload that declares
-     * `is_avalanching`, or another hash function.
+     * every key type that it hashes, because the policy `wyhash` declares
+     * `is_avalanching`.
      *
      * The number of buckets is 0 or a power of two and doubles when the table
      * grows. A hash picks its bucket with a mask.
@@ -89,7 +87,7 @@ namespace dice::sparse_map {
                       "Hash must be avalanching: sparse_map picks the bucket with the low bits of the hash as it is. "
                       "Mark an avalanching hash function with `using is_avalanching = void;` or with a specialization "
                       "of dice::sparse_map::sh::hash_is_avalanching. std::hash is not avalanching. "
-                      "dice::hash::DiceHash is avalanching only for some types and policies.");
+                      "dice::hash::DiceHash is avalanching only for some policies.");
 
     private:
         class KeySelect {

@@ -33,4 +33,3 @@ add_compile_test(pass/overload_with_specialization.cpp)
 
 add_compile_test(fail/map_std_hash.cpp "${hash_message}")
 add_compile_test(fail/set_std_hash.cpp "${hash_message}")
-add_compile_test(fail/map_overload_without_marker.cpp "${hash_message}")
