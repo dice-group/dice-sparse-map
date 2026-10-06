@@ -2,7 +2,7 @@
 
 [README](../README.md) · **Usage** · [Design](design.md) · [Benchmarks](benchmarks.md) · [Upgrading from 0.3](upgrading-from-0.3.md)
 
-How to use `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`: the interface, where it differs from `std::unordered_map`, the hash functions, the sparsity, allocation failures, the exception safety and the allocators.
+How to use `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`: the interface, where it differs from `std::unordered_map`, the hash functions, the sparsity, small maps, allocation failures, the exception safety and the allocators.
 
 ## The header and the names
 
@@ -11,11 +11,11 @@ How to use `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`: th
 The template parameters are:
 
 ```c++
-sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>
-sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>
+sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>
+sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>
 ```
 
-The defaults are `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>`, `std::equal_to<Key>`, `std::allocator<std::pair<Key, T>>` (`std::allocator<Key>` for the set), `sh::sparsity::medium` and `sh::allocation_failure::terminating`.
+The defaults are `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>`, `std::equal_to<Key>`, `std::allocator<std::pair<Key, T>>` (`std::allocator<Key>` for the set), `sh::sparsity::medium`, `sh::allocation_failure::terminating` and the inline capacity 0 (see [small maps](#small-maps)).
 
 The bucket count is 0 or a power of two of at least 64 and doubles when the table grows. The exception guarantee follows from the type of the elements (see [exception safety](#exception-safety)).
 
@@ -107,6 +107,7 @@ All member functions are `constexpr`. A map or a set works in a constant express
   - `insert_range`, and `insert` of a range or a list: may invalidate them also if no element is inserted, because they reserve room for the whole range first.
   - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate them if an element is inserted.
   - `erase`: always invalidates them. Use the returned iterator.
+  - With an [inline capacity](#small-maps): the move constructor, the move assignment and `swap` invalidate the iterators, references and pointers to inline elements.
 - **Maximum load factor.** The default is 0.5, and `max_load_factor(float)` clamps its argument to [0.1, 0.8]. `std::unordered_map` defaults to 1.0 and accepts any positive value.
 - `mutable_iterator(const_iterator)` turns a `const_iterator` into an `iterator`.
 - `emplace` constructs the element first, and inserts it if its key is not in the container yet. `try_emplace` constructs nothing if the key is there.
@@ -180,9 +181,47 @@ The `Sparsity` template parameter trades insertion speed for memory. With `sh::s
 
 Bytes per element: the memory that a map with 100000 elements requests from its allocator after the build, and the peak during the build (without the heap memory of the strings). A rehash frees the old buckets while it moves the elements, so the peak is close to the memory after the build, see [exception safety](#exception-safety). Build: 200000 insertions into an empty map. Measured with the benchmarks of this repository (see [benchmarks/README.md](../benchmarks/README.md)) on an i9-14900K, one pinned core, clang 20 Release `-march=x86-64-v2`, median of three runs.
 
+## Small maps
+
+The template parameter `inline_capacity` (default 0) is the number of elements that a container keeps in the container object itself, without an allocation. Many small maps, for example the maps of the nodes of a tree, then need no heap memory and no pointer chase:
+
+```c++
+// up to 4 elements in the map object, sizeof is 96 with std::allocator on 64 bit targets
+using small_map = dice::sparse_map::sparse_map<std::uint64_t,
+                                               std::uint64_t,
+                                               dice::hash::DiceHash<std::uint64_t, dice::hash::Policies::wyhash>,
+                                               std::equal_to<std::uint64_t>,
+                                               std::allocator<std::pair<std::uint64_t, std::uint64_t>>,
+                                               dice::sparse_map::sh::sparsity::medium,
+                                               dice::sparse_map::sh::allocation_failure::terminating,
+                                               4>;
+```
+
+The container object then holds group 0 of a table of 64 buckets: a bitmap of the buckets that hold an element, a bitmap of the deleted buckets, and room for `inline_capacity` elements, densely in bucket order. A lookup is the one of a table of 64 buckets. When an insertion finds the inline group full, the elements move into an allocated group of 64 buckets, in the same buckets and in the same order, without a rehash. With `sh::allocation_failure::throwing`, if an allocation of this move throws, the container is unchanged. A lower maximum load factor lowers the limit to the load threshold of 64 buckets. An erase of an inline element moves the elements after it, in the container object, and marks its bucket as deleted only while an element can be outside the bucket of its hash. So it allocates nothing, does not throw unless the hash function or the key equality throws, and keeps the order of the other elements. When the elements and the deleted buckets reach twice the inline capacity (at most the clean-up threshold of 64 buckets), an insertion rebuilds the inline group, as a table rebuilds its buckets.
+
+The inline capacity is at most 32. Inline storage makes the container object larger, also for a container that holds more elements than fit inline. With `std::allocator` on 64 bit targets:
+
+| type | inline capacity 0 | inline capacity 4 |
+|---|---:|---:|
+| `sparse_map<std::uint64_t, std::uint64_t>` | 72 | 96 |
+| `sparse_set<std::uint64_t>` | 72 | 72 |
+| `sparse_map<std::string, std::uint64_t>` (libstdc++) | 72 | 192 |
+
+The inline group takes the place of the state of the buckets (56 bytes), so the first inline elements cost nothing: with 16 bytes of bitmaps, 40 bytes are left, 2 `uint64_t -> uint64_t` elements or 5 `uint64_t` keys. With the allocator of metall every size is 8 bytes larger.
+
+An inline capacity other than 0 does not compile for:
+
+- elements whose move constructor can throw (a `static_assert`). The inline elements move one by one in a move, a swap and the move into an allocated group, and `noexcept` of the move constructor and of `swap` does not depend on the element type. Such elements keep the holes of their groups, see [exception safety](#exception-safety).
+- elements with an alignment larger than the alignment of the allocator's pointer type and `size_type`, 8 bytes with `std::allocator` on 64 bit targets (a `static_assert`).
+- a key or a mapped type that is incomplete where the container type is instantiated, for example a map that is a member of its own mapped type. The container object holds the elements, so the compiler needs their size and reports the incomplete type. The inline capacity 0 allows incomplete types.
+
+Move construction, move assignment and `swap` move the inline elements one by one. So, unlike with `std::unordered_map`, they invalidate the iterators, references and pointers to inline elements, and a byte copy of a container object is not a move. In a constant expression the inline group holds no element: the first insertion allocates the group of 64 buckets. `bucket_count()` of a container with inline elements is 64, of an empty inline container 0. `reserve(n)` keeps an empty container inline if `n` elements fit, and a bucket count `n` from 1 to 64, in the constructor or in `rehash(n)`, gives an empty container an allocated group instead of the inline group.
+
+The inline capacity and the layout of the inline group are part of the [persisted format](design.md#the-persisted-format). See [the inline group](design.md#the-inline-group) for the details.
+
 ## Allocation failure
 
-The last template parameter `AllocationFailure` says what happens when an allocation of the container fails, that is when the `allocate` of the allocator throws:
+The template parameter `AllocationFailure` says what happens when an allocation of the container fails, that is when the `allocate` of the allocator throws:
 
 - `sh::allocation_failure::terminating` (the default): every exception of the allocator except `std::length_error` ends the process with `std::abort()`.
 - `sh::allocation_failure::throwing`: the exception of the allocator propagates (`std::bad_alloc` for `std::allocator`), and the guarantees of [exception safety](#exception-safety) hold for it.

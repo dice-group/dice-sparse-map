@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <functional>
 #include <memory>
@@ -84,8 +85,29 @@ namespace dice::sparse_map::bench {
     using table_hash = ankerl::unordered_dense::hash<Key>;
 
     /**
-     * `sparse_map` and `sparse_set` with the given sparsity and an allocator made from the template
-     * `Alloc`.
+     * The inline capacity of `sparse_map` and `sparse_set` in the benchmarks: the macro
+     * `DICE_SPARSE_MAP_BENCH_INLINE_CAPACITY`, 0 without it.
+     */
+#if defined(DICE_SPARSE_MAP_BENCH_INLINE_CAPACITY)
+    inline constexpr std::size_t bench_inline_capacity = DICE_SPARSE_MAP_BENCH_INLINE_CAPACITY;
+#else
+    inline constexpr std::size_t bench_inline_capacity = 0;
+#endif
+
+    /**
+     * The inline capacity for the elements `Slot`: `bench_inline_capacity` for elements that can be
+     * inline, 0 for the others (elements whose move constructor can throw). The alignment limit is
+     * the one of a pointer.
+     */
+    template<typename Slot>
+    inline constexpr std::size_t
+        bench_inline_capacity_for = detail_sparse_hash::inline_storable<Slot, alignof(void *)>::value
+        ? bench_inline_capacity
+        : 0;
+
+    /**
+     * `sparse_map` and `sparse_set` with the given sparsity, an allocator made from the template
+     * `Alloc`, and the inline capacity `bench_inline_capacity` where the elements can be inline.
      */
     template<sh::sparsity sparsity, template<typename> typename Alloc = std::allocator>
     struct sparse_family {
@@ -96,11 +118,21 @@ namespace dice::sparse_map::bench {
             table_hash<Key>,
             std::equal_to<Key>,
             Alloc<std::pair<Key, T>>,
-            sparsity
+            sparsity,
+            sh::allocation_failure::terminating,
+            bench_inline_capacity_for<detail_sparse_hash::map_slot<Key, T>>
         >;
 
         template<typename Key>
-        using set = ::dice::sparse_map::sparse_set<Key, table_hash<Key>, std::equal_to<Key>, Alloc<Key>, sparsity>;
+        using set = ::dice::sparse_map::sparse_set<
+            Key,
+            table_hash<Key>,
+            std::equal_to<Key>,
+            Alloc<Key>,
+            sparsity,
+            sh::allocation_failure::terminating,
+            bench_inline_capacity_for<Key>
+        >;
     };
 
     template<template<typename> typename Alloc = std::allocator>

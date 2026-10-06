@@ -18,12 +18,13 @@
 
 /**
  * The container configurations that every `TEST_CASE_MAP` and `TEST_CASE_SET` runs against:
- * the three sparsity levels, `std::hash` without mixing (the identity for integers), and an
- * allocator with fancy pointers.
+ * the three sparsity levels, `std::hash` without mixing (the identity for integers), an
+ * allocator with fancy pointers, and an inline capacity of 4 with `std::allocator` and with
+ * fancy pointers.
  *
- * Without a `Hash` argument, the `medium` configuration takes the default hash function of the
- * containers for the key types that `DiceHash` hashes (see `hashed_by_dice_hash`), and `test_hash<Key>`
- * otherwise. The `std_hash` configuration takes `std::hash<Key>` as it is, which is the identity for
+ * Without a `Hash` argument, the `medium` and the `inline` configurations take the default hash function
+ * of the containers for the key types that `DiceHash` hashes (see `hashed_by_dice_hash`), and
+ * `test_hash<Key>` otherwise. The `std_hash` configuration takes `std::hash<Key>` as it is, which is the identity for
  * integers, so that the tests also run with a hash function that is not avalanching (for integers, keys
  * that differ only in the high bits share a bucket). The others take `test_hash<Key>`.
  */
@@ -160,6 +161,102 @@ namespace dice::sparse_map::tests {
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using set_offset_ptr = sparse_set<Key, Hash, KeyEqual, offset_ptr_allocator<Key>, sh::sparsity::high>;
 
+    /**
+     * The inline capacity of the inline configurations: 4 for elements that can be inline, 0 for the others
+     * (elements whose move constructor can throw). The alignment limit is the one of `std::allocator` and of
+     * `offset_ptr_allocator` on 64 bit targets.
+     */
+    template<typename Slot>
+    inline constexpr std::size_t
+        inline_capacity_for = detail_sparse_hash::inline_storable<Slot, alignof(std::size_t)>::value ? 4 : 0;
+
+    /**
+     * The inline capacity of a `sparse_map` or a `sparse_set` type.
+     */
+    template<typename Container>
+    struct inline_capacity_of;
+
+    template<
+        typename Key,
+        typename T,
+        typename Hash,
+        typename KeyEqual,
+        typename Allocator,
+        sh::sparsity Sparsity,
+        sh::allocation_failure AllocationFailure,
+        std::size_t inline_capacity
+    >
+    struct inline_capacity_of<
+        sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>
+    > : std::integral_constant<std::size_t, inline_capacity> {};
+
+    template<
+        typename Key,
+        typename Hash,
+        typename KeyEqual,
+        typename Allocator,
+        sh::sparsity Sparsity,
+        sh::allocation_failure AllocationFailure,
+        std::size_t inline_capacity
+    >
+    struct inline_capacity_of<
+        sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>
+    > : std::integral_constant<std::size_t, inline_capacity> {};
+
+    template<typename Container>
+    inline constexpr std::size_t inline_capacity_of_v = inline_capacity_of<Container>::value;
+
+    template<
+        typename Key,
+        typename T,
+        typename Hash = default_or_test_hash<Key>,
+        typename KeyEqual = std::equal_to<Key>
+    >
+    using map_inline = sparse_map<
+        Key,
+        T,
+        Hash,
+        KeyEqual,
+        std::allocator<std::pair<Key, T>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        inline_capacity_for<detail_sparse_hash::map_slot<Key, T>>
+    >;
+
+    template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
+    using map_inline_offset_ptr = sparse_map<
+        Key,
+        T,
+        Hash,
+        KeyEqual,
+        offset_ptr_allocator<std::pair<Key, T>>,
+        sh::sparsity::high,
+        sh::allocation_failure::terminating,
+        inline_capacity_for<detail_sparse_hash::map_slot<Key, T>>
+    >;
+
+    template<typename Key, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
+    using set_inline = sparse_set<
+        Key,
+        Hash,
+        KeyEqual,
+        std::allocator<Key>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        inline_capacity_for<Key>
+    >;
+
+    template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
+    using set_inline_offset_ptr = sparse_set<
+        Key,
+        Hash,
+        KeyEqual,
+        offset_ptr_allocator<Key>,
+        sh::sparsity::high,
+        sh::allocation_failure::terminating,
+        inline_capacity_for<Key>
+    >;
+
     // The default hash function runs in the `medium` configuration for integer and string keys.
     static_assert(std::is_same_v<map_medium<int, int>::hasher, detail_sparse_hash::default_hash<int>>);
     static_assert(std::is_same_v<set_medium<std::string>::hasher, detail_sparse_hash::default_hash<std::string>>);
@@ -187,15 +284,17 @@ namespace dice::sparse_map::tests {
  * `Key, T` and optionally `Hash, KeyEqual`.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_MAP(name, ...)                               \
-    TEST_CASE_TEMPLATE(                                        \
-        name,                                                  \
-        map_t,                                                 \
-        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,    \
-        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,      \
-        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,       \
-        ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,  \
-        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__> \
+#define TEST_CASE_MAP(name, ...)                                      \
+    TEST_CASE_TEMPLATE(                                               \
+        name,                                                         \
+        map_t,                                                        \
+        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,           \
+        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,             \
+        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,              \
+        ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,         \
+        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>,       \
+        ::dice::sparse_map::tests::map_inline<__VA_ARGS__>,           \
+        ::dice::sparse_map::tests::map_inline_offset_ptr<__VA_ARGS__> \
     )
 
 /**
@@ -203,15 +302,17 @@ namespace dice::sparse_map::tests {
  * `Key` and optionally `Hash, KeyEqual`.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_SET(name, ...)                               \
-    TEST_CASE_TEMPLATE(                                        \
-        name,                                                  \
-        set_t,                                                 \
-        ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,    \
-        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,      \
-        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,       \
-        ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,  \
-        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__> \
+#define TEST_CASE_SET(name, ...)                                      \
+    TEST_CASE_TEMPLATE(                                               \
+        name,                                                         \
+        set_t,                                                        \
+        ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,           \
+        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,             \
+        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,              \
+        ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,         \
+        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__>,       \
+        ::dice::sparse_map::tests::set_inline<__VA_ARGS__>,           \
+        ::dice::sparse_map::tests::set_inline_offset_ptr<__VA_ARGS__> \
     )
 
 #endif // DICE_SPARSE_MAP_TESTS_FIXTURES_TEST_TYPES_HPP

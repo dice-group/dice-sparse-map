@@ -25,6 +25,7 @@
 #define DICE_SPARSE_MAP_SPARSE_HASH_HPP
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
 #include <concepts>
@@ -51,6 +52,23 @@
 #define DICE_SPARSE_MAP_ASSERT(expr) assert(expr)
 #else
 #define DICE_SPARSE_MAP_ASSERT(expr) (static_cast<void>(0))
+#endif
+
+/**
+ * Marks a function to be always inlined into its caller: `[[clang::always_inline]]` with Clang,
+ * `[[gnu::always_inline]]` with GCC, nothing with other compilers. The lookups of the containers (`find`, `contains`,
+ * `count`, `at` and `equal_range`) and the functions of the lookup below them use it, except `find_impl` of a table
+ * without an inline group. So a lookup in a container with an inline group is inlined with both of its parts, the
+ * lookup in the inline group and the lookup in the buckets, and the code of a lookup does not depend on how large the
+ * inliner of the compiler finds it. The erasure of an element of the inline group uses it inside the two erasure
+ * functions that are never inlined. `doc/design.md` has the details.
+ */
+#if defined(__clang__)
+#define DICE_SPARSE_MAP_ALWAYS_INLINE [[clang::always_inline]]
+#elif defined(__GNUC__)
+#define DICE_SPARSE_MAP_ALWAYS_INLINE [[gnu::always_inline]]
+#else
+#define DICE_SPARSE_MAP_ALWAYS_INLINE
 #endif
 
 namespace dice::sparse_map {
@@ -399,6 +417,23 @@ namespace dice::sparse_map {
          * space.
          */
         struct unused_member {};
+
+        /**
+         * The type of a second data member that a configuration does not need. Two empty members of one type need two
+         * addresses, so a class with two such members gives the second one this type.
+         */
+        struct unused_second_member {};
+
+        /**
+         * True if a `T` can be kept in the inline group of a container object whose state of the buckets has the
+         * alignment `max_alignment`: the move constructor of `T` cannot throw, and its alignment is at most
+         * `max_alignment`. The inline group moves its elements one by one where a group of 64 buckets only changes the
+         * owner of its values array (in a move, a swap and the move into an allocated group), and `noexcept` of these
+         * does not depend on the element type. `T` must be complete.
+         */
+        template<typename T, std::size_t max_alignment>
+        struct inline_storable :
+            std::bool_constant<std::is_nothrow_move_constructible_v<T> && alignof(T) <= max_alignment> {};
 
         /**
          * Element access of `sparse_hash` for a map. The elements are stored as `map_slot<Key, T>`.
@@ -1004,6 +1039,57 @@ namespace dice::sparse_map {
                 return values() + offset;
             }
 
+            /**
+             * @return the capacity that a group has after `nb_values` insertions of values whose move constructor
+             * cannot throw: `nb_values` rounded up to a multiple of the growth step
+             */
+            [[nodiscard]] static constexpr size_type grown_capacity(size_type nb_values) noexcept {
+                return static_cast<size_type>(
+                    (nb_values + capacity_growth_step - 1) / capacity_growth_step * capacity_growth_step
+                );
+            }
+
+            /**
+             * Moves the `nb_values` values at `source` into new storage for `capacity` values. They become the values of
+             * the buckets of `value_bitmap`, in bucket order, and the buckets of `deleted_bitmap` are deleted. The group
+             * must be empty and without storage, and the move constructor of `value_type` must not throw. The values at
+             * `source` stay in a moved-from state. The values are copied as bytes if the group copies its values as bytes
+             * (`copies_bytes`). If the allocation throws, the group and `source` are unchanged.
+             */
+            constexpr void assign_moved(
+                allocator_type &alloc,
+                bitmap_type value_bitmap,
+                bitmap_type deleted_bitmap,
+                value_type *source,
+                size_type nb_values,
+                size_type capacity
+            ) {
+                static_assert(std::is_nothrow_move_constructible_v<value_type>);
+                DICE_SPARSE_MAP_ASSERT(nb_elements_ == 0 && capacity_ == 0 && values_ == nullptr);
+                DICE_SPARSE_MAP_ASSERT(popcount(value_bitmap) == nb_values && (value_bitmap & deleted_bitmap) == 0);
+                DICE_SPARSE_MAP_ASSERT(capacity >= nb_values && capacity > 0);
+                pointer const new_values = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity);
+                DICE_SPARSE_MAP_ASSERT(new_values != nullptr);
+                value_type *const raw_new_values = std::to_address(new_values);
+                bool copied = false;
+                if constexpr (copies_bytes) {
+                    if !consteval {
+                        copy_bytes(raw_new_values, source, nb_values);
+                        copied = true;
+                    }
+                }
+                if (!copied) {
+                    for (size_type i = 0; i < nb_values; ++i) {
+                        construct_value(alloc, raw_new_values + i, std::move(source[i]));
+                    }
+                }
+                values_ = new_values;
+                bitmap_vals_ = value_bitmap;
+                bitmap_deleted_vals_ = deleted_bitmap;
+                nb_elements_ = nb_values;
+                capacity_ = capacity;
+            }
+
             /*
              * Functions on a range of values: the values of a group, or of another range of slots that holds the values
              * of the occupied buckets of a group in bucket order.
@@ -1518,6 +1604,24 @@ namespace dice::sparse_map {
          * it with a direct initialization. So an allocator with an `explicit` converting constructor works, as the
          * allocator requirements allow.
          *
+         * The inline group (only if `inline_capacity` is not 0): a table without buckets keeps up to `inline_capacity`
+         * elements in the table object, as group 0 of a table of `min_bucket_count` (64) buckets (`inline_group`): a
+         * bitmap of the buckets that hold an element, a bitmap of the deleted buckets, and the elements of the occupied
+         * buckets, densely in bucket order, as a `sparse_array` keeps them. An element goes into the bucket of group 0
+         * of a table of 64 buckets: the hash masked with 63, quadratic probing, deleted buckets that a lookup passes
+         * and an insertion reuses. The inline group keeps fewer deleted buckets than a group of a table: an erasure
+         * leaves a deleted bucket only while an element can be outside its home bucket (`inline_nb_displaced_`), and
+         * the clean-up comes when the elements and the deleted buckets reach twice the inline capacity, at most the
+         * threshold of 64 buckets. The inline group shares its storage with the state of the buckets (`table_state`) in
+         * a union, and `is_inline_` tells which member is in use. A table with an inline group has buckets if and only
+         * if it is not inline. When the inline group is full, an insertion moves its elements into an allocated group
+         * with the same buckets, the same deleted buckets and the same order, without a rehash, and the first non-empty
+         * group of the new table state is group 0. The elements of the inline group move one by one in a move, a swap
+         * and the move into an allocated group, so only elements whose move constructor cannot throw, and whose
+         * alignment is at most the alignment of `table_state`, can be inline (`inline_storable`). Such elements have no
+         * holes. In a constant expression the inline group holds no element: the first insertion moves it into an
+         * allocated group. With `inline_capacity` 0 the table has no inline group, no union and no flag.
+         *
          * The hasher, the key equality and the allocator are members, not base classes, and `sparse_hash` has
          * no base class. So `sparse_hash`, and with it `sparse_map` and `sparse_set`, is a standard layout type
          * whenever `Hash`, `KeyEqual`, the allocator and the allocator's pointer type are standard layout.
@@ -1529,7 +1633,8 @@ namespace dice::sparse_map {
             typename KeyEqual,
             typename Allocator,
             sh::sparsity sparsity,
-            sh::allocation_failure AllocationFailure
+            sh::allocation_failure AllocationFailure,
+            std::size_t inline_capacity = 0
         >
         struct sparse_hash {
         public:
@@ -1608,6 +1713,69 @@ namespace dice::sparse_map {
             };
 
             /**
+             * True if the table has an inline group: `inline_capacity` is not 0 and the stored elements can be inline
+             * (`inline_storable`). The elements are not looked at for an `inline_capacity` of 0, so that they may be
+             * incomplete then.
+             */
+            static constexpr bool has_inline_group = std::conjunction_v<
+                std::bool_constant<(inline_capacity > 0)>,
+                inline_storable<slot_type, alignof(table_state)>
+            >;
+
+            using inline_bitmap_type = std::uint_least64_t;
+
+            /**
+             * Group 0 of a table of `min_bucket_count` buckets, in the table object: the bitmap of the buckets that hold
+             * an element, the bitmap of the deleted buckets, and storage for `inline_capacity` elements, which holds the
+             * elements of the occupied buckets densely in bucket order.
+             */
+            struct inline_group {
+                constexpr inline_group() noexcept {}
+
+                inline_bitmap_type bitmap = 0;
+                inline_bitmap_type deleted_bitmap = 0;
+                alignas(table_state) std::byte values[inline_capacity * sizeof(slot_type)];
+            };
+
+            /**
+             * The state of the buckets or the inline group. An inline table uses `group`, a table with buckets `table`.
+             */
+            union inline_or_table {
+                constexpr inline_or_table() noexcept : group() {}
+
+                constexpr ~inline_or_table() {}
+
+                table_state table;
+                inline_group group;
+            };
+
+            /**
+             * `inline_or_table` with an inline group, otherwise `table_state`.
+             */
+            using storage_type = std::conditional_t<has_inline_group, inline_or_table, table_state>;
+
+            /**
+             * `bool` with an inline group, otherwise an empty type.
+             */
+            using inline_flag_type = std::conditional_t<has_inline_group, bool, unused_member>;
+
+            /**
+             * `std::uint8_t` with an inline group (at most 32 elements), otherwise an empty type.
+             */
+            using inline_counter_type = std::conditional_t<has_inline_group, std::uint8_t, unused_second_member>;
+
+            /**
+             * An inline element and the end of the inline elements, or two nullptr. `erase_inline_element`, which is
+             * never inlined, returns it: two pointers come back in registers, where an iterator would pass through
+             * memory.
+             */
+            template<typename Slot>
+            struct inline_position {
+                Slot *slot = nullptr;
+                Slot *end = nullptr;
+            };
+
+            /**
              * True if a group can have holes (see `sparse_array`): the move constructor of the stored elements can
              * throw. Then `erase` destroys an element in place and moves no other element, and a rehash copies the
              * elements (`copy_on_rehash`).
@@ -1643,7 +1811,7 @@ namespace dice::sparse_map {
             private:
                 friend struct sparse_hash;
 
-                template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
+                template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure, std::size_t>
                 friend struct sparse_hash;
 
                 friend struct sparse_iterator<!is_const>;
@@ -1755,7 +1923,10 @@ namespace dice::sparse_map {
                         // a new iterator, so that this one stays in registers if the call is not inlined
                         *this = next_group(bucket_);
                     } else {
-                        DICE_SPARSE_MAP_ASSERT(slot_ != nullptr && slot_end_ == bucket_->end());
+                        DICE_SPARSE_MAP_ASSERT(
+                            slot_ != nullptr
+                            && ((has_inline_group && bucket_ == nullptr) || slot_end_ == bucket_->end())
+                        );
                         ++slot_;
 
                         if (slot_ == slot_end_) [[unlikely]] {
@@ -1817,9 +1988,18 @@ namespace dice::sparse_map {
                 }
 
                 /**
-                 * Without holes: moves to the first element of the next group that is not empty, or to the end.
+                 * Without holes: moves to the first element of the next group that is not empty, or to the end. The
+                 * elements of an inline table have no group (`bucket_` is nullptr) and no next group.
                  */
                 constexpr void to_next_group() noexcept {
+                    if constexpr (has_inline_group) {
+                        if (bucket_ == nullptr) {
+                            slot_ = nullptr;
+                            slot_end_ = nullptr;
+                            return;
+                        }
+                    }
+
                     do {
                         if (bucket_->last()) {
                             ++bucket_;
@@ -1845,7 +2025,8 @@ namespace dice::sparse_map {
 
             /**
              * Creates a table with at least `bucket_count` buckets. A bucket count that is not 0 is rounded up to a power
-             * of two of at least `min_bucket_count`.
+             * of two of at least `min_bucket_count`. A bucket count of 0 creates a table without buckets, an inline table
+             * if the table has an inline group.
              * @throws std::length_error if `bucket_count` is larger than `max_bucket_count()`
              */
             template<typename Alloc>
@@ -1859,14 +2040,16 @@ namespace dice::sparse_map {
             ) :
                 alloc_(alloc),
                 hash_(hash),
-                key_equal_(equal) {
+                key_equal_(equal),
+                max_load_factor_(clamped_max_load_factor(max_load_factor)) {
                 size_type const rounded = rounded_bucket_count(bucket_count);
                 if (rounded > 0) {
-                    allocate_buckets(table_, sparse_array::nb_sparse_buckets(rounded));
-                    table_.bucket_count = rounded;
+                    table_state state;
+                    allocate_buckets(state, sparse_array::nb_sparse_buckets(rounded));
+                    state.bucket_count = rounded;
+                    update_load_thresholds(state);
+                    enter_table(std::move(state));
                 }
-
-                this->max_load_factor(max_load_factor);
 
                 // checked here instead of at class scope, so that value_type may be incomplete there
                 static_assert(
@@ -1881,7 +2064,11 @@ namespace dice::sparse_map {
             }
 
             constexpr ~sparse_hash() {
-                destroy_buckets(table_);
+                if constexpr (has_inline_group) {
+                    release_storage();
+                } else {
+                    destroy_buckets(storage_);
+                }
             }
 
             constexpr sparse_hash(sparse_hash const &other) :
@@ -1896,9 +2083,8 @@ namespace dice::sparse_map {
                 alloc_(alloc),
                 hash_(other.hash_),
                 key_equal_(other.key_equal_),
-                nb_elements_(other.nb_elements_),
                 max_load_factor_(other.max_load_factor_) {
-                copy_buckets_from(other);
+                copy_storage_from(other);
             }
 
             constexpr sparse_hash(sparse_hash &&other) noexcept(
@@ -1909,9 +2095,9 @@ namespace dice::sparse_map {
                 alloc_(std::move(other.alloc_)),
                 hash_(std::move(other.hash_)),
                 key_equal_(std::move(other.key_equal_)),
-                nb_elements_(std::exchange(other.nb_elements_, 0)),
-                max_load_factor_(other.max_load_factor_),
-                table_(std::exchange(other.table_, table_state{})) {}
+                max_load_factor_(other.max_load_factor_) {
+                take_elements_from(other);
+            }
 
             /**
              * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
@@ -1925,15 +2111,13 @@ namespace dice::sparse_map {
                 alloc_(alloc),
                 hash_(other.hash_),
                 key_equal_(other.key_equal_),
-                nb_elements_(other.nb_elements_),
                 max_load_factor_(other.max_load_factor_) {
                 if (allocator_is_always_equal || alloc_ == other.alloc_) {
-                    table_ = std::exchange(other.table_, table_state{});
+                    take_elements_from(other);
                 } else {
-                    move_buckets_from(other);
-                    other.destroy_buckets(other.table_);
+                    move_elements_from(other);
+                    other.release_storage();
                 }
-                other.reset_to_empty();
             }
 
             constexpr sparse_hash &operator=(sparse_hash const &other) {
@@ -1941,8 +2125,7 @@ namespace dice::sparse_map {
                     return *this;
                 }
 
-                destroy_buckets(table_);
-                reset_to_empty();
+                release_storage();
 
                 if constexpr (propagate_on_copy_assignment) {
                     alloc_ = other.alloc_;
@@ -1952,9 +2135,8 @@ namespace dice::sparse_map {
                 key_equal_ = other.key_equal_;
 
                 // on an exception *this stays empty
-                copy_buckets_from(other);
+                copy_storage_from(other);
 
-                nb_elements_ = other.nb_elements_;
                 max_load_factor_ = other.max_load_factor_;
 
                 return *this;
@@ -1969,8 +2151,7 @@ namespace dice::sparse_map {
                     return *this;
                 }
 
-                destroy_buckets(table_);
-                reset_to_empty();
+                release_storage();
 
                 if constexpr (propagate_on_move_assignment || allocator_is_always_equal) {
                     take_over(other);
@@ -1981,22 +2162,18 @@ namespace dice::sparse_map {
                     // them throws. On an exception *this stays empty. If a functor move throws after the elements
                     // were moved, `other` keeps them in a moved-from state, and with a moved-from hash function if
                     // the move of the key equality throws.
-                    move_buckets_from(other);
+                    move_elements_from(other);
                     try {
                         hash_ = std::move(other.hash_);
                         key_equal_ = std::move(other.key_equal_);
                     } catch (...) {
-                        destroy_buckets(table_);
-                        reset_to_empty();
+                        release_storage();
                         throw;
                     }
-                    other.destroy_buckets(other.table_);
+                    other.release_storage();
                 }
 
-                nb_elements_ = other.nb_elements_;
                 max_load_factor_ = other.max_load_factor_;
-
-                other.reset_to_empty();
 
                 return *this;
             }
@@ -2009,6 +2186,12 @@ namespace dice::sparse_map {
              * Iterators
              */
             [[nodiscard]] constexpr iterator begin() noexcept {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        return nb_elements_ == 0 ? end() : inline_iterator(0);
+                    }
+                }
+
                 DICE_SPARSE_MAP_ASSERT(first_nonempty_group_is_plausible());
                 sparse_array *const bucket = buckets_begin() + table().first_nonempty_group;
                 sparse_array *const last = buckets_end();
@@ -2027,6 +2210,13 @@ namespace dice::sparse_map {
             }
 
             [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        slot_type const *const slots = inline_slots();
+                        return nb_elements_ == 0 ? cend() : const_iterator(nullptr, slots, slots + nb_elements_);
+                    }
+                }
+
                 DICE_SPARSE_MAP_ASSERT(first_nonempty_group_is_plausible());
                 sparse_array const *const bucket = buckets_begin() + table().first_nonempty_group;
                 sparse_array const *const last = buckets_end();
@@ -2044,6 +2234,12 @@ namespace dice::sparse_map {
             }
 
             [[nodiscard]] constexpr iterator end() noexcept {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        return iterator(nullptr, nullptr, nullptr);
+                    }
+                }
+
                 if constexpr (has_holes) {
                     return iterator(buckets_end(), nullptr, array_size_type{0});
                 } else {
@@ -2056,6 +2252,12 @@ namespace dice::sparse_map {
             }
 
             [[nodiscard]] constexpr const_iterator cend() const noexcept {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        return const_iterator(nullptr, nullptr, nullptr);
+                    }
+                }
+
                 if constexpr (has_holes) {
                     return const_iterator(buckets_end(), nullptr, array_size_type{0});
                 } else {
@@ -2089,6 +2291,13 @@ namespace dice::sparse_map {
              * Modifiers
              */
             constexpr void clear() noexcept {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        destroy_inline_elements();
+                        return;
+                    }
+                }
+
                 for (sparse_array &bucket : buckets()) {
                     bucket.clear(alloc_);
                 }
@@ -2225,11 +2434,19 @@ namespace dice::sparse_map {
 
             /**
              * Erases the element at `pos`. Does not throw: with holes the element is destroyed in place, and otherwise
-             * the elements after it in its group are moved, which does not throw.
+             * the elements after it in its group are moved, which does not throw. An inline element is erased in the
+             * inline group (see `erase_inline_at`): nothing is allocated, and the element is not hashed.
              * @return iterator to the element after the erased one
              */
             constexpr iterator erase(iterator pos) noexcept {
                 DICE_SPARSE_MAP_ASSERT(pos != end() && nb_elements_ > 0);
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        auto const next = erase_inline_element(static_cast<size_type>(pos.slot_ - inline_slots()));
+                        return iterator(nullptr, next.slot, next.end);
+                    }
+                }
+
                 sparse_array *bucket = pos.bucket_;
                 if constexpr (has_holes) {
                     // An iterator that a lookup, an insertion, `begin()` or an erasure returned knows the index of its
@@ -2343,6 +2560,13 @@ namespace dice::sparse_map {
             constexpr void swap(
                 sparse_hash &other
             ) noexcept(std::is_nothrow_swappable_v<Hash> && std::is_nothrow_swappable_v<KeyEqual>) {
+                if constexpr (has_inline_group) {
+                    // inline elements would be moved onto themselves
+                    if (this == &other) {
+                        return;
+                    }
+                }
+
                 using std::swap;
 
                 // The functors first: if one of them throws, the storage and the allocators are not swapped. If the key
@@ -2366,8 +2590,7 @@ namespace dice::sparse_map {
                     DICE_SPARSE_MAP_ASSERT(alloc_ == other.alloc_);
                 }
 
-                swap(table_, other.table_);
-                swap(nb_elements_, other.nb_elements_);
+                swap_elements(other);
                 swap(max_load_factor_, other.max_load_factor_);
             }
 
@@ -2379,13 +2602,13 @@ namespace dice::sparse_map {
              */
             template<typename Self, typename K>
             requires Access::is_map
-            constexpr auto &at(this Self &self, K const &key) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE constexpr auto &at(this Self &self, K const &key) {
                 return self.at_hashed(key, self.hash_key(key));
             }
 
             template<typename Self, typename K>
             requires Access::is_map
-            constexpr auto &at(this Self &self, K const &key, std::size_t hash) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE constexpr auto &at(this Self &self, K const &key, std::size_t hash) {
                 return self.at_hashed(key, hash);
             }
 
@@ -2396,22 +2619,25 @@ namespace dice::sparse_map {
             }
 
             template<typename K>
-            [[nodiscard]] constexpr bool contains(K const &key) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr bool contains(K const &key) const {
                 return find_impl(key, hash_key(key)) != cend();
             }
 
             template<typename K>
-            [[nodiscard]] constexpr bool contains(K const &key, std::size_t hash) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr bool contains(K const &key, std::size_t hash) const {
                 return find_impl(key, hash) != cend();
             }
 
             template<typename K>
-            [[nodiscard]] constexpr size_type count(K const &key) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(K const &key) const {
                 return contains(key) ? size_type{1} : size_type{0};
             }
 
             template<typename K>
-            [[nodiscard]] constexpr size_type count(K const &key, std::size_t hash) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(
+                K const &key,
+                std::size_t hash
+            ) const {
                 return contains(key, hash) ? size_type{1} : size_type{0};
             }
 
@@ -2419,29 +2645,46 @@ namespace dice::sparse_map {
              * @return `iterator` for a non-const table, `const_iterator` for a const table
              */
             template<typename Self, typename K>
-            [[nodiscard]] constexpr auto find(this Self &self, K const &key) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto find(this Self &self, K const &key) {
                 return self.find_hashed(key, self.hash_key(key));
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] constexpr auto find(this Self &self, K const &key, std::size_t hash) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto find(
+                this Self &self,
+                K const &key,
+                std::size_t hash
+            ) {
                 return self.find_hashed(key, hash);
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] constexpr auto equal_range(this Self &self, K const &key) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range(this Self &self, K const &key) {
                 return self.equal_range_hashed(key, self.hash_key(key));
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] constexpr auto equal_range(this Self &self, K const &key, std::size_t hash) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range(
+                this Self &self,
+                K const &key,
+                std::size_t hash
+            ) {
                 return self.equal_range_hashed(key, hash);
             }
 
             /*
              * Bucket interface
              */
+
+            /**
+             * @return the number of buckets. An inline table has 64 buckets if it holds an element and 0 otherwise.
+             */
             [[nodiscard]] constexpr size_type bucket_count() const noexcept {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        return nb_elements_ > 0 ? min_bucket_count : 0;
+                    }
+                }
                 return table().bucket_count;
             }
 
@@ -2482,31 +2725,56 @@ namespace dice::sparse_map {
              * Sets the maximum load factor, clamped to [0.1, 0.8].
              */
             constexpr void max_load_factor(float ml) noexcept {
-                max_load_factor_ = std::max(min_max_load_factor, std::min(ml, max_max_load_factor));
-                table().load_threshold_rehash = rehash_threshold(bucket_count());
-
-                float const max_load_factor_with_deleted_buckets = max_load_factor_ + 0.5f * (1.0f - max_load_factor_);
-                DICE_SPARSE_MAP_ASSERT(
-                    max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f
-                );
-                table().load_threshold_clear_deleted = static_cast<size_type>(
-                    static_cast<float>(bucket_count()) * max_load_factor_with_deleted_buckets
-                );
+                max_load_factor_ = clamped_max_load_factor(ml);
+                // an inline table computes its limits from `max_load_factor_` when it needs them
+                if (!is_inline()) {
+                    update_load_thresholds(table());
+                }
             }
 
             /**
              * Rebuilds the table with at least `count` buckets, and with room for its elements. Does nothing if the
              * bucket count stays the same and no bucket is marked as deleted.
+             *
+             * An inline table with elements stays inline for a bucket count of at most 64, and removes its deleted
+             * buckets. An inline table without elements gets an allocated group of 64 buckets for a bucket count from 1
+             * to 64, and stays inline for 0. For a larger bucket count the elements move into a new table, see
+             * `leave_inline`.
              */
             constexpr void rehash(size_type count) {
                 count = std::max(count, bucket_count_for(size()));
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        rehash_inline(count);
+                        return;
+                    }
+                }
                 if (table().nb_deleted_buckets == 0 && rounded_bucket_count(count) == table().bucket_count) {
                     return;
                 }
                 rehash_impl(count);
             }
 
+            /**
+             * Makes room for `count` elements without a rehash. Like `rehash`, it also makes room for the elements of
+             * the table. An inline table stays inline if `count` elements and its own elements fit into it, and removes
+             * its deleted buckets, as a rehash to the same bucket count does.
+             */
             constexpr void reserve(size_type count) {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        // after a lower maximum load factor, the inline group can hold more elements than its limit
+                        size_type const needed = std::max(count, size());
+                        if (needed <= inline_limit()) {
+                            clean_up_inline_if_deleted();
+                            return;
+                        }
+                        if (bucket_count_for(needed) <= min_bucket_count) {
+                            // more elements than fit inline, but not more than 64 buckets hold
+                            move_inline_group_out();
+                        }
+                    }
+                }
                 rehash(bucket_count_for(count));
             }
 
@@ -2542,7 +2810,11 @@ namespace dice::sparse_map {
 
         private:
             template<typename Self, typename K>
-            [[nodiscard]] constexpr auto find_hashed(this Self &self, K const &key, std::size_t hash) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto find_hashed(
+                this Self &self,
+                K const &key,
+                std::size_t hash
+            ) {
                 if constexpr (std::is_const_v<Self>) {
                     return self.find_impl(key, hash);
                 } else {
@@ -2551,7 +2823,11 @@ namespace dice::sparse_map {
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] constexpr auto &at_hashed(this Self &self, K const &key, std::size_t hash) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto &at_hashed(
+                this Self &self,
+                K const &key,
+                std::size_t hash
+            ) {
                 auto const it = self.find_hashed(key, hash);
                 if (it == self.end()) {
                     throw std::out_of_range("Couldn't find key.");
@@ -2561,17 +2837,45 @@ namespace dice::sparse_map {
             }
 
             template<typename Self, typename K>
-            [[nodiscard]] constexpr auto equal_range_hashed(this Self &self, K const &key, std::size_t hash) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range_hashed(
+                this Self &self,
+                K const &key,
+                std::size_t hash
+            ) {
                 auto const it = self.find_hashed(key, hash);
                 return std::pair{it, (it == self.end()) ? it : std::next(it)};
             }
 
+            /**
+             * True if the table holds its elements in the inline group. Always false without an inline group.
+             */
+            [[nodiscard]] constexpr bool is_inline() const noexcept {
+                if constexpr (has_inline_group) {
+                    return is_inline_;
+                } else {
+                    return false;
+                }
+            }
+
+            /**
+             * The state of the buckets. With an inline group only valid while the table is not inline.
+             */
             [[nodiscard]] constexpr table_state &table() noexcept {
-                return table_;
+                if constexpr (has_inline_group) {
+                    DICE_SPARSE_MAP_ASSERT(!is_inline_);
+                    return storage_.table;
+                } else {
+                    return storage_;
+                }
             }
 
             [[nodiscard]] constexpr table_state const &table() const noexcept {
-                return table_;
+                if constexpr (has_inline_group) {
+                    DICE_SPARSE_MAP_ASSERT(!is_inline_);
+                    return storage_.table;
+                } else {
+                    return storage_;
+                }
             }
 
             [[nodiscard]] constexpr sparse_array *buckets_begin() noexcept {
@@ -2695,6 +2999,34 @@ namespace dice::sparse_map {
              */
             [[nodiscard]] constexpr size_type rehash_threshold(size_type bucket_count) const noexcept {
                 return static_cast<size_type>(static_cast<float>(bucket_count) * max_load_factor_);
+            }
+
+            /**
+             * @return `ml` clamped to [`min_max_load_factor`, `max_max_load_factor`]
+             */
+            [[nodiscard]] static constexpr float clamped_max_load_factor(float ml) noexcept {
+                return std::max(min_max_load_factor, std::min(ml, max_max_load_factor));
+            }
+
+            /**
+             * @return the maximum that the number of elements plus the number of deleted buckets can reach in a table
+             * with `bucket_count` buckets before a rehash removes the deleted buckets:
+             * `max_load_factor + 0.5 * (1 - max_load_factor)` of the bucket count
+             */
+            [[nodiscard]] constexpr size_type clear_deleted_threshold(size_type bucket_count) const noexcept {
+                float const max_load_factor_with_deleted_buckets = max_load_factor_ + 0.5f * (1.0f - max_load_factor_);
+                DICE_SPARSE_MAP_ASSERT(
+                    max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f
+                );
+                return static_cast<size_type>(static_cast<float>(bucket_count) * max_load_factor_with_deleted_buckets);
+            }
+
+            /**
+             * Sets the load thresholds of `state` from its bucket count and `max_load_factor_`.
+             */
+            constexpr void update_load_thresholds(table_state &state) const noexcept {
+                state.load_threshold_rehash = rehash_threshold(state.bucket_count);
+                state.load_threshold_clear_deleted = clear_deleted_threshold(state.bucket_count);
             }
 
             /**
@@ -2852,11 +3184,11 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Takes the functors, the buckets and, if it propagates on move assignment, the allocator of `other`.
-             * Expects that this table has no buckets and that its allocator can free the buckets of `other`. The
-             * functors first: if one of them throws, this table has no buckets and `other` keeps its elements. If the
-             * move of the key equality throws, `other` keeps them with a moved-from hash function, which may not find
-             * them.
+             * Takes the functors, the elements and, if it propagates on move assignment, the allocator of `other`.
+             * Expects that this table has no elements and no buckets, and that its allocator can free the buckets of
+             * `other`. The functors first: if one of them throws, this table has no elements and `other` keeps its
+             * elements. If the move of the key equality throws, `other` keeps them with a moved-from hash function,
+             * which may not find them.
              */
             constexpr void take_over(sparse_hash &other) {
                 hash_ = std::move(other.hash_);
@@ -2866,7 +3198,169 @@ namespace dice::sparse_map {
                     alloc_ = std::move(other.alloc_);
                 }
 
-                table() = std::exchange(other.table(), table_state{});
+                take_elements_from(other);
+            }
+
+            /**
+             * Takes the elements of `other`, whose allocator is equal to the one of this table. Expects that this table
+             * has no elements and no buckets. Inline elements are moved one by one, buckets change their owner.
+             * Afterwards `other` has no elements and no buckets.
+             */
+            constexpr void take_elements_from(sparse_hash &other) noexcept {
+                if constexpr (has_inline_group) {
+                    DICE_SPARSE_MAP_ASSERT(is_inline_ && nb_elements_ == 0);
+                    if (other.is_inline_) {
+                        move_inline_elements(other, *this);
+                        return;
+                    }
+
+                    enter_table(std::move(other.storage_.table));
+                    nb_elements_ = other.nb_elements_;
+                    other.enter_inline();
+                } else {
+                    storage_ = std::exchange(other.storage_, table_state{});
+                    nb_elements_ = std::exchange(other.nb_elements_, 0);
+                }
+            }
+
+            /**
+             * Copies the elements of `other` into this table, which has no elements and no buckets. On an exception
+             * this table is unchanged.
+             */
+            constexpr void copy_storage_from(sparse_hash const &other) {
+                if constexpr (has_inline_group) {
+                    DICE_SPARSE_MAP_ASSERT(is_inline_ && nb_elements_ == 0);
+                    if (other.is_inline_) {
+                        construct_inline_elements_from(
+                            other.inline_slots(),
+                            other.nb_elements_,
+                            [](slot_type const &slot) -> slot_type const & { return slot; }
+                        );
+                        storage_.group.bitmap = other.storage_.group.bitmap;
+                        storage_.group.deleted_bitmap = other.storage_.group.deleted_bitmap;
+                        inline_nb_displaced_ = other.inline_nb_displaced_;
+                        return;
+                    }
+
+                    table_state state = without_buckets(other.storage_.table);
+                    build_buckets_from(state, other, [this](sparse_array *target, sparse_array const &source) {
+                        std::construct_at(target, source, alloc_);
+                    });
+                    enter_table(std::move(state));
+                } else {
+                    copy_buckets_from(other);
+                }
+                nb_elements_ = other.nb_elements_;
+            }
+
+            /**
+             * Moves the elements of `other` into this table, which has no elements and no buckets, or copies the
+             * elements whose move constructor can throw. For an allocator that is not equal to the one of `other`.
+             * `other` keeps its elements, the moved ones in a moved-from state. On an exception this table is
+             * unchanged.
+             */
+            constexpr void move_elements_from(sparse_hash &other) {
+                if constexpr (has_inline_group) {
+                    DICE_SPARSE_MAP_ASSERT(is_inline_ && nb_elements_ == 0);
+                    if (other.is_inline_) {
+                        construct_inline_elements_from(
+                            other.inline_slots(),
+                            other.nb_elements_,
+                            [](slot_type &slot) -> slot_type && { return std::move(slot); }
+                        );
+                        storage_.group.bitmap = other.storage_.group.bitmap;
+                        storage_.group.deleted_bitmap = other.storage_.group.deleted_bitmap;
+                        inline_nb_displaced_ = other.inline_nb_displaced_;
+                        return;
+                    }
+
+                    table_state state = without_buckets(other.storage_.table);
+                    build_buckets_from(state, other, [this](sparse_array *target, sparse_array &source) {
+                        std::construct_at(target, std::move(source), alloc_);
+                    });
+                    enter_table(std::move(state));
+                } else {
+                    move_buckets_from(other);
+                }
+                nb_elements_ = other.nb_elements_;
+            }
+
+            /**
+             * Destroys all elements and frees the buckets. Afterwards the table has no elements and no buckets: with an
+             * inline group it is inline, otherwise its bucket count is 0.
+             */
+            constexpr void release_storage() noexcept {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        destroy_inline_elements();
+                        return;
+                    }
+                    destroy_buckets(storage_.table);
+                    enter_inline();
+                } else {
+                    destroy_buckets(storage_);
+                    reset_to_empty();
+                }
+            }
+
+            /**
+             * Swaps the elements, inline or in buckets, and the state of the buckets with `other`. Inline elements are
+             * moved one by one, buckets change their owner. The allocators must be equal, or swapped before.
+             */
+            constexpr void swap_elements(sparse_hash &other) noexcept {
+                using std::swap;
+                if constexpr (has_inline_group) {
+                    if (!is_inline_ && !other.is_inline_) {
+                        swap(storage_.table, other.storage_.table);
+                        swap(nb_elements_, other.nb_elements_);
+                        return;
+                    }
+
+                    if (is_inline_ && other.is_inline_) {
+                        swap_inline_elements(other);
+                        return;
+                    }
+
+                    sparse_hash &with_buckets = is_inline_ ? other : *this;
+                    sparse_hash &with_inline = is_inline_ ? *this : other;
+                    table_state state = std::move(with_buckets.storage_.table);
+                    size_type const nb_elements = with_buckets.nb_elements_;
+                    with_buckets.enter_inline();
+                    move_inline_elements(with_inline, with_buckets);
+                    with_inline.enter_table(std::move(state));
+                    with_inline.nb_elements_ = nb_elements;
+                } else {
+                    swap(storage_, other.storage_);
+                    swap(nb_elements_, other.nb_elements_);
+                }
+            }
+
+            /**
+             * Makes the state `state` of buckets the state of this table, which has no elements and no buckets.
+             */
+            constexpr void enter_table(table_state &&state) noexcept {
+                if constexpr (has_inline_group) {
+                    DICE_SPARSE_MAP_ASSERT(is_inline_ && nb_elements_ == 0);
+                    std::destroy_at(std::addressof(storage_.group));
+                    std::construct_at(std::addressof(storage_.table), std::move(state));
+                    is_inline_ = false;
+                    inline_nb_displaced_ = 0;
+                } else {
+                    storage_ = std::move(state);
+                }
+            }
+
+            /**
+             * Makes a table whose buckets are gone (freed or taken by another table) an inline table without elements.
+             */
+            constexpr void enter_inline() noexcept {
+                static_assert(has_inline_group);
+                DICE_SPARSE_MAP_ASSERT(!is_inline_);
+                std::destroy_at(std::addressof(storage_.table));
+                std::construct_at(std::addressof(storage_.group));
+                is_inline_ = true;
+                inline_nb_displaced_ = 0;
+                nb_elements_ = 0;
             }
 
             /**
@@ -2889,9 +3383,8 @@ namespace dice::sparse_map {
              */
             constexpr void reserve_for_insertion(std::size_t nb_elements_to_insert) {
                 // a lower max load factor can put the threshold below the size, and the size above `max_size()`
-                size_type const nb_free_buckets = table().load_threshold_rehash > size()
-                    ? table().load_threshold_rehash - size()
-                    : 0;
+                size_type const threshold = is_inline() ? inline_limit() : table().load_threshold_rehash;
+                size_type const nb_free_buckets = threshold > size() ? threshold - size() : 0;
                 if (nb_elements_to_insert == 0 || nb_free_buckets >= nb_elements_to_insert) {
                     return;
                 }
@@ -2904,9 +3397,23 @@ namespace dice::sparse_map {
 
             /**
              * Grows the table, or removes the deleted-bucket markers, if the insertion of one new element would do
-             * it. After it, the insertion of one new element does not rehash.
+             * it. A full inline group moves into an allocated group, and an inline group whose elements and deleted
+             * buckets reach `inline_clean_up_threshold()` is cleaned up. After it, the insertion of one new element
+             * does not rehash, move the inline group out or clean it up.
              */
             constexpr void make_room_for_one_insertion() {
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        if (size() < inline_limit()) {
+                            if (size() + inline_nb_deleted() >= inline_clean_up_threshold()) {
+                                clean_up_inline();
+                            }
+                            return;
+                        }
+                        move_inline_group_out();
+                    }
+                }
+
                 while (size() >= table().load_threshold_rehash) {
                     rehash_impl(next_bucket_count());
                 }
@@ -2944,8 +3451,14 @@ namespace dice::sparse_map {
              */
             template<typename K, typename... Args>
             constexpr std::pair<iterator, bool> insert_impl_hashed(K const &key, std::size_t hash, Args &&...args) {
-                if (table().nb_sparse_buckets == 0) {
-                    return insert_new(hash, 0, 0, false, std::forward<Args>(args)...);
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        return insert_inline(key, hash, std::forward<Args>(args)...);
+                    }
+                } else {
+                    if (table().nb_sparse_buckets == 0) {
+                        return insert_new(hash, 0, 0, false, std::forward<Args>(args)...);
+                    }
                 }
 
                 std::size_t ibucket = bucket_for_hash(hash);
@@ -3041,8 +3554,14 @@ namespace dice::sparse_map {
 
             template<typename K>
             constexpr size_type erase_impl(K const &key, std::size_t hash) {
-                if (table().nb_sparse_buckets == 0) {
-                    return 0;
+                if constexpr (has_inline_group) {
+                    if (is_inline_) {
+                        return erase_inline(key, hash);
+                    }
+                } else {
+                    if (table().nb_sparse_buckets == 0) {
+                        return 0;
+                    }
                 }
 
                 sparse_array *const raw_buckets = buckets_begin();
@@ -3078,12 +3597,51 @@ namespace dice::sparse_map {
                 }
             }
 
+            /**
+             * Looks for `key`, whose hash is `hash`.
+             */
             template<typename K>
+            requires (!has_inline_group)
             [[nodiscard]] constexpr const_iterator find_impl(K const &key, std::size_t hash) const {
                 if (table().nb_sparse_buckets == 0) {
                     return cend();
                 }
+                return find_in_table(key, hash);
+            }
 
+            /**
+             * `find_impl` of a table with an inline group: the lookup in the inline group and the lookup in a table
+             * with buckets. It is always inlined, and so are the functions of the lookup above it (`find_hashed`,
+             * `find`, `contains` and the lookups of the containers), so that a lookup is inlined into its caller with
+             * both parts. So the compiler can test the flag once for a loop of lookups and keep the state of the
+             * buckets in registers, as without an inline group.
+             */
+            template<typename K>
+            requires has_inline_group
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_impl(
+                K const &key,
+                std::size_t hash
+            ) const {
+                if (is_inline_) {
+                    size_type const offset = inline_lookup(key, hash);
+                    if (offset == nb_elements_) {
+                        return cend();
+                    }
+                    slot_type const *const slots = inline_slots();
+                    return const_iterator(nullptr, slots + offset, slots + nb_elements_);
+                }
+                return find_in_table(key, hash);
+            }
+
+            /**
+             * Looks for `key`, whose hash is `hash`, in a table with buckets. It is always inlined into `find_impl`, so
+             * that the compiler decides about `find_impl` with the whole lookup in it.
+             */
+            template<typename K>
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_in_table(
+                K const &key,
+                std::size_t hash
+            ) const {
                 sparse_array const *const raw_buckets = buckets_begin();
                 std::size_t ibucket = bucket_for_hash(hash);
                 std::size_t probe = 0;
@@ -3144,6 +3702,8 @@ namespace dice::sparse_map {
              * `sh::allocation_failure::terminating` a failed allocation ends the process.
              */
             constexpr void rehash_impl(size_type count) {
+                // an inline table rehashes with `leave_inline`
+                DICE_SPARSE_MAP_ASSERT(!is_inline());
                 sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
 
                 if constexpr (copy_on_rehash) {
@@ -3178,14 +3738,13 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Swaps the buckets and the counters with `other`, which has the same allocator, hash function, key
-             * equality and maximum load factor. Unlike `swap`, it needs no swappable hash function or key equality.
+             * Swaps the elements, the buckets and the counters with `other`, which has the same allocator, hash
+             * function, key equality and maximum load factor. Unlike `swap`, it needs no swappable hash function or
+             * key equality. `other` can be inline, if it was made with a bucket count of 0.
              */
             constexpr void swap_storage(sparse_hash &other) noexcept {
                 DICE_SPARSE_MAP_ASSERT(alloc_ == other.alloc_);
-                using std::swap;
-                swap(table_, other.table_);
-                swap(nb_elements_, other.nb_elements_);
+                swap_elements(other);
             }
 
             /**
@@ -3221,6 +3780,639 @@ namespace dice::sparse_map {
                 }
             }
 
+            /*
+             * The inline group. These functions exist only with an inline group, see `has_inline_group`.
+             */
+
+            /**
+             * @return the number of elements that an inline table holds before an insertion moves them into an
+             * allocated group: `inline_capacity`, or less if the load threshold of 64 buckets is lower. 0 in a constant
+             * expression, where the inline group holds no element (its elements could not be constructed one by one in
+             * the storage of a union there).
+             */
+            [[nodiscard]] constexpr size_type inline_limit() const noexcept {
+                if consteval {
+                    return 0;
+                } else {
+                    return std::min<size_type>(
+                        static_cast<size_type>(inline_capacity),
+                        rehash_threshold(min_bucket_count)
+                    );
+                }
+            }
+
+            /**
+             * @return the number of elements plus deleted buckets of the inline group at which an insertion cleans it
+             * up: twice the inline capacity, at most the clean-up threshold of 64 buckets. So a probe sequence in the
+             * inline group passes at most about `2 * inline_capacity` occupied or deleted buckets of 64, where the
+             * threshold of 64 buckets (48 at the default maximum load factor) would let it pass up to 48.
+             */
+            [[nodiscard]] constexpr size_type inline_clean_up_threshold() const noexcept {
+                return std::min<size_type>(2 * inline_capacity, clear_deleted_threshold(min_bucket_count));
+            }
+
+            /**
+             * @return the number of deleted buckets of the inline group
+             */
+            [[nodiscard]] constexpr size_type inline_nb_deleted() const noexcept {
+                return static_cast<size_type>(std::popcount(storage_.group.deleted_bitmap));
+            }
+
+            /**
+             * @return the storage of the inline elements, as the array of `inline_capacity` slots that the byte array
+             * provides storage for. nullptr in a constant expression, where the inline group holds no element.
+             */
+            [[nodiscard]] constexpr slot_type *inline_slots() noexcept {
+                if consteval {
+                    return nullptr;
+                } else {
+                    return *std::launder(reinterpret_cast<slot_type(*)[inline_capacity]>(storage_.group.values));
+                }
+            }
+
+            [[nodiscard]] constexpr slot_type const *inline_slots() const noexcept {
+                if consteval {
+                    return nullptr;
+                } else {
+                    return *std::launder(reinterpret_cast<slot_type const(*)[inline_capacity]>(storage_.group.values));
+                }
+            }
+
+            /**
+             * @return the offset of the element in bucket `ibucket` of the inline group: the number of occupied buckets
+             * before it
+             */
+            [[nodiscard]] static constexpr size_type inline_offset(
+                inline_bitmap_type bitmap,
+                std::size_t ibucket
+            ) noexcept {
+                return static_cast<size_type>(std::popcount(bitmap & ((inline_bitmap_type{1} << ibucket) - 1)));
+            }
+
+            /**
+             * @return the bucket of the element at `offset` of the inline group
+             */
+            [[nodiscard]] static constexpr std::size_t inline_bucket(
+                inline_bitmap_type bitmap,
+                size_type offset
+            ) noexcept {
+                for (size_type i = 0; i < offset; ++i) {
+                    bitmap &= bitmap - 1; // clears the lowest set bit
+                }
+                return static_cast<std::size_t>(std::countr_zero(bitmap));
+            }
+
+            [[nodiscard]] constexpr iterator inline_iterator(size_type offset) noexcept {
+                slot_type *const slots = inline_slots();
+                return iterator(nullptr, slots + offset, slots + nb_elements_);
+            }
+
+            /**
+             * Destroys the inline elements. Changes nothing else. Elements that are copied as bytes
+             * (`sparse_array::copies_bytes`) have a trivial destructor and are not destroyed.
+             */
+            constexpr void destroy_inline_values() noexcept {
+                if constexpr (!sparse_array::copies_bytes) {
+                    slot_type *const slots = inline_slots();
+                    for (size_type i = 0; i < nb_elements_; ++i) {
+                        slot_allocator_traits::destroy(alloc_, slots + i);
+                    }
+                }
+            }
+
+            /**
+             * Destroys the inline elements and removes the deleted buckets of the inline group. The table stays
+             * inline.
+             */
+            constexpr void destroy_inline_elements() noexcept {
+                DICE_SPARSE_MAP_ASSERT(is_inline_);
+                destroy_inline_values();
+                nb_elements_ = 0;
+                storage_.group.bitmap = 0;
+                storage_.group.deleted_bitmap = 0;
+                inline_nb_displaced_ = 0;
+            }
+
+            /**
+             * Moves `nb_values` elements from `source` to `target` and destroys them at `source`, with `alloc`. The
+             * ranges do not overlap. Elements that are copied as bytes (`sparse_array::copies_bytes`) are copied with
+             * `std::memcpy`.
+             */
+            static constexpr void relocate_inline(
+                slot_allocator_type &alloc,
+                slot_type *target,
+                slot_type *source,
+                size_type nb_values
+            ) noexcept {
+                if constexpr (sparse_array::copies_bytes) {
+                    sparse_array::copy_bytes(target, source, static_cast<array_size_type>(nb_values));
+                } else {
+                    for (size_type i = 0; i < nb_values; ++i) {
+                        slot_allocator_traits::construct(alloc, target + i, std::move(source[i]));
+                        slot_allocator_traits::destroy(alloc, source + i);
+                    }
+                }
+            }
+
+            /**
+             * Constructs the elements of the empty inline group from the `nb_values` values at `source`, the element at
+             * offset `i` from `project(source[i])`, with the allocator of this table. Elements that are copied as bytes
+             * are copied with `std::memcpy`. Sets the number of elements, not the bitmaps. On an exception the inline
+             * group has no elements.
+             */
+            template<typename Source, typename Project>
+            constexpr void construct_inline_elements_from(Source *source, size_type nb_values, Project const &project) {
+                DICE_SPARSE_MAP_ASSERT(is_inline_ && nb_elements_ == 0);
+                if (nb_values == 0) {
+                    return;
+                }
+
+                slot_type *const slots = inline_slots();
+                if constexpr (sparse_array::copies_bytes) {
+                    sparse_array::copy_bytes(slots, source, static_cast<array_size_type>(nb_values));
+                    nb_elements_ = nb_values;
+                } else {
+                    try {
+                        for (size_type i = 0; i < nb_values; ++i) {
+                            slot_allocator_traits::construct(alloc_, slots + i, project(source[i]));
+                            ++nb_elements_;
+                        }
+                    } catch (...) {
+                        destroy_inline_elements();
+                        throw;
+                    }
+                }
+            }
+
+            /**
+             * Moves the inline group of `from` into the inline group of `to`, which is inline and empty: the elements,
+             * constructed and destroyed with the allocator of `to`, both bitmaps and the counter of the elements
+             * outside their home bucket. `from` is inline and empty afterwards.
+             */
+            static constexpr void move_inline_elements(sparse_hash &from, sparse_hash &to) noexcept {
+                DICE_SPARSE_MAP_ASSERT(from.is_inline_ && to.is_inline_ && to.nb_elements_ == 0);
+                size_type const nb_elements = from.nb_elements_;
+                if (nb_elements > 0) {
+                    relocate_inline(to.alloc_, to.inline_slots(), from.inline_slots(), nb_elements);
+                }
+                to.nb_elements_ = nb_elements;
+                from.nb_elements_ = 0;
+                to.storage_.group.bitmap = std::exchange(from.storage_.group.bitmap, 0);
+                to.storage_.group.deleted_bitmap = std::exchange(from.storage_.group.deleted_bitmap, 0);
+                to.inline_nb_displaced_ = std::exchange(from.inline_nb_displaced_, 0);
+            }
+
+            /**
+             * Swaps the inline groups of two inline tables: the elements, both bitmaps and the counters of the elements
+             * outside their home bucket. An element that moves into a table is constructed with the allocator of that
+             * table.
+             */
+            constexpr void swap_inline_elements(sparse_hash &other) noexcept {
+                DICE_SPARSE_MAP_ASSERT(is_inline_ && other.is_inline_);
+                if consteval {
+                    // no inline group holds an element in a constant expression
+                    swap_inline_counters(other);
+                    return;
+                }
+
+                slot_type *const slots = inline_slots();
+                slot_type *const other_slots = other.inline_slots();
+                if constexpr (sparse_array::copies_bytes) {
+                    // through storage on the stack, as bytes
+                    alignas(slot_type) std::byte swapped_storage[inline_capacity * sizeof(slot_type)];
+                    slot_type *const swapped = *std::launder(
+                        reinterpret_cast<slot_type(*)[inline_capacity]>(swapped_storage)
+                    );
+                    sparse_array::copy_bytes(swapped, slots, static_cast<array_size_type>(nb_elements_));
+                    sparse_array::copy_bytes(slots, other_slots, static_cast<array_size_type>(other.nb_elements_));
+                    sparse_array::copy_bytes(other_slots, swapped, static_cast<array_size_type>(nb_elements_));
+                    swap_inline_counters(other);
+                    return;
+                }
+
+                size_type const nb_common = std::min(nb_elements_, other.nb_elements_);
+                for (size_type i = 0; i < nb_common; ++i) {
+                    value_holder<slot_type, slot_allocator_type> moved(other.alloc_, std::move(slots[i]));
+                    slot_allocator_traits::destroy(other.alloc_, slots + i);
+                    slot_allocator_traits::construct(alloc_, slots + i, std::move(other_slots[i]));
+                    slot_allocator_traits::destroy(alloc_, other_slots + i);
+                    slot_allocator_traits::construct(other.alloc_, other_slots + i, std::move(moved.get()));
+                }
+                for (size_type i = nb_common; i < nb_elements_; ++i) {
+                    slot_allocator_traits::construct(other.alloc_, other_slots + i, std::move(slots[i]));
+                    slot_allocator_traits::destroy(other.alloc_, slots + i);
+                }
+                for (size_type i = nb_common; i < other.nb_elements_; ++i) {
+                    slot_allocator_traits::construct(alloc_, slots + i, std::move(other_slots[i]));
+                    slot_allocator_traits::destroy(alloc_, other_slots + i);
+                }
+
+                swap_inline_counters(other);
+            }
+
+            /**
+             * Swaps the number of elements, the bitmaps and the counters of the elements outside their home bucket of
+             * two inline groups.
+             */
+            constexpr void swap_inline_counters(sparse_hash &other) noexcept {
+                using std::swap;
+                swap(nb_elements_, other.nb_elements_);
+                swap(storage_.group.bitmap, other.storage_.group.bitmap);
+                swap(storage_.group.deleted_bitmap, other.storage_.group.deleted_bitmap);
+                swap(inline_nb_displaced_, other.inline_nb_displaced_);
+            }
+
+            /**
+             * Looks for `key`, whose hash is `hash`, in the inline group, with the lookup of group 0 of a table of 64
+             * buckets: probing goes on past deleted buckets. Without deleted buckets the lookup ends at the first empty
+             * bucket, so it tests the bitmap of the deleted buckets once.
+             * @return the offset of the element with key `key`, or `nb_elements_` if there is none
+             */
+            template<typename K>
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type inline_lookup(
+                K const &key,
+                std::size_t hash
+            ) const {
+                if (nb_elements_ == 0) {
+                    return 0;
+                }
+
+                inline_bitmap_type const bitmap = storage_.group.bitmap;
+                inline_bitmap_type const deleted = storage_.group.deleted_bitmap;
+                slot_type const *const slots = inline_slots();
+                std::size_t ibucket = hash & (min_bucket_count - 1);
+                if (deleted == 0) {
+                    // the inline group holds at most 32 elements, so the probe sequence reaches an empty bucket
+                    std::size_t probe = 0;
+                    while (true) {
+                        inline_bitmap_type const bit = inline_bitmap_type{1} << ibucket;
+                        if ((bitmap & bit) == 0) {
+                            return nb_elements_;
+                        }
+                        size_type const offset = inline_offset(bitmap, ibucket);
+                        if (compare_keys(key, Access::key(slots[offset]))) {
+                            return offset;
+                        }
+
+                        ++probe;
+                        ibucket = (ibucket + probe) & (min_bucket_count - 1);
+                    }
+                }
+
+                std::size_t probe = 0;
+                while (true) {
+                    inline_bitmap_type const bit = inline_bitmap_type{1} << ibucket;
+                    if ((bitmap & bit) != 0) {
+                        size_type const offset = inline_offset(bitmap, ibucket);
+                        if (compare_keys(key, Access::key(slots[offset]))) {
+                            return offset;
+                        }
+                    } else if ((deleted & bit) == 0 || probe >= min_bucket_count) {
+                        return nb_elements_;
+                    }
+
+                    ++probe;
+                    ibucket = (ibucket + probe) & (min_bucket_count - 1);
+                }
+            }
+
+            /**
+             * The inline element at `offset` and the end of the inline elements, or two nullptr (the end of an inline
+             * table) if `offset` is `nb_elements_`.
+             */
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr inline_position<slot_type> inline_position_of(
+                size_type offset
+            ) noexcept {
+                if (offset == nb_elements_) {
+                    return {};
+                }
+                slot_type *const slots = inline_slots();
+                return {slots + offset, slots + nb_elements_};
+            }
+
+            /**
+             * `insert_impl_hashed` for an inline table: looks for `key` and remembers the first deleted bucket on the
+             * probe sequence, as in a table with buckets. Without deleted buckets the search ends at the first empty
+             * bucket, so it tests the bitmap of the deleted buckets once.
+             */
+            template<typename K, typename... Args>
+            constexpr std::pair<iterator, bool> insert_inline(K const &key, std::size_t hash, Args &&...args) {
+                inline_bitmap_type const bitmap = storage_.group.bitmap;
+                inline_bitmap_type const deleted = storage_.group.deleted_bitmap;
+                std::size_t ibucket = hash & (min_bucket_count - 1);
+
+                if (deleted == 0) {
+                    // the inline group holds at most 32 elements, so the probe sequence reaches an empty bucket
+                    std::size_t probe = 0;
+                    while (true) {
+                        inline_bitmap_type const bit = inline_bitmap_type{1} << ibucket;
+                        if ((bitmap & bit) == 0) {
+                            return insert_new_inline(hash, ibucket, std::forward<Args>(args)...);
+                        }
+                        size_type const offset = inline_offset(bitmap, ibucket);
+                        if (compare_keys(key, Access::key(inline_slots()[offset]))) {
+                            return {inline_iterator(offset), false};
+                        }
+
+                        ++probe;
+                        ibucket = (ibucket + probe) & (min_bucket_count - 1);
+                    }
+                }
+
+                bool found_first_deleted_bucket = false;
+                std::size_t ibucket_first_deleted = 0;
+                std::size_t probe = 0;
+                while (true) {
+                    inline_bitmap_type const bit = inline_bitmap_type{1} << ibucket;
+                    if ((bitmap & bit) != 0) {
+                        size_type const offset = inline_offset(bitmap, ibucket);
+                        if (compare_keys(key, Access::key(inline_slots()[offset]))) {
+                            return {inline_iterator(offset), false};
+                        }
+                    } else if ((deleted & bit) != 0 && probe < min_bucket_count) {
+                        if (!found_first_deleted_bucket) {
+                            found_first_deleted_bucket = true;
+                            ibucket_first_deleted = ibucket;
+                        }
+                    } else if (found_first_deleted_bucket) {
+                        return insert_new_inline(hash, ibucket_first_deleted, std::forward<Args>(args)...);
+                    } else {
+                        return insert_new_inline(hash, ibucket, std::forward<Args>(args)...);
+                    }
+
+                    ++probe;
+                    ibucket = (ibucket + probe) & (min_bucket_count - 1);
+                }
+            }
+
+            /**
+             * Inserts a new element into bucket `ibucket` of the inline group, which is empty or deleted, after checking
+             * the limits. If the inline group is full, its elements move into an allocated group first. If the elements
+             * and the deleted buckets reach `inline_clean_up_threshold()`, the inline group is cleaned up first.
+             * In both cases the insertion starts over. `hash` is the hash of the key of the new element.
+             */
+            template<typename... Args>
+            constexpr std::pair<iterator, bool> insert_new_inline(
+                std::size_t hash,
+                std::size_t ibucket,
+                Args &&...args
+            ) {
+                bool const moves_out = nb_elements_ >= inline_limit();
+                if (moves_out || nb_elements_ + inline_nb_deleted() >= inline_clean_up_threshold()) {
+                    // `key` and the arguments may refer to inline elements that move, so the new element is
+                    // constructed before.
+                    value_holder<slot_type, slot_allocator_type> new_slot(alloc_, std::forward<Args>(args)...);
+                    if (moves_out) {
+                        move_inline_group_out();
+                    } else {
+                        clean_up_inline();
+                    }
+                    return insert_impl_hashed(Access::key(new_slot.get()), hash, std::move(new_slot.get()));
+                }
+
+                inline_group &group = storage_.group;
+                inline_bitmap_type const bit = inline_bitmap_type{1} << ibucket;
+                size_type const offset = inline_offset(group.bitmap, ibucket);
+                sparse_array::insert_into_range(
+                    alloc_,
+                    inline_slots(),
+                    static_cast<array_size_type>(nb_elements_),
+                    static_cast<array_size_type>(offset),
+                    std::forward<Args>(args)...
+                );
+                group.bitmap |= bit;
+                group.deleted_bitmap &= ~bit;
+                if (ibucket != (hash & (min_bucket_count - 1))) {
+                    ++inline_nb_displaced_;
+                }
+                ++nb_elements_;
+                return {inline_iterator(offset), true};
+            }
+
+            /**
+             * `erase_inline_at` for an element whose home bucket is not known.
+             */
+            static constexpr std::size_t unknown_home_bucket = std::numeric_limits<std::size_t>::max();
+
+            /**
+             * Erases the element at `offset` of the inline group, whose home bucket is `home_bucket` (or
+             * `unknown_home_bucket`): the elements after it move one place to the front. Its bucket becomes deleted if
+             * an element can be outside its home bucket afterwards, otherwise the inline group has no deleted bucket
+             * afterwards (see `inline_nb_displaced_`). Allocates nothing.
+             */
+            DICE_SPARSE_MAP_ALWAYS_INLINE constexpr void erase_inline_at(
+                size_type offset,
+                std::size_t home_bucket
+            ) noexcept {
+                DICE_SPARSE_MAP_ASSERT(is_inline_ && offset < nb_elements_);
+                DICE_SPARSE_MAP_ASSERT(inline_nb_displaced_ > 0 || storage_.group.deleted_bitmap == 0);
+                DICE_SPARSE_MAP_ASSERT(inline_nb_displaced_ <= nb_elements_);
+                inline_group &group = storage_.group;
+                std::size_t const ibucket = inline_bucket(group.bitmap, offset);
+                inline_bitmap_type const bit = inline_bitmap_type{1} << ibucket;
+                sparse_array::erase_from_range(
+                    alloc_,
+                    inline_slots(),
+                    static_cast<array_size_type>(nb_elements_),
+                    static_cast<array_size_type>(offset)
+                );
+                group.bitmap &= ~bit;
+                --nb_elements_;
+                if (home_bucket != unknown_home_bucket && ibucket != home_bucket) {
+                    DICE_SPARSE_MAP_ASSERT(inline_nb_displaced_ > 0);
+                    --inline_nb_displaced_;
+                }
+                if (inline_nb_displaced_ > nb_elements_) {
+                    // at most all elements are outside their home bucket
+                    inline_nb_displaced_ = static_cast<inline_counter_type>(nb_elements_);
+                }
+                if (inline_nb_displaced_ == 0) {
+                    // no probe sequence passes another bucket before it reaches its element
+                    group.deleted_bitmap = 0;
+                } else {
+                    group.deleted_bitmap |= bit;
+                }
+            }
+
+            /**
+             * `erase_inline_at` for `erase(iterator)`, which does not know the home bucket of the element. Never
+             * inlined, so that `erase(iterator)` stays as small as the erasure in a table with buckets.
+             * @return the element after the erased one and the end of the inline elements, or two nullptr if no element
+             * follows
+             */
+            [[gnu::noinline]] constexpr inline_position<slot_type> erase_inline_element(size_type offset) noexcept {
+                erase_inline_at(offset, unknown_home_bucket);
+                return inline_position_of(offset);
+            }
+
+            /**
+             * Erases the inline element with key `key`, whose hash is `hash`. Never inlined, so that `erase_impl` stays
+             * as small as the erasure in a table with buckets.
+             */
+            template<typename K>
+            [[gnu::noinline]] constexpr size_type erase_inline(K const &key, std::size_t hash) {
+                size_type const offset = inline_lookup(key, hash);
+                if (offset == nb_elements_) {
+                    return 0;
+                }
+
+                erase_inline_at(offset, hash & (min_bucket_count - 1));
+                return 1;
+            }
+
+            /**
+             * Removes the deleted buckets of the inline group: inserts its elements again, in bucket order, into a group
+             * without deleted buckets, as a rehash of a table of 64 buckets does. The hashes of all elements are
+             * computed first, so a hash function that throws leaves the inline group unchanged. Then the elements move
+             * to their new offsets through storage on the stack, which does not throw.
+             */
+            constexpr void clean_up_inline() {
+                DICE_SPARSE_MAP_ASSERT(is_inline_);
+                inline_group &group = storage_.group;
+                size_type const nb_elements = nb_elements_;
+                if (nb_elements == 0) {
+                    group.deleted_bitmap = 0;
+                    inline_nb_displaced_ = 0;
+                    return;
+                }
+
+                slot_type *const slots = inline_slots();
+                std::array<std::uint8_t, inline_capacity> buckets{};
+                inline_bitmap_type bitmap = 0;
+                inline_counter_type nb_displaced = 0;
+                for (size_type i = 0; i < nb_elements; ++i) {
+                    std::size_t ibucket = hash_key(Access::key(slots[i])) & (min_bucket_count - 1);
+                    if ((bitmap & (inline_bitmap_type{1} << ibucket)) != 0) {
+                        ++nb_displaced;
+                    }
+                    std::size_t probe = 0;
+                    while ((bitmap & (inline_bitmap_type{1} << ibucket)) != 0) {
+                        ++probe;
+                        ibucket = (ibucket + probe) & (min_bucket_count - 1);
+                    }
+                    bitmap |= inline_bitmap_type{1} << ibucket;
+                    buckets[i] = static_cast<std::uint8_t>(ibucket);
+                }
+
+                // no exception from here on
+                alignas(slot_type) std::byte moved_storage[inline_capacity * sizeof(slot_type)];
+                slot_type *const moved = *std::launder(reinterpret_cast<slot_type(*)[inline_capacity]>(moved_storage));
+                for (size_type i = 0; i < nb_elements; ++i) {
+                    size_type const new_offset = inline_offset(bitmap, buckets[i]);
+                    relocate_inline(alloc_, moved + new_offset, slots + i, 1);
+                }
+                relocate_inline(alloc_, slots, moved, nb_elements);
+                group.bitmap = bitmap;
+                group.deleted_bitmap = 0;
+                inline_nb_displaced_ = nb_displaced;
+            }
+
+            /**
+             * `clean_up_inline` if the inline group has deleted buckets.
+             */
+            constexpr void clean_up_inline_if_deleted() {
+                if (storage_.group.deleted_bitmap != 0) {
+                    clean_up_inline();
+                }
+            }
+
+            /**
+             * Moves the inline group into an allocated group without a rehash: the table gets a bucket array of one
+             * group of 64 buckets, whose values are the inline elements in the same buckets and in the same order, with
+             * the same deleted buckets, and group 0 is its first non-empty group. The values array has room for one
+             * more element. An empty inline group gets an empty group without deleted buckets, which allocates its
+             * values with its first insertion. With `sh::allocation_failure::throwing`, if an allocation throws, the
+             * table is unchanged.
+             */
+            constexpr void move_inline_group_out() {
+                DICE_SPARSE_MAP_ASSERT(is_inline_);
+                table_state state;
+                state.bucket_count = rounded_bucket_count(min_bucket_count);
+                allocate_buckets(state, 1);
+                size_type const nb_elements = nb_elements_;
+                if (nb_elements > 0) {
+                    inline_group const &group = storage_.group;
+                    try {
+                        std::to_address(state.buckets)
+                            ->assign_moved(
+                                alloc_,
+                                group.bitmap,
+                                group.deleted_bitmap,
+                                inline_slots(),
+                                static_cast<array_size_type>(nb_elements),
+                                sparse_array::grown_capacity(static_cast<array_size_type>(nb_elements + 1))
+                            );
+                    } catch (...) {
+                        destroy_buckets(state);
+                        throw;
+                    }
+                    state.first_nonempty_group = 0;
+                    state.nb_deleted_buckets = inline_nb_deleted();
+                    // the inline elements are moved-from now
+                    destroy_inline_values();
+                }
+                update_load_thresholds(state);
+
+                nb_elements_ = 0;
+                enter_table(std::move(state));
+                nb_elements_ = nb_elements;
+            }
+
+            /**
+             * Moves the inline elements into a new table with `count` buckets, with the rules of `rehash_impl` for
+             * elements whose move constructor cannot throw: if the hash function throws while the elements are moved,
+             * or the allocator with `sh::allocation_failure::throwing`, the table is inline and empty. An exception of
+             * the allocator before, while the new table allocates its buckets, leaves the table unchanged.
+             */
+            constexpr void leave_inline(size_type count) {
+                DICE_SPARSE_MAP_ASSERT(is_inline_ && count > 0);
+                sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
+                DICE_SPARSE_MAP_ASSERT(!new_table.is_inline_);
+
+                slot_type *const slots = inline_slots();
+                try {
+                    for (size_type i = 0; i < nb_elements_; ++i) {
+                        new_table.insert_on_rehash(std::move(slots[i]));
+                    }
+                } catch (...) {
+                    destroy_inline_elements();
+                    throw;
+                }
+
+                destroy_inline_elements();
+                swap_elements(new_table);
+            }
+
+            /**
+             * `rehash` of an inline table. `count` is at least the bucket count that its elements need.
+             */
+            constexpr void rehash_inline(size_type count) {
+                size_type const rounded = rounded_bucket_count(count);
+                if (rounded > min_bucket_count) {
+                    leave_inline(rounded);
+                } else if (nb_elements_ > 0) {
+                    // the elements stay inline, and the deleted buckets go, as in a rehash to the same bucket count
+                    clean_up_inline_if_deleted();
+                } else if (rounded > 0) {
+                    // an empty table gets the 64 buckets it asks for
+                    move_inline_group_out();
+                } else {
+                    storage_.group.deleted_bitmap = 0;
+                    inline_nb_displaced_ = 0;
+                }
+            }
+
+            /**
+             * The value of `is_inline_` of a new table: true with an inline group.
+             */
+            [[nodiscard]] static constexpr inline_flag_type initial_inline_flag() noexcept {
+                if constexpr (has_inline_group) {
+                    return true;
+                } else {
+                    return {};
+                }
+            }
+
         public:
             static constexpr size_type default_init_bucket_count = 0;
 
@@ -3246,9 +4438,45 @@ namespace dice::sparse_map {
             float max_load_factor_ = default_max_load_factor;
 
             /**
-             * The state of the buckets, read through `table()`.
+             * With an inline group: true if `storage_` holds the inline group, false if it holds the state of the
+             * buckets. A lookup reads it and the start of `storage_`, so it comes shortly before `storage_`. Without an
+             * inline group it takes no space.
              */
-            table_state table_;
+            [[no_unique_address]] inline_flag_type is_inline_ = initial_inline_flag();
+
+            /**
+             * With an inline group: at least the number of inline elements that are not in their home bucket (the
+             * bucket of their hash), 0 if the table is not inline. An insertion into another bucket than the home
+             * bucket adds one, an erasure by key of such an element subtracts one, and the clean-up counts the elements
+             * exactly. An erasure by iterator does not know the home bucket of the element, so it only keeps the
+             * counter at most at the number of elements. So the counter can be larger than the number of elements
+             * outside their home bucket until the next clean-up or until the inline group is empty. It lives in the
+             * padding after `is_inline_`. Without an inline group it takes no space.
+             *
+             * The inline group needs a deleted bucket only on the probe sequence of an element, before the bucket of
+             * that element. If every element is in its home bucket, no probe sequence passes another bucket before it
+             * reaches its element, so no deleted bucket is needed. So an erasure leaves a deleted bucket only if the
+             * counter is not 0 afterwards, and otherwise it removes all deleted buckets of the inline group. The
+             * bitmap of the deleted buckets is 0 whenever the counter is 0.
+             */
+            [[no_unique_address]] inline_counter_type inline_nb_displaced_ = {};
+
+            /**
+             * With an inline group the inline group or the state of the buckets (see `is_inline_`), otherwise the state
+             * of the buckets. The state of the buckets is read through `table()`.
+             */
+            storage_type storage_;
+
+            static_assert(
+                inline_capacity == 0 || has_inline_group,
+                "An inline capacity other than 0 needs elements whose move constructor cannot throw and whose alignment is at most "
+                "the alignment of the allocator's pointer and size_type (8 bytes with std::allocator on 64 bit targets). "
+                "Use the inline capacity 0 for other elements."
+            );
+            static_assert(
+                inline_capacity <= min_bucket_count / 2,
+                "The inline capacity is at most 32, half of the 64 buckets of the inline group."
+            );
         };
 
     } // namespace detail_sparse_hash

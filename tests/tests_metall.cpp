@@ -613,3 +613,136 @@ TEST_CASE("begin, iteration and find of a map in a datastore that is open read-o
         CHECK(map->find(0) == map->end());
     }
 }
+
+namespace {
+    /**
+     * A map that keeps up to 2 elements inline. Its hash is the key, marked as avalanching, so that key `k` has the
+     * home bucket `k % 64` and the keys 1 and 65 collide.
+     */
+    using small_inline_map = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::marked_avalanching<std::hash<std::uint64_t>>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        2
+    >;
+
+    /// a map that keeps up to 2 small maps inline, and passes its allocator to them
+    using inline_outer_map = sparse_map<
+        std::uint64_t,
+        small_inline_map,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, small_inline_map>>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        2
+    >;
+
+    /// true if `map` holds exactly the keys `first` to `first + n - 1`, each mapped to `value_of(key)`
+    bool holds_range(small_inline_map const &map, std::uint64_t first, std::uint64_t n) {
+        bool all_found = map.size() == n;
+        for (std::uint64_t key = first; key < first + n; ++key) {
+            all_found = all_found && holds(map, key);
+        }
+        return all_found;
+    }
+} // namespace
+
+// The inline elements of a map live in the map object, so in the datastore if the map is there. A map whose inline
+// elements are maps with buckets keeps working when the datastore is mapped at another address: the state of the
+// buckets of an inner map, with its `offset_ptr`, is in the inline group of the outer map. A map with inline elements
+// has 64 buckets, like one whose elements are in an allocated group.
+TEST_CASE("maps with inline elements survive closing and opening at another address") {
+    datastore_path const store{"inline_maps"};
+    mapping last_mapping;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *outer = manager.construct<inline_outer_map>("outer")(manager.get_allocator());
+        REQUIRE(outer != nullptr);
+        insert_one((*outer)[1], std::uint64_t{10});
+        auto &second = (*outer)[2];
+        for (std::uint64_t key = 0; key < 20; ++key) {
+            insert_one(second, key);
+        }
+        REQUIRE(outer->bucket_count() == 64);
+        REQUIRE(outer->at(1).bucket_count() == 64);
+        REQUIRE(outer->at(2).bucket_count() == 64);
+        REQUIRE(outer->erase(5) == 0);
+
+        // 65 is outside its home bucket 1, so the erasure of 1 leaves a deleted bucket in the inline group
+        auto *small = manager.construct<small_inline_map>("small")(manager.get_allocator());
+        REQUIRE(small != nullptr);
+        insert_one(*small, std::uint64_t{1});
+        insert_one(*small, std::uint64_t{65});
+        REQUIRE(small->erase(1) == 1);
+        REQUIRE(small->size() == 1);
+        REQUIRE(small->bucket_count() == 64);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        CHECK(outer->size() == 2);
+        CHECK(outer->bucket_count() == 64);
+        CHECK(holds_range(outer->at(1), 10, 1));
+        CHECK(holds_range(outer->at(2), 0, 20));
+        CHECK(small->size() == 1);
+        CHECK(holds(*small, 65));
+        CHECK_FALSE(small->contains(1));
+
+        // the outer map moves its inline maps into an allocated group
+        insert_one((*outer)[3], std::uint64_t{30});
+        CHECK(outer->bucket_count() == 64);
+        CHECK(holds_range(outer->at(1), 10, 1));
+        CHECK(holds_range(outer->at(2), 0, 20));
+        CHECK(holds_range(outer->at(3), 30, 1));
+
+        // the small map moves its elements into an allocated group, with its deleted bucket in front of 65
+        insert_one(*small, std::uint64_t{7});
+        insert_one(*small, std::uint64_t{8});
+        CHECK(small->bucket_count() == 64);
+        CHECK(small->size() == 3);
+        CHECK(holds(*small, 65));
+        CHECK(holds(*small, 7));
+        CHECK(holds(*small, 8));
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        CHECK(outer->size() == 3);
+        CHECK(holds_range(outer->at(1), 10, 1));
+        CHECK(holds_range(outer->at(2), 0, 20));
+        CHECK(holds_range(outer->at(3), 30, 1));
+        CHECK(small->size() == 3);
+        CHECK(holds(*small, 65));
+        CHECK(holds(*small, 7));
+        CHECK(holds(*small, 8));
+
+        CHECK(manager.destroy<inline_outer_map>("outer"));
+        CHECK(manager.destroy<small_inline_map>("small"));
+        CHECK(manager.all_memory_deallocated());
+    }
+}
