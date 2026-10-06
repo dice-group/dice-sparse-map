@@ -462,9 +462,10 @@ namespace dice::sparse_map {
             /**
              * The number of buckets of a `sparse_array`.
              */
-            static constexpr std::size_t bitmap_nb_bits = 64;
+            static constexpr std::size_t nb_buckets = 64;
 
         private:
+            static constexpr std::size_t bitmap_nb_bits = nb_buckets;
             static constexpr size_type capacity_growth_step = (sparsity == sh::sparsity::high)     ? 2
                                                               : (sparsity == sh::sparsity::medium) ? 4
                                                                                                    : 8;
@@ -972,7 +973,7 @@ namespace dice::sparse_map {
          * undefined if their destructor throws. See `sparse_array` for what a nothrow move needs from the allocator.
          *
          * The buckets are kept in two dimensions. `buckets_` points to an array of `nb_sparse_buckets_`
-         * `sparse_array`s, and each `sparse_array` holds `sparse_array::bitmap_nb_bits` buckets. Bucket `ibucket`
+         * `sparse_array`s, and each `sparse_array` holds `sparse_array::nb_buckets` buckets. Bucket `ibucket`
          * is at `buckets_[sparse_array::sparse_ibucket(ibucket)]`, position
          * `sparse_array::index_in_sparse_bucket(ibucket)`.
          *
@@ -1288,9 +1289,9 @@ namespace dice::sparse_map {
                 reset_to_empty();
 
                 if constexpr (propagate_on_move_assignment || allocator_is_always_equal) {
-                    take_storage_from(other);
+                    take_over(other);
                 } else if (alloc_ == other.alloc_) {
-                    take_storage_from(other);
+                    take_over(other);
                 } else {
                     // The elements first: `other` keeps its functors, so that it still finds its elements if moving
                     // them throws. On an exception *this stays empty. If a functor move throws after the elements
@@ -1703,14 +1704,14 @@ namespace dice::sparse_map {
 
             /**
              * @return the largest power of two that `size_type` and `std::size_t` can hold, or less if the allocator
-             * cannot provide enough `sparse_array`s of `sparse_array::bitmap_nb_bits` buckets each
+             * cannot provide enough `sparse_array`s of `sparse_array::nb_buckets` buckets each
              */
             [[nodiscard]] constexpr size_type max_bucket_count() const noexcept {
                 constexpr std::uintmax_t largest_count = std::min<std::uintmax_t>(std::numeric_limits<size_type>::max(), std::numeric_limits<std::size_t>::max());
                 std::uintmax_t const max_nb_sparse_buckets = bucket_allocator_traits::max_size(bucket_allocator_type(alloc_));
-                std::uintmax_t const count = max_nb_sparse_buckets > largest_count / sparse_array::bitmap_nb_bits
+                std::uintmax_t const count = max_nb_sparse_buckets > largest_count / sparse_array::nb_buckets
                                                  ? largest_count
-                                                 : max_nb_sparse_buckets * sparse_array::bitmap_nb_bits;
+                                                 : max_nb_sparse_buckets * sparse_array::nb_buckets;
                 return static_cast<size_type>(std::bit_floor(count));
             }
 
@@ -2017,7 +2018,7 @@ namespace dice::sparse_map {
              * move of the key equality throws, `other` keeps them with a moved-from hash function, which may not find
              * them.
              */
-            constexpr void take_storage_from(sparse_hash &other) {
+            constexpr void take_over(sparse_hash &other) {
                 hash_ = std::move(other.hash_);
                 key_equal_ = std::move(other.key_equal_);
 
