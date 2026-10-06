@@ -22,9 +22,9 @@
  * exception guarantee, and an allocator with fancy pointers.
  *
  * Without a `Hash` argument, the `medium` configuration takes the default hash function of the
- * containers if it is avalanching for `Key`, and `test_hash<Key>` otherwise. The `avalanching`
- * configuration takes `std::hash<Key>` as it is, which is the identity for integers. The others take
- * `test_hash<Key>`.
+ * containers for the key types that `DiceHash` hashes (see `hashed_by_dice_hash`), and `test_hash<Key>`
+ * otherwise. The `std_hash` configuration takes `std::hash<Key>` as it is, which is the identity for
+ * integers, so that the tests also run with many collisions. The others take `test_hash<Key>`.
  */
 namespace dice::sparse_map::tests {
 
@@ -55,7 +55,7 @@ namespace dice::sparse_map::tests {
     /**
      * `std::hash<Key>` mixed with one multiplication by the golden ratio constant (the mixing of
      * `ankerl::unordered_dense`), marked as avalanching. It is the hash function of the configurations
-     * other than `medium` and `avalanching`, of `medium` for key types that the default hash function
+     * other than `medium` and `std_hash`, of `medium` for key types that the default hash function
      * of the containers does not hash, and of the tests that need a marked hash function based on
      * `std::hash`.
      */
@@ -69,11 +69,12 @@ namespace dice::sparse_map::tests {
     };
 
     /**
-     * `Hash`, marked as avalanching, so that the containers accept it. `std::hash` is not avalanching
-     * (the identity for integers), so with it the tests run with a weak hash function.
+     * `Hash`, marked as avalanching, so that the containers accept it even if it is not avalanching. The
+     * `std_hash` configuration uses it with `std::hash`, which is the identity for integers, so that the
+     * tests also run with a weak hash function and many collisions.
      */
     template<typename Hash>
-    struct avalanching : Hash {
+    struct marked_avalanching : Hash {
         using is_avalanching = void;
     };
 
@@ -106,7 +107,7 @@ namespace dice::sparse_map::tests {
     using map_low = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::low>;
 
     template<typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_avalanching = sparse_map<Key, T, avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using map_std_hash = sparse_map<Key, T, marked_avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using map_strong = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::strong, sh::sparsity::medium>;
@@ -124,7 +125,7 @@ namespace dice::sparse_map::tests {
     using set_low = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::low>;
 
     template<typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_avalanching = sparse_set<Key, avalanching<Hash>, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using set_std_hash = sparse_set<Key, marked_avalanching<Hash>, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::medium>;
 
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using set_strong = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::strong, sh::sparsity::medium>;
@@ -150,7 +151,7 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,        \
                        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::map_avalanching<__VA_ARGS__>, \
+                       ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::map_strong<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
 
@@ -165,7 +166,7 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,        \
                        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::set_avalanching<__VA_ARGS__>, \
+                       ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>, \
                        ::dice::sparse_map::tests::set_strong<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__>)
 

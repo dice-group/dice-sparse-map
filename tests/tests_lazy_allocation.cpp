@@ -30,7 +30,7 @@ namespace {
     constexpr auto basic = sh::exception_safety::basic;
     constexpr auto strong = sh::exception_safety::strong;
 
-    /// the configurations of `TEST_CASE_MAP` and `TEST_CASE_SET` with an allocator that counts
+    /// the sparsity levels and both values of `sh::exception_safety`, with `test_hash` and an allocator that counts
     using counted_containers = std::tuple<counted_map<basic, sh::sparsity::high>,
                                           counted_map<basic, sh::sparsity::medium>,
                                           counted_map<basic, sh::sparsity::low>,
