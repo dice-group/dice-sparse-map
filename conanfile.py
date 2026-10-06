@@ -30,7 +30,7 @@ class Recipe(ConanFile):
             self.test_requires("dice-template-library/2.9.0")
             self.test_requires("doctest/2.4.12")
             self.test_requires("nanobench/4.3.11")
-            self.test_requires("metall/0.35")
+            self.test_requires("metall/0.36-pre2@tentris/develop")
             self.test_requires("unordered_dense/5.2.0")
         if self.options.with_readme_benchmark_deps:
             # only for the README benchmark (benchmarks/readme)
