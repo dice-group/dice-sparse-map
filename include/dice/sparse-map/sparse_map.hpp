@@ -43,9 +43,9 @@ namespace dice::sparse_map {
      *
      * `Hash` must be avalanching, see `dice::sparse_map::sh::hash_is_avalanching`: a
      * hash picks its bucket with its low bits as it is. The default
-     * `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` is avalanching for
-     * every key type that it hashes, because the policy `wyhash` declares
-     * `is_avalanching`.
+     * `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` declares
+     * `is_avalanching` for every key type. A `dice::hash::dice_hash_overload` for
+     * your own key type must keep the avalanche of the policy.
      *
      * The number of buckets is 0 or a power of two and doubles when the table
      * grows. A hash picks its bucket with a mask.
