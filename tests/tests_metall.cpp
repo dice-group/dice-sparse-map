@@ -1,5 +1,6 @@
 #include "fixtures/checksum.hpp"
 #include "fixtures/test_types.hpp"
+#include "fixtures/utils.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -534,21 +535,10 @@ TEST_CASE("a map whose groups have holes survives closing and opening") {
 }
 
 namespace {
-    /**
-     * The hash of a key is the key, so key `64 * g` is in group `g`. It is not avalanching, but it is marked as
-     * avalanching, so that the containers accept it.
-     */
-    struct bucket_hash {
-        using is_avalanching = void;
-
-        std::size_t operator()(std::uint64_t key) const noexcept {
-            return static_cast<std::size_t>(key);
-        }
-    };
-
+    /// `identity_hash` puts key `64 * g` into group `g`
     using bucket_map = sparse_map<std::uint64_t,
                                   std::uint64_t,
-                                  bucket_hash,
+                                  tests::identity_hash<std::uint64_t>,
                                   std::equal_to<std::uint64_t>,
                                   metall_allocator<std::pair<std::uint64_t, std::uint64_t>>>;
 }  // namespace

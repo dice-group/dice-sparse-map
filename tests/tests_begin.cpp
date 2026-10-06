@@ -1,4 +1,5 @@
 #include "fixtures/allocators.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 
@@ -21,41 +22,16 @@
  * empty group and trips the debug check of `begin()` (the tests define `TSL_DEBUG`), one that is
  * too high skips elements, which `check_begin` sees.
  *
- * `bucket_hash` puts key `k` into bucket `k` of a table with more than `k` buckets, so key `64 * g` is in group `g`.
- * The maps hold `std::size_t`, whose move constructor cannot throw, and `copied_number`, whose move constructor can
- * throw, so that the groups have holes.
+ * `fragile_bucket_hash` puts key `k` into bucket `k` of a table with more than `k` buckets, so key `64 * g` is in
+ * group `g`. The maps hold `std::size_t`, whose move constructor cannot throw, and `copied_number`
+ * (`tests::copied_value<std::size_t>`), whose move constructor can throw, so that the groups have holes.
  */
 namespace {
     using namespace dice::sparse_map;
     using namespace dice::sparse_map::tests;
 
-    /**
-     * A number whose move constructor can throw.
-     */
-    struct copied_number {
-        std::size_t value = 0;
-
-        copied_number(std::size_t v) noexcept  // NOLINT(google-explicit-constructor)
-            : value(v) {
-        }
-
-        copied_number(copied_number const &) = default;
-
-        copied_number(copied_number &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
-        }
-
-        copied_number &operator=(copied_number const &) = default;
-
-        copied_number &operator=(copied_number &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
-            value = other.value;
-            return *this;
-        }
-
-        ~copied_number() = default;
-
-        friend bool operator==(copied_number const &, copied_number const &) = default;
-    };
+    /// a number whose move constructor can throw
+    using copied_number = copied_value<std::size_t>;
 
     std::size_t number(std::size_t n) {
         return n;
@@ -65,10 +41,10 @@ namespace {
         return n.value;
     }
 
-    /// calls of `bucket_hash` that are left before it throws, -1 never throws
+    /// calls of `fragile_bucket_hash` that are left before it throws, -1 never throws
     int hash_calls_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-    /// the move assignment of `bucket_hash` throws while this is true
+    /// the move assignment of `fragile_bucket_hash` throws while this is true
     bool hash_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
@@ -76,18 +52,18 @@ namespace {
      * accept it. It throws `std::runtime_error` on the n-th call after `hash_calls_until_throw` was set to n, and its
      * move assignment throws while `hash_moves_throw` is true.
      */
-    struct bucket_hash {
+    struct fragile_bucket_hash {
         using is_avalanching = void;
 
-        bucket_hash() = default;
-        bucket_hash(bucket_hash const &) = default;
-        bucket_hash(bucket_hash &&) = default;
-        bucket_hash &operator=(bucket_hash const &) = default;
-        ~bucket_hash() = default;
+        fragile_bucket_hash() = default;
+        fragile_bucket_hash(fragile_bucket_hash const &) = default;
+        fragile_bucket_hash(fragile_bucket_hash &&) = default;
+        fragile_bucket_hash &operator=(fragile_bucket_hash const &) = default;
+        ~fragile_bucket_hash() = default;
 
-        bucket_hash &operator=(bucket_hash && /*other*/) noexcept(false) {
+        fragile_bucket_hash &operator=(fragile_bucket_hash && /*other*/) noexcept(false) {
             if (hash_moves_throw) {
-                throw std::runtime_error("bucket_hash move assignment");
+                throw std::runtime_error("fragile_bucket_hash move assignment");
             }
             return *this;
         }
@@ -105,20 +81,20 @@ namespace {
     private:
         static void count_down() {
             if (hash_calls_until_throw >= 0 && 0 == hash_calls_until_throw--) {
-                throw std::runtime_error("bucket_hash");
+                throw std::runtime_error("fragile_bucket_hash");
             }
         }
     };
 
     template<typename T, typename Allocator = std::allocator<std::pair<T, T>>>
-    using map_of = sparse_map<T, T, bucket_hash, std::equal_to<T>, Allocator>;
+    using map_of = sparse_map<T, T, fragile_bucket_hash, std::equal_to<T>, Allocator>;
 
     static_assert(std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, std::size_t>>);
     static_assert(!std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<copied_number, copied_number>>);
 
     template<typename Map>
     void insert(Map &map, std::size_t n) {
-        map.try_emplace(n, n);
+        map.try_emplace(typename Map::key_type{n}, n);
     }
 
     /**
@@ -375,36 +351,11 @@ namespace {
 
 /*
  * A timing test, because the cost of `begin()` cannot be seen through the interface otherwise. A table that searches
- * for its first group reads the headers of all empty groups before it.
- *
- * (a) One element in the last of 2^22 groups, then 40000 calls of `begin()` on the const map: 1.7e11 header reads
- *     with a search, 40000 reads of `first_nonempty_group_` without.
- * (b) 65536 random keys in 2^22 groups, then `erase(begin())` until the map is empty: about 1.4e11 header reads with
- *     a search (each `begin()` reads up to the group of the next element), with `first_nonempty_group_` each header
- *     once, 2^22 in total.
- *
- * Each part must take less than 4 s. CI builds Debug, also with ASan+UBSan, and runs two test binaries at a time, so
- * the bound is far above the slowest build. Measured on thistle (AMD EPYC 9684X, at most 3.7 GHz, shared with other
- * jobs), in seconds, with the search (the table before `first_nonempty_group_`, one run) and with
- * `first_nonempty_group_` (the slowest of 3 runs):
- *
- *     build                          search (a)   search (b)   first group (a)   first group (b)
- *     clang 20 Release                    131           78           0.00007            0.0039
- *     gcc 14 Release                      126           75           0.00007            0.0041
- *     clang 20 RelWithDebInfo             126           70           0.00005            0.0042
- *     gcc 14 RelWithDebInfo               123           67           0.00007            0.0039
- *     clang 20 ASan+UBSan                 284          153           0.0004             0.0081
- *     gcc 14 ASan+UBSan                   245          188           0.0004             0.0099
- *     clang 20 Debug                      381          271           0.0019             0.019
- *     gcc 14 Debug                        304          237           0.0017             0.018
- *     clang 20 Debug, ASan+UBSan (CI)                                0.0032             0.038
- *     gcc 14 Debug, ASan+UBSan (CI)                                  0.0028             0.034
- *
- * The times of the search vary by about 15 % between runs. In Release they were at least 68 s on thistle, 17 times
- * the bound. The 128 MiB of group headers are larger than the L3 cache of one core on thistle (96 MiB) and on an
- * i9-14900K (36 MiB), so every pass reads main memory. The i9 runs at most at 6.0 GHz, 1.62 times the clock of
- * thistle. If the search ran 1.62 times faster there, it would take 42 s, 10 times the bound (derived, not
- * measured). With `first_nonempty_group_` the slowest build takes 0.038 s, 1/105 of the bound.
+ * for its first group reads the headers of all empty groups before it. (a) One element in the last of 2^22 groups,
+ * then 40000 calls of `begin()` on the const map. (b) 65536 random keys in 2^22 groups, then `erase(begin())` until
+ * the map is empty. Each part must take less than 4 s. With `first_nonempty_group_` the slowest CI build (Debug with
+ * ASan and UBSan) takes 0.04 s. With a search, the 128 MiB of group headers exceed the L3 cache, and each part took
+ * at least 68 s in a Release build on thistle.
  */
 TEST_CASE("begin is constant time, also while a map is drained") {
     using map_t = map_of<std::size_t>;

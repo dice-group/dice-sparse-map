@@ -52,6 +52,8 @@ namespace dice::sparse_map::tests {
         constexpr copied_value &operator=(copied_value const &) = default;
         constexpr copied_value &operator=(copied_value &&) = default;
         constexpr ~copied_value() = default;
+
+        friend constexpr bool operator==(copied_value const &, copied_value const &) = default;
     };
 
     /**
