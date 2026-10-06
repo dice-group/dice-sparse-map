@@ -50,8 +50,9 @@ namespace dice::sparse_map {
      * The number of buckets is 0 or a power of two and doubles when the table
      * grows. A hash picks its bucket with a mask.
      *
-     * The exception guarantee follows from the type of the elements. If the insertion of one element throws, the map holds the same elements as before, except in one case where it
-     * is empty. It comes from a rehash, which an insertion, `rehash` or `reserve` can do. `reserve` avoids rehashes.
+     * The exception guarantee follows from the type of the elements. If the insertion of one element throws, the map
+     * holds the same elements as before, except in one case: a rehash can leave the map empty. An insertion, `rehash`
+     * or `reserve` can rehash. `reserve` avoids rehashes.
      * How a rehash transfers the elements depends on their type:
      * - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old
      *   buckets is freed while they are moved. If the hash function throws while the elements are moved, or the
