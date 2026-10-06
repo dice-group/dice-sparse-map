@@ -26,9 +26,9 @@ The interface is the one of `std::unordered_map` and `std::unordered_set`, inclu
 - `try_emplace`, `insert_or_assign`, `merge`, `erase_if`, `insert_range` and the `std::from_range` constructors,
 - deduction guides,
 - allocator-extended copy and move constructors,
-- heterogeneous `find`, `count`, `contains`, `equal_range`, `erase`, `try_emplace`, `insert_or_assign`, `operator[]` and set `insert` (see [heterogeneous lookup](#heterogeneous-lookup)).
+- heterogeneous `find`, `count`, `contains`, `equal_range`, `at`, `erase`, `try_emplace`, `insert_or_assign`, `operator[]` and set `insert` (see [heterogeneous lookup](#heterogeneous-lookup)).
 
-A lookup can take a precalculated hash (`precalculated_hash` parameter), so that a key that is looked up in several containers is hashed once. The value is `hash_function()(key)`.
+A lookup can take a precalculated hash (`precalculated_hash` parameter), so that a key that is looked up in several containers is hashed once. The value must be `hash_function()(key)`. Another value is undefined behaviour.
 
 No sentinel value has to be reserved from the keys.
 
@@ -102,10 +102,13 @@ All member functions are `constexpr`. A map or a set works in a constant express
 - **Allocation failure.** By default a failed allocation ends the process with `std::abort()`. See [allocation failure](#allocation-failure).
 - **Exception safety.** If an insertion throws, the container holds the same elements as before, except in one case where it is empty. See [exception safety](#exception-safety).
 - **Iterator invalidation.** Every operation that modifies the container may invalidate all iterators, references and pointers to elements. `erase` returns an iterator to the next element. In detail:
-  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate the iterators.
-  - `merge`: always invalidates the iterators of both containers.
-  - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate the iterators if an element is inserted.
-  - `erase`: always invalidates the iterators. Use the returned iterator.
+  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate them.
+  - `merge`: always invalidates them in both containers.
+  - `insert_range`, and `insert` of a range or a list: may invalidate them also if no element is inserted, because they reserve room for the whole range first.
+  - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate them if an element is inserted.
+  - `erase`: always invalidates them. Use the returned iterator.
+- **Maximum load factor.** The default is 0.5, and `max_load_factor(float)` clamps its argument to [0.1, 0.8]. `std::unordered_map` defaults to 1.0 and accepts any positive value.
+- `mutable_iterator(const_iterator)` turns a `const_iterator` into an `iterator`.
 - `emplace` constructs the element first, and inserts it if its key is not in the container yet. `try_emplace` constructs nothing if the key is there.
 - There is no bucket interface beyond `bucket_count`, and there are no node handles. `merge` moves the elements, or copies them if their move constructor can throw, instead of transferring nodes.
 - Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws. If they are nothrow move constructible, their move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption. If they are also nothrow move assignable, an insertion or an erasure moves the elements after it in its group of 64 buckets with their move assignment, as `std::vector::insert` and `std::vector::erase` do.
@@ -158,16 +161,16 @@ struct my_hash {
     using is_avalanching = void;
 
     std::size_t operator()(std::uint64_t key) const noexcept {
-        return some_good_hash(key);
+        return some_good_hash(key);  // an avalanching hash of your own
     }
 };
 ```
 
-The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). `DiceHash` declares `is_avalanching` if its policy does, for every key type: `wyhash`, `xxh3` and `rapidhash` do, `Martinus` does not. A `dice::hash::dice_hash_overload` for your own key type must keep the avalanche of the policy, for example by returning `dice_hash_templates<Policy>::dice_hash` of its members (see the README of dice-hash). The default hash function does not guard against `0.0` and `-0.0`: they compare equal but have different hashes, so they can be two keys. A hash picks the bucket, so the hash values of `DiceHash` are part of the persisted layout of a map: a dice-hash version that changes them needs a new `pobr_version`. `tests_default_hash` checks some of them.
+The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). `DiceHash` declares `is_avalanching` if its policy does, for every key type: `wyhash`, `xxh3` and `rapidhash` do, `Martinus` does not. A `dice::hash::dice_hash_overload` for your own key type must keep the avalanche of the policy, for example by returning `dice_hash_templates<Policy>::dice_hash` of one value, for example a tuple of its members (see the README of dice-hash). The default hash function does not guard against `0.0` and `-0.0`: they compare equal but have different hashes, so they can be two keys. A hash picks the bucket, so the hash values of `DiceHash` are part of the persisted layout of a map: a dice-hash version that changes them needs a new `pobr_version`. `tests_default_hash` checks some of them.
 
 ## Sparsity
 
-The `Sparsity` template parameter trades insertion speed for memory. With `sh::sparsity::high` a group grows its storage by 2 elements at a time, with `sh::sparsity::medium` (default) by 4, with `sh::sparsity::low` by 8. A higher sparsity needs less memory and builds a map slower. The lookup speed does not depend on it.
+The `Sparsity` template parameter trades insertion speed for memory. With `sh::sparsity::high` a group grows its storage by 2 elements at a time, with `sh::sparsity::medium` (default) by 4, with `sh::sparsity::low` by 8. A higher sparsity needs less memory and builds a map slower. The lookup speed does not depend on it. For elements whose move constructor can throw, a group holds memory of the exact size and `Sparsity` has no effect (see [insertion and erasure in a group](design.md#insertion-and-erasure-in-a-group)).
 
 | sparsity | bytes per element, `uint64_t -> uint64_t` | bytes per element, `std::string -> uint64_t` | build, `uint64_t -> size_t` | build, `std::string -> size_t` |
 |---|---:|---:|---:|---:|
@@ -181,7 +184,7 @@ Bytes per element: the memory that a map with 100000 elements requests from its 
 
 The last template parameter `AllocationFailure` says what happens when an allocation of the container fails, that is when the `allocate` of the allocator throws:
 
-- `sh::allocation_failure::terminating` (the default): the process ends with `std::abort()`.
+- `sh::allocation_failure::terminating` (the default): every exception of the allocator except `std::length_error` ends the process with `std::abort()`.
 - `sh::allocation_failure::throwing`: the exception of the allocator propagates (`std::bad_alloc` for `std::allocator`), and the guarantees of [exception safety](#exception-safety) hold for it.
 
 In both modes a size limit of the container throws `std::length_error`, and an allocation that an element makes itself (like the copy of a `std::string`) is an exception of the element, not an allocation failure of the container.
@@ -193,7 +196,7 @@ The guarantee follows from the type of the elements. If the insertion of one ele
 - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old buckets is freed while they are moved. If the hash function throws while the elements are moved, or the allocator with `sh::allocation_failure::throwing`, the container is empty. Any other exception leaves the container unchanged.
 - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and the new buckets are in memory at the same time. An exception leaves the container unchanged.
 
-If `merge` throws, the element that was being merged is still in the source and not in the target. So every element is in exactly one of the two containers.
+If `merge` throws, the element that was being merged and the ones after it stay in the source. The ones merged before are in the target, unless a rehash of the target emptied it (see above).
 
 `erase` does not throw, unless the hash function or the key equality throws. An erased element whose move constructor can throw keeps its memory for a while, see [insertion and erasure in a group](design.md#insertion-and-erasure-in-a-group).
 
@@ -205,7 +208,7 @@ The containers construct, move and destroy their elements through `std::allocato
 
 The containers are standard layout types if the hash function, the key equality, the allocator and its pointer type are. The elements of a map are stored in a standard layout type, not in `std::pair`. This type supports uses-allocator construction: with a scoped or a polymorphic allocator, the key and the mapped value get the allocator as they would in a `std::pair`.
 
-A map in a metall datastore takes the allocator of the metall manager, as in `tests/tests_metall.cpp`:
+A map in a metall datastore takes the allocator of the metall manager, based on `tests/tests_metall.cpp`:
 
 ```c++
 template<typename T>
