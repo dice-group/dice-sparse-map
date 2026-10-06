@@ -2331,19 +2331,17 @@ namespace dice::sparse_map {
             }
 
             /**
-             * @param hash `hash_function()(key)` of a key
-             * @return the bucket of `hash`. The table must have buckets.
+             * @return `bucket_count() - 1`, the mask that maps a hash to its bucket. The table must have buckets.
+             *
+             * A probe loop needs only the mask, not the bucket count as well: the first bucket of `hash` is
+             * `hash & mask`, the bucket after `ibucket` at probe number `probe` is `(ibucket + probe) & mask` (quadratic
+             * probing), and the loop stops passing deleted buckets when `probe > mask`, that is
+             * `probe >= bucket_count()`. So a lookup that is inlined into a loop of the caller takes one register less
+             * from that loop.
              */
-            [[nodiscard]] constexpr std::size_t bucket_for_hash(std::size_t hash) const noexcept {
+            [[nodiscard]] constexpr std::size_t bucket_count_mask() const noexcept {
                 DICE_SPARSE_MAP_ASSERT(table().bucket_count > 0);
-                return hash & (table().bucket_count - 1);
-            }
-
-            /**
-             * @return the bucket after `ibucket` on the quadratic probe sequence, at probe number `iprobe`
-             */
-            [[nodiscard]] constexpr std::size_t next_bucket(std::size_t ibucket, std::size_t iprobe) const noexcept {
-                return (ibucket + iprobe) & (table().bucket_count - 1);
+                return table().bucket_count - 1;
             }
 
             /**
@@ -2909,10 +2907,11 @@ namespace dice::sparse_map {
                     }
                 }
 
-                std::size_t ibucket = bucket_for_hash(hash);
+                std::size_t const mask = bucket_count_mask();
+                std::size_t ibucket = hash & mask;
 
-                // the first deleted bucket on the probe sequence, `table().bucket_count` if there is none
-                std::size_t ibucket_first_deleted = table().bucket_count;
+                // the first deleted bucket on the probe sequence, `mask + 1` if there is none
+                std::size_t ibucket_first_deleted = mask + 1;
 
                 sparse_array *const raw_buckets = buckets_begin();
                 std::size_t probe = 0;
@@ -2926,11 +2925,11 @@ namespace dice::sparse_map {
                         if (compare_keys(key, Access::key(*slot))) {
                             return {iterator(&bucket, slot), false};
                         }
-                    } else if (bucket.has_deleted_value(index_in_sparse_bucket) && probe < table().bucket_count) {
-                        if (ibucket_first_deleted == table().bucket_count) {
+                    } else if (bucket.has_deleted_value(index_in_sparse_bucket) && probe <= mask) {
+                        if (ibucket_first_deleted > mask) {
                             ibucket_first_deleted = ibucket;
                         }
-                    } else if (ibucket_first_deleted != table().bucket_count) {
+                    } else if (ibucket_first_deleted <= mask) {
                         return insert_new(
                             hash,
                             sparse_array::sparse_ibucket(ibucket_first_deleted),
@@ -2943,7 +2942,7 @@ namespace dice::sparse_map {
                     }
 
                     ++probe;
-                    ibucket = next_bucket(ibucket, probe);
+                    ibucket = (ibucket + probe) & mask;
                 }
             }
 
@@ -2999,7 +2998,8 @@ namespace dice::sparse_map {
                 }
 
                 sparse_array *const raw_buckets = buckets_begin();
-                std::size_t ibucket = bucket_for_hash(hash);
+                std::size_t const mask = bucket_count_mask();
+                std::size_t ibucket = hash & mask;
                 std::size_t probe = 0;
                 while (true) {
                     std::size_t const sparse_ibucket = sparse_array::sparse_ibucket(ibucket);
@@ -3018,12 +3018,12 @@ namespace dice::sparse_map {
 
                             return 1;
                         }
-                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= table().bucket_count) {
+                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe > mask) {
                         return 0;
                     }
 
                     ++probe;
-                    ibucket = next_bucket(ibucket, probe);
+                    ibucket = (ibucket + probe) & mask;
                 }
             }
 
@@ -3073,7 +3073,8 @@ namespace dice::sparse_map {
                 std::size_t hash
             ) const {
                 sparse_array const *const raw_buckets = buckets_begin();
-                std::size_t ibucket = bucket_for_hash(hash);
+                std::size_t const mask = bucket_count_mask();
+                std::size_t ibucket = hash & mask;
                 std::size_t probe = 0;
                 while (true) {
                     std::size_t const sparse_ibucket = sparse_array::sparse_ibucket(ibucket);
@@ -3085,12 +3086,12 @@ namespace dice::sparse_map {
                         if (compare_keys(key, Access::key(*slot))) {
                             return const_iterator(&bucket, slot);
                         }
-                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe >= table().bucket_count) {
+                    } else if (!bucket.has_deleted_value(index_in_sparse_bucket) || probe > mask) {
                         return cend();
                     }
 
                     ++probe;
-                    ibucket = next_bucket(ibucket, probe);
+                    ibucket = (ibucket + probe) & mask;
                 }
             }
 
@@ -3171,7 +3172,8 @@ namespace dice::sparse_map {
              */
             template<typename S>
             constexpr void insert_on_rehash(S &&slot_value) {
-                std::size_t ibucket = bucket_for_hash(hash_key(Access::key(slot_value)));
+                std::size_t const mask = bucket_count_mask();
+                std::size_t ibucket = hash_key(Access::key(slot_value)) & mask;
                 sparse_array *const raw_buckets = buckets_begin();
 
                 std::size_t probe = 0;
@@ -3193,7 +3195,7 @@ namespace dice::sparse_map {
                     DICE_SPARSE_MAP_ASSERT(!compare_keys(Access::key(slot_value), Access::key(*bucket.value(index_in_sparse_bucket))));
 
                     ++probe;
-                    ibucket = next_bucket(ibucket, probe);
+                    ibucket = (ibucket + probe) & mask;
                 }
             }
 
