@@ -146,6 +146,13 @@ namespace dice::sparse_map {
         };
 
         /**
+         * A type that a deduction guide takes as a hash function: not an integer (that is a bucket count) and not an
+         * allocator.
+         */
+        template<typename H>
+        concept HashLike = !std::is_integral_v<H> && !AllocatorLike<H>;
+
+        /**
          * A type with two elements that `std::get` returns, like `std::pair`, `std::tuple` or `std::array`.
          */
         template<typename P>
@@ -1195,8 +1202,8 @@ namespace dice::sparse_map {
 
             /**
              * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
-             * `other`, the elements are moved one by one, or copied if their move constructor can throw, and `other`
-             * is left empty.
+             * `other`, the elements are moved one by one, or copied if their move constructor can throw. `other` is
+             * empty afterwards in both cases.
              */
             sparse_hash(sparse_hash &&other, slot_allocator_type const &alloc)
                 : alloc_(alloc),
@@ -1364,7 +1371,7 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Inserts a set element whose key compares equal to `key`. The element is constructed from `key`
+             * Inserts `key` into a set if no element compares equal to it. The element is constructed from `key`
              * only if it is inserted.
              */
             template<typename K>

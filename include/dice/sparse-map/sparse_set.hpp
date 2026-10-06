@@ -692,7 +692,7 @@ namespace dice::sparse_map {
              typename Hash = detail_sparse_hash::default_hash<detail_sparse_hash::iter_value_type_t<InputIt>>,
              typename KeyEqual = std::equal_to<detail_sparse_hash::iter_value_type_t<InputIt>>,
              typename Allocator = std::allocator<detail_sparse_hash::iter_value_type_t<InputIt>>>
-    requires (!std::is_integral_v<Hash> && !detail_sparse_hash::AllocatorLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
+    requires (detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
     sparse_set(InputIt, InputIt, std::size_t = 0, Hash = Hash(), KeyEqual = KeyEqual(), Allocator = Allocator())
         -> sparse_set<detail_sparse_hash::iter_value_type_t<InputIt>, Hash, KeyEqual, Allocator>;
 
@@ -700,7 +700,7 @@ namespace dice::sparse_map {
              typename Hash = detail_sparse_hash::default_hash<std::ranges::range_value_t<R>>,
              typename KeyEqual = std::equal_to<std::ranges::range_value_t<R>>,
              typename Allocator = std::allocator<std::ranges::range_value_t<R>>>
-    requires (!std::is_integral_v<Hash> && !detail_sparse_hash::AllocatorLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
+    requires (detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
     sparse_set(std::from_range_t, R &&, std::size_t = 0, Hash = Hash(), KeyEqual = KeyEqual(), Allocator = Allocator())
         -> sparse_set<std::ranges::range_value_t<R>, Hash, KeyEqual, Allocator>;
 
@@ -708,7 +708,7 @@ namespace dice::sparse_map {
              typename Hash = detail_sparse_hash::default_hash<Key>,
              typename KeyEqual = std::equal_to<Key>,
              typename Allocator = std::allocator<Key>>
-    requires (!std::is_integral_v<Hash> && !detail_sparse_hash::AllocatorLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
+    requires (detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
     sparse_set(std::initializer_list<Key>, std::size_t = 0, Hash = Hash(), KeyEqual = KeyEqual(), Allocator = Allocator())
         -> sparse_set<Key, Hash, KeyEqual, Allocator>;
 
@@ -720,8 +720,7 @@ namespace dice::sparse_map {
     sparse_set(InputIt, InputIt, Allocator)
         -> sparse_set<detail_sparse_hash::iter_value_type_t<InputIt>, detail_sparse_hash::default_hash<detail_sparse_hash::iter_value_type_t<InputIt>>, std::equal_to<detail_sparse_hash::iter_value_type_t<InputIt>>, Allocator>;
 
-    template<detail_sparse_hash::LegacyInputIterator InputIt, typename Hash, detail_sparse_hash::AllocatorLike Allocator>
-    requires (!std::is_integral_v<Hash> && !detail_sparse_hash::AllocatorLike<Hash>)
+    template<detail_sparse_hash::LegacyInputIterator InputIt, detail_sparse_hash::HashLike Hash, detail_sparse_hash::AllocatorLike Allocator>
     sparse_set(InputIt, InputIt, std::size_t, Hash, Allocator)
         -> sparse_set<detail_sparse_hash::iter_value_type_t<InputIt>, Hash, std::equal_to<detail_sparse_hash::iter_value_type_t<InputIt>>, Allocator>;
 
@@ -733,8 +732,7 @@ namespace dice::sparse_map {
     sparse_set(std::from_range_t, R &&, Allocator)
         -> sparse_set<std::ranges::range_value_t<R>, detail_sparse_hash::default_hash<std::ranges::range_value_t<R>>, std::equal_to<std::ranges::range_value_t<R>>, Allocator>;
 
-    template<std::ranges::input_range R, typename Hash, detail_sparse_hash::AllocatorLike Allocator>
-    requires (!std::is_integral_v<Hash> && !detail_sparse_hash::AllocatorLike<Hash>)
+    template<std::ranges::input_range R, detail_sparse_hash::HashLike Hash, detail_sparse_hash::AllocatorLike Allocator>
     sparse_set(std::from_range_t, R &&, std::size_t, Hash, Allocator)
         -> sparse_set<std::ranges::range_value_t<R>, Hash, std::equal_to<std::ranges::range_value_t<R>>, Allocator>;
 
@@ -746,8 +744,7 @@ namespace dice::sparse_map {
     sparse_set(std::initializer_list<Key>, Allocator)
         -> sparse_set<Key, detail_sparse_hash::default_hash<Key>, std::equal_to<Key>, Allocator>;
 
-    template<typename Key, typename Hash, detail_sparse_hash::AllocatorLike Allocator>
-    requires (!std::is_integral_v<Hash> && !detail_sparse_hash::AllocatorLike<Hash>)
+    template<typename Key, detail_sparse_hash::HashLike Hash, detail_sparse_hash::AllocatorLike Allocator>
     sparse_set(std::initializer_list<Key>, std::size_t, Hash, Allocator)
         -> sparse_set<Key, Hash, std::equal_to<Key>, Allocator>;
 
