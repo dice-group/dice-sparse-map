@@ -108,7 +108,7 @@ namespace {
         }
         static_cast<void>(manager.construct<map_t>("empty")(typename map_t::allocator_type(manager.get_allocator())));
         std::ofstream{dir / (std::string{Desc::name} + ".address")} << reinterpret_cast<std::uintptr_t>(manager.get_address()) << ' '
-                                                                        << manager.get_size() << '\n';
+                                                                    << manager.get_size() << '\n';
         std::printf("created %-14s at %p, program at %p\n", Desc::name, manager.get_address(), static_cast<void *>(&program_marker));
     }
 
@@ -133,8 +133,7 @@ namespace {
         if (!manager.check_sanity()) {
             return "datastore does not open";
         }
-        std::printf("  opened %-14s at %p (was %p), program at %p\n", Desc::name, manager.get_address(),
-                    reinterpret_cast<void *>(old_address), static_cast<void *>(&program_marker));
+        std::printf("  opened %-14s at %p (was %p), program at %p\n", Desc::name, manager.get_address(), reinterpret_cast<void *>(old_address), static_cast<void *>(&program_marker));
         if (reinterpret_cast<std::uintptr_t>(manager.get_address()) == old_address) {
             return "datastore mapped at the same address";
         }
