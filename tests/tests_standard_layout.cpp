@@ -45,7 +45,7 @@ namespace {
                               Sparsity>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using array_of = detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity>;
+    using array_of = detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
 
     constexpr auto high = sh::sparsity::high;
     constexpr auto medium = sh::sparsity::medium;

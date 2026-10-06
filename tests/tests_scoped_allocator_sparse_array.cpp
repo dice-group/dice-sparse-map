@@ -96,14 +96,14 @@ template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map:
 struct normal_alloc {
     using value_type = T;
     using allocator_type = std::allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
 };
 
 template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 struct scoped_alloc {
     using value_type = T;
     using allocator_type = std::scoped_allocator_adaptor<std::allocator<T>>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
 };
 
 TEST_SUITE("scoped_allocators/sparse_array_tests") {

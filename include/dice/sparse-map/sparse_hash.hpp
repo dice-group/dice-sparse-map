@@ -167,16 +167,19 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Allocates `n` objects with `alloc`. With `sh::allocation_failure::terminating` an exception of the
-         * allocator ends the process with `std::abort()`. With `sh::allocation_failure::throwing` it propagates.
+         * Allocates `n` objects with `alloc`. With `sh::allocation_failure::terminating` any exception of the
+         * allocator other than `std::length_error` ends the process with `std::abort()`, as in `allocate_with`. With
+         * `sh::allocation_failure::throwing` every exception propagates.
          */
         template<dice::sparse_map::sh::allocation_failure AllocationFailure, typename Allocator>
         [[nodiscard]] typename std::allocator_traits<Allocator>::pointer allocate(
             Allocator &alloc,
-            typename std::allocator_traits<Allocator>::size_type n) noexcept(AllocationFailure == dice::sparse_map::sh::allocation_failure::terminating) {
+            typename std::allocator_traits<Allocator>::size_type n) {
             if constexpr (AllocationFailure == dice::sparse_map::sh::allocation_failure::terminating) {
                 try {
-                    return detail_sparse_hash::allocate<dice::sparse_map::sh::allocation_failure::throwing>(alloc, n);
+                    return std::allocator_traits<Allocator>::allocate(alloc, n);
+                } catch (std::length_error const &) {
+                    throw;
                 } catch (...) {
                     std::abort();
                 }
@@ -236,7 +239,7 @@ namespace dice::sparse_map {
          *
          * TODO Check to use std::realloc and std::memmove when possible
          */
-        template<typename T, typename Allocator, dice::sparse_map::sh::sparsity Sparsity, dice::sparse_map::sh::allocation_failure AllocationFailure = dice::sparse_map::sh::allocation_failure::terminating>
+        template<typename T, typename Allocator, dice::sparse_map::sh::sparsity Sparsity, dice::sparse_map::sh::allocation_failure AllocationFailure>
         class sparse_array {
         public:
             using value_type = T;
@@ -347,7 +350,7 @@ namespace dice::sparse_map {
                 if (capacity_ > 0) {
                     auto alloc = const_cast<Allocator &>(const_alloc);
                     values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
-                    DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                    DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate throws or aborts on a failure
                 }
             }
 
@@ -366,7 +369,7 @@ namespace dice::sparse_map {
 
                 auto alloc = const_cast<Allocator &>(const_alloc);
                 values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate throws or aborts on a failure
                 try {
                     for (size_type i = 0; i < other.nb_elements_; i++) {
                         construct_value(alloc, values_ + i, other.values_[i]);
@@ -407,7 +410,7 @@ namespace dice::sparse_map {
 
                 auto alloc = const_cast<Allocator &>(const_alloc);
                 values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate should throw if there is a failure
+                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);  // allocate throws or aborts on a failure
                 try {
                     for (size_type i = 0; i < other.nb_elements_; i++) {
                         construct_value(alloc, values_ + i, std::move(other.values_[i]));
@@ -649,7 +652,7 @@ namespace dice::sparse_map {
              * case on EACH insertion we allocate a new area of nb_elements_ + 1 where we
              * copy the values of values_ into it and put the new value there. On
              * success, we set values_ to this new area. Even if slower, it's the only
-             * way to preserve to strong exception guarantee.
+             * way to keep the strong exception guarantee.
              */
             template<typename... Args, typename U = value_type, typename std::enable_if<std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
@@ -762,7 +765,7 @@ namespace dice::sparse_map {
              * std::is_nothrow_move_constructible<value_type>::value is false. Copy all
              * the values except the one at offset into a new heap area. On success, we
              * set values_ to this new area. Even if slower, it's the only way to
-             * preserve to strong exception guarantee.
+             * keep the strong exception guarantee.
              */
             template<typename... Args, typename U = value_type, typename std::enable_if<std::is_nothrow_move_constructible<U>::value>::type * = nullptr>
             void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {

@@ -145,16 +145,6 @@ namespace dice::sparse_map::tests {
              sh::sparsity Sparsity = sh::sparsity::medium>
     using throwing_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, sh::allocation_failure::throwing>;
 
-    /**
-     * `sparse_set` with `sh::allocation_failure::throwing`, the other parameters as in `sparse_set`.
-     */
-    template<typename Key,
-             typename Hash = detail_sparse_hash::default_hash<Key>,
-             typename KeyEqual = std::equal_to<Key>,
-             typename Allocator = std::allocator<Key>,
-             sh::sparsity Sparsity = sh::sparsity::medium>
-    using throwing_set = sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, sh::allocation_failure::throwing>;
-
 }  // namespace dice::sparse_map::tests
 
 /**

@@ -28,8 +28,8 @@
  * What `sparse_map` and `sparse_set` do when an allocation of the table fails. With the default
  * `sh::allocation_failure::terminating` the process ends with `std::abort()`. Each case runs the operation in a child
  * process (`DICE_SANDBOX` of the dice-template-library) and checks that the child ends with `SIGABRT` and writes
- * nothing to stderr. There is one case for each place
- * where a group or the vector of the groups allocates. The cases are skipped where `<sys/wait.h>` is missing.
+ * nothing to stderr. There is one case for each place where a group or the vector of the groups allocates. The cases
+ * are skipped where `<sys/wait.h>` is missing.
  * `tests_exception_safety` checks `sh::allocation_failure::throwing`.
  */
 namespace {
@@ -190,6 +190,18 @@ namespace {
     static_assert(std::is_nothrow_move_constructible_v<failing_map<std::size_t>::value_type>);
     static_assert(!std::is_nothrow_move_constructible_v<failing_map<copied>::value_type>);
 
+    /// allocator whose `allocate` throws `std::length_error`
+    struct length_error_allocator {
+        using value_type = std::size_t;
+
+        std::size_t *allocate(std::size_t /*n*/) {
+            throw std::length_error{"size limit"};
+        }
+
+        void deallocate(std::size_t * /*p*/, std::size_t /*n*/) noexcept {
+        }
+    };
+
     /// inserts the keys 0 to `n - 1`
     template<typename Map>
     void insert_keys(Map &map, std::size_t n) {
@@ -252,18 +264,21 @@ TEST_CASE("a failed allocation of the vector of groups aborts in a move assignme
     }));
 }
 
-// The vector of the groups throws `std::length_error` when the table needs more groups than it can hold. That is a size
-// limit and not a failed allocation, so it propagates with `terminating` too.
-TEST_CASE("with terminating, a std::length_error of the vector of groups propagates") {
+// `std::length_error` is a size limit and not a failed allocation, so the helpers let it through with `terminating` too:
+// `allocate_with` for the vector of the groups, `allocate` for the groups.
+TEST_CASE("allocate_with and allocate let std::length_error through with terminating") {
     CHECK_THROWS_AS(detail_sparse_hash::allocate_with<sh::allocation_failure::terminating>([] {
                         throw std::length_error{"size limit"};
                     }),
                     std::length_error);
+
+    auto alloc = length_error_allocator{};
+    CHECK_THROWS_AS(static_cast<void>(detail_sparse_hash::allocate<sh::allocation_failure::terminating>(alloc, 1)), std::length_error);
 }
 
 TEST_CASE("a failed allocation of a group aborts when the group is constructed with a capacity" * doctest::skip(!can_fork)) {
     using allocator_t = failing_allocator<std::size_t, std::size_t>;
-    using array_t = detail_sparse_hash::sparse_array<std::size_t, allocator_t, sh::sparsity::medium>;
+    using array_t = detail_sparse_hash::sparse_array<std::size_t, allocator_t, sh::sparsity::medium, sh::allocation_failure::terminating>;
     CHECK(expect_abort([] {
         auto const guard = fail_while_in_scope{failing::groups};
         auto const array = array_t(4, allocator_t{});
