@@ -527,14 +527,11 @@ namespace dice::sparse_map {
              * allocator, when it grows its storage and when it is copied or moved into new storage. That is the case
              * if the group has no holes (`has_holes`), `value_type` is trivially copyable and trivially move
              * constructible (so a copy one by one would also use the trivial move, not a constructor template), and the
-             * allocator has no `construct` and no `destroy` of its own, so that `std::allocator_traits` constructs with
-             * `std::construct_at` and destroys with `std::destroy_at`. A constant evaluation copies one by one. An
-             * insertion or an erase in the middle of a group copies no bytes itself: for such a type, the standard
-             * library can do the move assignments of `shifts_by_assignment` with one `std::memmove` (libstdc++ does).
-             *
-             * The allocator of metall, `metall::stl_allocator`, has its own `construct` and `destroy` up to metall
-             * 0.35, so a group in a metall datastore copies its values one by one. With a metall version whose
-             * `stl_allocator` has no `construct` and no `destroy`, a group copies trivially copyable values as bytes.
+             * allocator has no `construct` and no `destroy` of its own (`HasConstructOrDestroy`), so that
+             * `std::allocator_traits` constructs with `std::construct_at` and destroys with `std::destroy_at`. A
+             * constant evaluation copies one by one. An insertion or an erase in the middle of a group copies no bytes
+             * itself: for such a type, the standard library can do the move assignments of `shifts_by_assignment` with
+             * one `std::memmove`.
              */
             static constexpr bool copies_bytes = !has_holes && std::is_trivially_copyable_v<value_type> && std::is_trivially_move_constructible_v<value_type> && !HasConstructOrDestroy<Allocator, value_type>;
 
@@ -623,7 +620,7 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
                 if constexpr (copies_bytes) {
                     if !consteval {
-                        copy_values(values(), other.values(), other.nb_elements_);
+                        copy_bytes(values(), other.values(), other.nb_elements_);
                         nb_elements_ = other.nb_elements_;
                         return;
                     }
@@ -678,7 +675,7 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
                 if constexpr (copies_bytes) {
                     if !consteval {
-                        copy_values(values(), other.values(), other.nb_elements_);
+                        copy_bytes(values(), other.values(), other.nb_elements_);
                         nb_elements_ = other.nb_elements_;
                         return;
                     }
@@ -994,23 +991,12 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Copies `count` values from `source` to `target` with `std::memcpy`. The ranges do not overlap.
+             * Copies `count` values from `source` to `target` as bytes, with `std::memcpy`. The ranges do not overlap.
              */
-            static void copy_values(value_type *target, value_type const *source, size_type count) noexcept {
+            static void copy_bytes(value_type *target, value_type const *source, size_type count) noexcept {
                 static_assert(copies_bytes);
                 if (count > 0) {
                     std::memcpy(static_cast<void *>(target), static_cast<void const *>(source), count * sizeof(value_type));
-                }
-            }
-
-            /**
-             * Frees the storage of `capacity_values` values whose values were copied away as bytes. Their destructor
-             * is trivial, so nothing is destroyed.
-             */
-            static constexpr void deallocate_values(allocator_type &alloc, pointer values, size_type capacity_values) noexcept {
-                static_assert(copies_bytes);
-                if (capacity_values > 0) {
-                    allocator_traits::deallocate(alloc, values, capacity_values);
                 }
             }
 
@@ -1342,9 +1328,10 @@ namespace dice::sparse_map {
                 // does not throw from here on
                 if constexpr (copies_bytes) {
                     if !consteval {
-                        copy_values(raw_new_values, raw_values, offset);
-                        copy_values(raw_new_values + offset + 1, raw_values + offset, static_cast<size_type>(nb_elements_ - offset));
-                        deallocate_values(alloc, values_, capacity_);
+                        copy_bytes(raw_new_values, raw_values, offset);
+                        copy_bytes(raw_new_values + offset + 1, raw_values + offset, static_cast<size_type>(nb_elements_ - offset));
+                        // the values were copied as bytes and their destructor is trivial, so this only frees the storage
+                        destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
                         values_ = new_values;
                         capacity_ = new_capacity;
                         return;
