@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 #include <metall/metall.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -130,6 +131,33 @@ TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are stan
 
 TEST_CASE("map_slot is standard layout") {
     CHECK(std::is_standard_layout_v<dice::sparse_map::detail_sparse_hash::map_slot<std::uint64_t, std::uint64_t>>);
+}
+
+namespace {
+    /**
+     * `map_slot<Key, T>` has the size and the member offsets of `std::pair<Key, T>`, so a map stored in a
+     * datastore has the same bytes as one that stored its elements as `std::pair`.
+     */
+    template<typename Key, typename T>
+    void check_map_slot_has_the_layout_of_pair() {
+        using slot_t = dice::sparse_map::detail_sparse_hash::map_slot<Key, T>;
+        using pair_t = std::pair<Key, T>;
+        static_assert(sizeof(slot_t) == sizeof(pair_t));
+        static_assert(alignof(slot_t) == alignof(pair_t));
+
+        // `std::pair` is not standard layout by the standard, so its offsets are taken from an object
+        auto const pair = pair_t{};
+        auto const base = reinterpret_cast<char const *>(&pair);
+        CHECK(reinterpret_cast<char const *>(&pair.first) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, key)));
+        CHECK(reinterpret_cast<char const *>(&pair.second) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, value)));
+    }
+}  // namespace
+
+TEST_CASE("map_slot has the layout of std::pair") {
+    check_map_slot_has_the_layout_of_pair<std::uint64_t, std::uint64_t>();
+    check_map_slot_has_the_layout_of_pair<std::uint32_t, std::uint64_t>();
+    check_map_slot_has_the_layout_of_pair<std::uint64_t, std::uint8_t>();
+    check_map_slot_has_the_layout_of_pair<std::uint8_t, std::uint32_t>();
 }
 
 TEST_CASE("sizes") {
