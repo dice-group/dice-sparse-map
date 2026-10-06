@@ -13,6 +13,7 @@
 #include <iterator>
 #include <new>
 #include <ranges>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -51,13 +52,15 @@ namespace {
     }
 
     /// inserts the key `n` mapped to `n`
-    void insert(map_t &map, counter &counts, std::size_t n) {
-        map.try_emplace(key(counts, n), key(counts, n));
+    template<typename Map>
+    void insert(Map &map, counter &counts, std::size_t n) {
+        map.try_emplace(typename Map::key_type{n, counts}, typename Map::mapped_type{n, counts});
     }
 
     /// a map with room for `n` elements, so that no insertion rehashes it
-    map_t reserved_map(std::size_t n) {
-        auto map = map_t{};
+    template<typename Map = map_t>
+    Map reserved_map(std::size_t n) {
+        auto map = Map{};
         map.reserve(n);
         return map;
     }
@@ -77,10 +80,11 @@ namespace {
     }
 
     /// the keys of `map` that `find` reaches, among the keys below `searched_up_to`
-    std::vector<std::size_t> found_keys(map_t const &map, counter &counts, std::size_t searched_up_to) {
+    template<typename Map>
+    std::vector<std::size_t> found_keys(Map const &map, counter &counts, std::size_t searched_up_to) {
         std::vector<std::size_t> keys;
         for (std::size_t n = 0; n < searched_up_to; ++n) {
-            auto const it = map.find(key(counts, n));
+            auto const it = map.find(typename Map::key_type{n, counts});
             if (it != map.end()) {
                 keys.push_back(n);
             }
@@ -92,7 +96,8 @@ namespace {
      * Checks that every element of `map` is mapped to its key, and that `size`, `find` and iteration agree on the
      * elements among the keys below `searched_up_to`.
      */
-    void check_consistent(map_t const &map, counter &counts, std::size_t searched_up_to) {
+    template<typename Map>
+    void check_consistent(Map const &map, counter &counts, std::size_t searched_up_to) {
         bool values_right = true;
         for (auto const &entry : map) {
             values_right = values_right && entry.second.get() == entry.first.get();
@@ -395,10 +400,10 @@ TEST_CASE("an insertion into a copied group allocates storage of the exact size"
         }
         REQUIRE(live_bytes == bytes_of(map, 10));
 
-        // the copy has no holes, but the capacity of the source: 7 elements in storage for 10
+        // the copy has no holes and storage for its 7 elements only
         auto copy = map_t{map};
         REQUIRE(copy.bucket_count() == map.bucket_count());
-        CHECK(live_bytes == bytes_of(map, 10) + bytes_of(copy, 10));
+        CHECK(live_bytes == bytes_of(map, 10) + bytes_of(copy, 7));
 
         // an insertion into another bucket allocates storage for the 7 elements and the new one
         insert(copy, counts, 10);
@@ -769,4 +774,209 @@ TEST_CASE("a move with an unequal allocator copies a map with holes and leaves t
     CHECK(counts_1.allocations == counts_1.deallocations);
     CHECK(counts_2.allocations == counts_2.deallocations);
     CHECK(alive(counts) == 0);
+}
+
+namespace {
+    /// copies and moves of `fragile_copied_obj` that are left before one throws, -1 never throws
+    int transfers_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * `copied_obj` whose copy constructor throws `std::runtime_error` when `transfers_until_throw` reaches 0. Its move
+     * constructor copies and counts the same way.
+     */
+    struct fragile_copied_obj : copied_obj {
+        fragile_copied_obj(std::size_t n, counter &counts)
+            : copied_obj(n, counts) {
+        }
+
+        fragile_copied_obj(fragile_copied_obj const &other)
+            : copied_obj(count_down(other)) {
+        }
+
+        fragile_copied_obj(fragile_copied_obj &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
+            : copied_obj(count_down(other)) {
+        }
+
+        fragile_copied_obj &operator=(fragile_copied_obj const &) = default;
+        fragile_copied_obj &operator=(fragile_copied_obj &&) noexcept(false) = default;
+        ~fragile_copied_obj() = default;
+
+    private:
+        static copied_obj const &count_down(fragile_copied_obj const &other) {
+            if (transfers_until_throw >= 0 && 0 == transfers_until_throw--) {
+                throw std::runtime_error("fragile_copied_obj");
+            }
+            return other;
+        }
+    };
+
+    using fragile_map_t = throwing_map<fragile_copied_obj, fragile_copied_obj, bucket_hash, std::equal_to<counter::obj>, leak_checking_allocator<std::pair<fragile_copied_obj, fragile_copied_obj>>>;
+
+    /// inserts the key `n` mapped to `n` with the lvalues `k`, so that the copies into the map are the only transfers
+    void insert_from_lvalue(fragile_map_t &map, fragile_copied_obj const &k) {
+        map.try_emplace(k, k);
+    }
+}  // namespace
+
+// The bits of a bucket change after its value is constructed, and the new storage of a copying insertion or of a copy
+// is complete before the old one is touched. So a copy that throws leaves everything as it was. Each copy and move of
+// `fragile_copied_obj` counts, so the loops make every copy of the operation throw once.
+TEST_CASE("a copy that throws leaves a hole, a group with holes and the source of a copy as they were") {
+    auto counts = counter{};
+    {
+        auto map = reserved_map<fragile_map_t>(100);
+        for (std::size_t n = 0; n < 10; ++n) {
+            insert(map, counts, n);
+        }
+        CHECK(map.erase(fragile_copied_obj{3, counts}) == 1);
+        auto const keys = iterated_keys(map);
+        auto const bytes = live_bytes;
+        auto const blocks = live_blocks;
+
+        SUBCASE("into a hole: the key, then the mapped value") {
+            auto const k = fragile_copied_obj{3, counts};
+            auto const alive_before = alive(counts);
+            for (int const transfers : {0, 1}) {
+                transfers_until_throw = transfers;
+                CHECK_THROWS_AS(insert_from_lvalue(map, k), std::runtime_error);
+                transfers_until_throw = -1;
+                CHECK(iterated_keys(map) == keys);
+                CHECK(live_bytes == bytes);
+                CHECK(alive(counts) == alive_before);
+            }
+            // the hole is still there, its insertion allocates nothing
+            auto const bomb = bomb_after{0};
+            CHECK_NOTHROW(insert_from_lvalue(map, k));
+            CHECK(iterated_keys(map) == range(0, 10));
+            check_consistent(map, counts, 64);
+        }
+        SUBCASE("compaction: the 9 elements, then the new key and its mapped value") {
+            auto const k = fragile_copied_obj{20, counts};
+            auto const alive_before = alive(counts);
+            int transfers = 0;
+            for (;; ++transfers) {
+                REQUIRE(transfers <= 20);
+                transfers_until_throw = transfers;
+                try {
+                    insert_from_lvalue(map, k);
+                    transfers_until_throw = -1;
+                    break;
+                } catch (std::runtime_error const &) {
+                }
+                transfers_until_throw = -1;
+                CHECK(iterated_keys(map) == keys);
+                CHECK(live_bytes == bytes);
+                CHECK(live_blocks == blocks);
+                CHECK(alive(counts) == alive_before);
+            }
+            CHECK(transfers == 20);
+            CHECK(iterated_keys(map) == concat({range(0, 3), range(4, 10), {20}}));
+            check_consistent(map, counts, 64);
+        }
+        SUBCASE("a copy of the map: the 9 elements") {
+            auto const alive_before = alive(counts);
+            int transfers = 0;
+            for (;; ++transfers) {
+                REQUIRE(transfers <= 18);
+                transfers_until_throw = transfers;
+                try {
+                    auto const copy = fragile_map_t{map};
+                    transfers_until_throw = -1;
+                    CHECK(iterated_keys(copy) == keys);
+                    break;
+                } catch (std::runtime_error const &) {
+                }
+                transfers_until_throw = -1;
+                CHECK(alive(counts) == alive_before);
+                CHECK(live_blocks == blocks);
+                CHECK(live_bytes == bytes);
+            }
+            CHECK(transfers == 18);
+            CHECK(iterated_keys(map) == keys);
+            check_consistent(map, counts, 64);
+        }
+    }
+    CHECK(alive(counts) == 0);
+    CHECK(live_blocks == 0);
+}
+
+TEST_CASE("merge between maps with holes") {
+    auto counts = counter{};
+    {
+        auto target = reserved_map(100);
+        for (auto const n : concat({range(0, 10), range(64, 74)})) {
+            insert(target, counts, n);
+        }
+        // holes at the buckets 3 and 67 of the target
+        CHECK(target.erase(key(counts, 3)) == 1);
+        CHECK(target.erase(key(counts, 67)) == 1);
+        auto source = reserved_map(100);
+        for (std::size_t const n : {3, 4, 5, 6, 67, 70, 100}) {
+            insert(source, counts, n);
+        }
+        // holes at the buckets 4 and 6 of the source, between elements that stay
+        CHECK(source.erase(key(counts, 4)) == 1);
+        CHECK(source.erase(key(counts, 6)) == 1);
+
+        // 3 and 67 fill the holes of the target without an allocation, 100 needs one, 5 and 70 stay in the source
+        {
+            auto const bomb = bomb_after{1};
+            CHECK_NOTHROW(target.merge(source));
+        }
+        CHECK(iterated_keys(target) == concat({range(0, 10), range(64, 74), {100}}));
+        CHECK(iterated_keys(source) == std::vector<std::size_t>{5, 70});
+        check_consistent(target, counts, 128);
+        check_consistent(source, counts, 128);
+
+        // the other direction: the elements of the target fill the holes of the source, 3 the hole it left
+        source.merge(target);
+        CHECK(iterated_keys(source) == concat({range(0, 10), range(64, 74), {100}}));
+        CHECK(iterated_keys(target) == std::vector<std::size_t>{5, 70});
+        check_consistent(source, counts, 128);
+        check_consistent(target, counts, 128);
+    }
+    CHECK(alive(counts) == 0);
+    CHECK(live_blocks == 0);
+}
+
+// `nb_deleted_buckets_` decides when the clean-up rehash runs. `rehash(bucket_count())` returns at once if and only
+// if it is 0, so a rehash under `bomb_after{0}` shows that an insertion took the deleted mark of its bucket with it.
+TEST_CASE("an insertion into a hole or a former hole removes its deleted mark") {
+    auto counts = counter{};
+    {
+        auto map = reserved_map(100);
+        for (std::size_t n = 0; n < 10; ++n) {
+            insert(map, counts, n);
+        }
+        auto const nb_buckets = map.bucket_count();
+
+        // a hole, refilled in place
+        CHECK(map.erase(key(counts, 3)) == 1);
+        insert(map, counts, 3);
+        {
+            auto const bomb = bomb_after{0};
+            CHECK_NOTHROW(map.rehash(nb_buckets));
+        }
+
+        // a hole that a compaction turns into a deleted bucket without a slot, refilled by a copying insertion
+        CHECK(map.erase(key(counts, 3)) == 1);
+        insert(map, counts, 20);
+        insert(map, counts, 3);
+        {
+            auto const bomb = bomb_after{0};
+            CHECK_NOTHROW(map.rehash(nb_buckets));
+        }
+
+        // a group that freed its storage (group 1 with its only element erased), refilled
+        insert(map, counts, 64);
+        CHECK(map.erase(key(counts, 64)) == 1);
+        insert(map, counts, 64);
+        {
+            auto const bomb = bomb_after{0};
+            CHECK_NOTHROW(map.rehash(nb_buckets));
+        }
+        check_consistent(map, counts, 128);
+    }
+    CHECK(alive(counts) == 0);
+    CHECK(live_blocks == 0);
 }
