@@ -93,7 +93,7 @@ The inline elements move one by one, with the allocator of the container, in a m
 
 ## Iterators
 
-An iterator holds plain pointers, also with an allocator that uses fancy pointers: the group, the element and the end of the elements of the group. An iterator to an inline element has no group. To go to the next element, it moves to the next value in the values array, or to the first value of the next group that is not empty. For elements whose move constructor can throw, it holds the run of its element instead of the end: the number of elements in the slots right after it, up to the next hole, and the index after which the next run starts. It moves to the next slot while the run has elements, and otherwise asks the group for the next run, so it skips the holes. A group without holes is one run. An insertion or an erasure can invalidate it.
+An iterator holds plain pointers, also with an allocator that uses fancy pointers: the group, the element and the end of the elements of the group. The group of an iterator to an inline element is one static group without elements that is the last group, so that the end of the inline elements is the end of a last group. To go to the next element, it moves to the next value in the values array, or to the first value of the next group that is not empty. For elements whose move constructor can throw, it holds the run of its element instead of the end: the number of elements in the slots right after it, up to the next hole, and the index after which the next run starts. It moves to the next slot while the run has elements, and otherwise asks the group for the next run, so it skips the holes. A group without holes is one run. An insertion or an erasure can invalidate it.
 
 ## Standard layout
 

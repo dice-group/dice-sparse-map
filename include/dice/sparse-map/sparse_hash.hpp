@@ -642,6 +642,11 @@ namespace dice::sparse_map {
             constexpr sparse_array() noexcept = default;
 
             /**
+             * An empty group that is the last group if `last_bucket` is true.
+             */
+            constexpr explicit sparse_array(bool last_bucket) noexcept : last_array_(last_bucket) {}
+
+            /**
              * Allocates storage for `capacity` values. The allocator is const for the MoveInsertable requirement.
              */
             constexpr sparse_array(size_type capacity, Allocator const &const_alloc) : capacity_(capacity) {
@@ -1765,6 +1770,12 @@ namespace dice::sparse_map {
             using inline_counter_type = std::conditional_t<has_inline_group, std::uint8_t, unused_second_member>;
 
             /**
+             * The group of an iterator to an inline element: a group without elements that is the last group. So `++`
+             * on the last inline element ends like on the last element of a table.
+             */
+            inline static sparse_array inline_end_group{true};
+
+            /**
              * An inline element and the end of the inline elements, or two nullptr. `erase_inline_element`, which is
              * never inlined, returns it: two pointers come back in registers, where an iterator would pass through
              * memory.
@@ -1925,7 +1936,7 @@ namespace dice::sparse_map {
                     } else {
                         DICE_SPARSE_MAP_ASSERT(
                             slot_ != nullptr
-                            && ((has_inline_group && bucket_ == nullptr) || slot_end_ == bucket_->end())
+                            && ((has_inline_group && bucket_ == &inline_end_group) || slot_end_ == bucket_->end())
                         );
                         ++slot_;
 
@@ -1989,17 +2000,9 @@ namespace dice::sparse_map {
 
                 /**
                  * Without holes: moves to the first element of the next group that is not empty, or to the end. The
-                 * elements of an inline table have no group (`bucket_` is nullptr) and no next group.
+                 * group of the elements of an inline table is `inline_end_group`, the last group.
                  */
                 constexpr void to_next_group() noexcept {
-                    if constexpr (has_inline_group) {
-                        if (bucket_ == nullptr) {
-                            slot_ = nullptr;
-                            slot_end_ = nullptr;
-                            return;
-                        }
-                    }
-
                     do {
                         if (bucket_->last()) {
                             ++bucket_;
@@ -2213,7 +2216,8 @@ namespace dice::sparse_map {
                 if constexpr (has_inline_group) {
                     if (is_inline_) {
                         slot_type const *const slots = inline_slots();
-                        return nb_elements_ == 0 ? cend() : const_iterator(nullptr, slots, slots + nb_elements_);
+                        return nb_elements_ == 0 ? cend()
+                                                 : const_iterator(&inline_end_group, slots, slots + nb_elements_);
                     }
                 }
 
@@ -2443,7 +2447,7 @@ namespace dice::sparse_map {
                 if constexpr (has_inline_group) {
                     if (is_inline_) {
                         auto const next = erase_inline_element(static_cast<size_type>(pos.slot_ - inline_slots()));
-                        return iterator(nullptr, next.slot, next.end);
+                        return iterator(&inline_end_group, next.slot, next.end);
                     }
                 }
 
@@ -3628,7 +3632,7 @@ namespace dice::sparse_map {
                         return cend();
                     }
                     slot_type const *const slots = inline_slots();
-                    return const_iterator(nullptr, slots + offset, slots + nb_elements_);
+                    return const_iterator(&inline_end_group, slots + offset, slots + nb_elements_);
                 }
                 return find_in_table(key, hash);
             }
@@ -3866,7 +3870,7 @@ namespace dice::sparse_map {
 
             [[nodiscard]] constexpr iterator inline_iterator(size_type offset) noexcept {
                 slot_type *const slots = inline_slots();
-                return iterator(nullptr, slots + offset, slots + nb_elements_);
+                return iterator(&inline_end_group, slots + offset, slots + nb_elements_);
             }
 
             /**
