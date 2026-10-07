@@ -1786,9 +1786,8 @@ namespace dice::sparse_map {
 
                 std::size_t ibucket = bucket_for_hash(hash);
 
-                bool found_first_deleted_bucket = false;
-                std::size_t sparse_ibucket_first_deleted = 0;
-                array_size_type index_in_sparse_bucket_first_deleted = 0;
+                // the first deleted bucket on the probe sequence, `bucket_count_` if there is none
+                std::size_t ibucket_first_deleted = bucket_count_;
 
                 sparse_array *const raw_buckets = buckets_begin();
                 for (std::size_t probe = 0;;) {
@@ -1802,13 +1801,11 @@ namespace dice::sparse_map {
                             return {iterator(&bucket, slot), false};
                         }
                     } else if (bucket.has_deleted_value(index_in_sparse_bucket) && probe < bucket_count_) {
-                        if (!found_first_deleted_bucket) {
-                            found_first_deleted_bucket = true;
-                            sparse_ibucket_first_deleted = sparse_ibucket;
-                            index_in_sparse_bucket_first_deleted = index_in_sparse_bucket;
+                        if (ibucket_first_deleted == bucket_count_) {
+                            ibucket_first_deleted = ibucket;
                         }
-                    } else if (found_first_deleted_bucket) {
-                        return insert_new(hash, sparse_ibucket_first_deleted, index_in_sparse_bucket_first_deleted, true, std::forward<Args>(args)...);
+                    } else if (ibucket_first_deleted != bucket_count_) {
+                        return insert_new(hash, sparse_array::sparse_ibucket(ibucket_first_deleted), sparse_array::index_in_sparse_bucket(ibucket_first_deleted), true, std::forward<Args>(args)...);
                     } else {
                         return insert_new(hash, sparse_ibucket, index_in_sparse_bucket, false, std::forward<Args>(args)...);
                     }
