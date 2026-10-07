@@ -203,10 +203,11 @@ the harness and `free` gives them back to the kernel at once. All numbers are in
 cmake -G Ninja -B build-readme -DCMAKE_BUILD_TYPE=Release -DBUILD_README_BENCHMARKS=ON \
     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=conan_provider.cmake -DCMAKE_CXX_FLAGS=-march=x86-64-v2
 cmake --build build-readme
+# <image>: the image of the build (clang 20, cmake, ninja, conan)
 # one container per round, pinned to one core, metall datastores on a local disk
 for round in 1 2 3; do
     docker run --rm --cpuset-cpus=2 -v $PWD:/work -v /mnt/nvme/metall:/metall -e DSM_README_METALL_DIR=/metall \
-        tentris-dev-env bash /work/benchmarks/readme/run.sh -b /work/build-readme/benchmarks/readme/bin \
+        <image> bash /work/benchmarks/readme/run.sh -b /work/build-readme/benchmarks/readme/bin \
         -o /work/raw.txt -r $round
 done
 benchmarks/readme/collect.py raw.txt --csv doc/bench_readme.csv
@@ -317,7 +318,7 @@ How the timeline was taken:
 
 ```sh
 # build-readme as in "How the numbers were taken", then one container for the three rounds, pinned to one core
-docker run --rm --cpuset-cpus=2 -v $PWD:/work tentris-dev-env bash /work/benchmarks/readme/timeline.sh \
+docker run --rm --cpuset-cpus=2 -v $PWD:/work <image> bash /work/benchmarks/readme/timeline.sh \
     -b /work/build-readme/benchmarks/readme/bin/timeline -o /work/results/timeline -r "1 2 3"
 benchmarks/readme/plot_timeline.py results/timeline doc
 ```

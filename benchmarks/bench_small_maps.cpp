@@ -19,8 +19,8 @@ using namespace dice::sparse_map::bench;
 namespace sh = dice::sparse_map::sh;
 
 /*
- * Many small maps, the pattern of the edge maps of a hypertrie in tentris: every node holds one
- * small map from a key part to a child. The maps hold 1 to 16 `uint64_t -> uint64_t` entries.
+ * Many small maps, as in a tree whose nodes each hold one small map from a key part to a child.
+ * The maps hold 1 to 16 `uint64_t -> uint64_t` entries.
  */
 
 namespace {
