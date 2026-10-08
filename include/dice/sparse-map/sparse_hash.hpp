@@ -137,6 +137,15 @@ namespace dice::sparse_map {
         concept NotIterator = !std::is_convertible_v<K, Iterator> && !std::is_convertible_v<K, ConstIterator>;
 
         /**
+         * A type that meets the parts of the allocator requirements that the deduction guides check.
+         */
+        template<typename A>
+        concept AllocatorLike = requires (A &alloc, std::size_t n) {
+            typename A::value_type;
+            alloc.allocate(n);
+        };
+
+        /**
          * A type with two elements that `std::get` returns, like `std::pair`, `std::tuple` or `std::array`.
          */
         template<typename P>
@@ -145,6 +154,48 @@ namespace dice::sparse_map {
             std::get<0>(std::forward<P>(pair));
             std::get<1>(std::forward<P>(pair));
         };
+
+        /**
+         * What the deduction guides take as an input iterator: a copyable type that can be dereferenced and
+         * incremented. As in the standard library, a deduction guide with an `InputIt` parameter takes no part in
+         * overload resolution if `InputIt` is not an input iterator, for example an integer.
+         */
+        template<typename It>
+        concept LegacyInputIterator = std::copyable<It> && requires (It it) {
+            *it;
+            ++it;
+        };
+
+        /**
+         * A range whose elements convert to `T` (the exposition-only concept container-compatible-range of the
+         * standard library).
+         */
+        template<typename R, typename T>
+        concept ContainerCompatibleRange = std::ranges::input_range<R> && std::convertible_to<std::ranges::range_reference_t<R>, T>;
+
+        /*
+         * Helpers for the deduction guides, as in the standard library.
+         */
+        template<typename InputIt>
+        using iter_value_type_t = typename std::iterator_traits<InputIt>::value_type;
+
+        template<typename InputIt>
+        using iter_key_t = std::remove_const_t<std::tuple_element_t<0, iter_value_type_t<InputIt>>>;
+
+        template<typename InputIt>
+        using iter_mapped_t = std::tuple_element_t<1, iter_value_type_t<InputIt>>;
+
+        template<typename InputIt>
+        using iter_to_alloc_t = std::pair<iter_key_t<InputIt>, iter_mapped_t<InputIt>>;
+
+        template<std::ranges::input_range R>
+        using range_key_t = std::remove_const_t<std::tuple_element_t<0, std::ranges::range_value_t<R>>>;
+
+        template<std::ranges::input_range R>
+        using range_mapped_t = std::tuple_element_t<1, std::ranges::range_value_t<R>>;
+
+        template<std::ranges::input_range R>
+        using range_to_alloc_t = std::pair<range_key_t<R>, range_mapped_t<R>>;
 
         /**
          * `std::ceil(value)` as `std::size_t`, for a non-negative `value`. Saturates at the maximum of `std::size_t`.
@@ -968,6 +1019,9 @@ namespace dice::sparse_map {
             private:
                 friend struct sparse_hash;
 
+                template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
+                friend struct sparse_hash;
+
                 friend struct sparse_iterator<!is_const>;
 
                 using bucket_type = std::conditional_t<is_const, sparse_array const, sparse_array>;
@@ -1139,6 +1193,31 @@ namespace dice::sparse_map {
                   max_load_factor_(other.max_load_factor_) {
             }
 
+            /**
+             * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
+             * `other`, the elements are moved one by one, or copied if their move constructor can throw, and `other`
+             * is left empty.
+             */
+            sparse_hash(sparse_hash &&other, slot_allocator_type const &alloc)
+                : alloc_(alloc),
+                  hash_(std::move(other.hash_)),
+                  key_equal_(std::move(other.key_equal_)),
+                  bucket_count_(other.bucket_count_),
+                  nb_elements_(other.nb_elements_),
+                  nb_deleted_buckets_(other.nb_deleted_buckets_),
+                  load_threshold_rehash_(other.load_threshold_rehash_),
+                  load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
+                  max_load_factor_(other.max_load_factor_) {
+                if (allocator_is_always_equal || alloc_ == other.alloc_) {
+                    buckets_ = std::exchange(other.buckets_, nullptr);
+                    nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
+                } else {
+                    move_buckets_from(other);
+                    other.destroy_buckets();
+                }
+                other.reset_to_empty();
+            }
+
             sparse_hash &operator=(sparse_hash const &other) {
                 if (this == &other) {
                     return *this;
@@ -1284,6 +1363,23 @@ namespace dice::sparse_map {
                 return insert_impl(Access::key_of_value(value), std::move(value));
             }
 
+            /**
+             * Inserts a set element whose key compares equal to `key`. The element is constructed from `key`
+             * only if it is inserted.
+             */
+            template<typename K>
+            std::pair<iterator, bool> insert_key(K &&key) {
+                return insert_impl(key, std::forward<K>(key));
+            }
+
+            template<typename K>
+            iterator insert_key_hint(const_iterator hint, K &&key) {
+                if (hint != cend() && compare_keys(key_of(hint), key)) {
+                    return mutable_iterator(hint);
+                }
+                return insert_key(std::forward<K>(key)).first;
+            }
+
             template<typename V>
             iterator insert_hint(const_iterator hint, V &&value) {
                 if (hint != cend() && compare_keys(key_of(hint), Access::key_of_value(value))) {
@@ -1301,6 +1397,22 @@ namespace dice::sparse_map {
 
                 for (; first != last; ++first) {
                     emplace_value(*first);
+                }
+            }
+
+            /**
+             * Inserts every element of `range` whose key is not in the table yet.
+             */
+            template<std::ranges::input_range R>
+            void insert_range(R &&range) {
+                if constexpr (std::ranges::sized_range<R>) {
+                    reserve_for_insertion(static_cast<std::size_t>(std::ranges::size(range)));
+                } else if constexpr (std::ranges::forward_range<R>) {
+                    reserve_for_insertion(static_cast<std::size_t>(std::ranges::distance(range)));
+                }
+
+                for (auto &&element : range) {
+                    emplace_value(std::forward<decltype(element)>(element));
                 }
             }
 
@@ -1409,6 +1521,31 @@ namespace dice::sparse_map {
             template<typename K>
             size_type erase(K const &key, std::size_t hash) {
                 return erase_impl(key, hash);
+            }
+
+            /**
+             * Moves every element of `source` whose key is not in this table into this table, and erases it from
+             * `source`. An element is copied instead if its move constructor can throw. If an exception is thrown,
+             * the element that was being merged is still in `source`. A rehash of this table that throws can leave
+             * this table empty, see `rehash_impl`.
+             */
+            template<typename OtherHash>
+            void merge(OtherHash &source) {
+                for (auto it = source.begin(); it != source.end();) {
+                    auto &slot = *it.slot_;
+                    std::size_t const hash = hash_key(Access::key(slot));
+                    if (find_impl(Access::key(slot), hash) != cend()) {
+                        ++it;
+                        continue;
+                    }
+
+                    // `insert_new` constructs the new element before it rehashes, which would move the element out of
+                    // `source` before a rehash that can throw. So the table makes room first, and the insertion below
+                    // does not rehash.
+                    make_room_for_one_insertion();
+                    insert_impl_hashed(Access::key(slot), hash, std::move_if_noexcept(slot));
+                    it = source.erase(it);
+                }
             }
 
             void swap(sparse_hash &other) noexcept(std::is_nothrow_swappable_v<Hash>
@@ -1792,6 +1929,19 @@ namespace dice::sparse_map {
                 size_type const nb_free_buckets = load_threshold_rehash_ > size() ? load_threshold_rehash_ - size() : 0;
                 if (nb_elements_to_insert > 0 && nb_free_buckets < nb_elements_to_insert) {
                     reserve(size() + static_cast<size_type>(nb_elements_to_insert));
+                }
+            }
+
+            /**
+             * Grows the table, or removes the deleted-bucket markers, if the insertion of one new element would do
+             * it. After it, the insertion of one new element does not rehash.
+             */
+            void make_room_for_one_insertion() {
+                while (size() >= load_threshold_rehash_) {
+                    rehash_impl(next_bucket_count());
+                }
+                if (size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
+                    clear_deleted_buckets();
                 }
             }
 
