@@ -359,16 +359,6 @@ namespace dice::sparse_map {
             sparse_array() noexcept = default;
 
             /**
-             * For uses-allocator construction. The allocator is not stored.
-             */
-            sparse_array(std::allocator_arg_t, Allocator const & /*alloc*/) noexcept {
-            }
-
-            explicit sparse_array(bool last_bucket) noexcept
-                : last_array_(last_bucket) {
-            }
-
-            /**
              * Allocates storage for `capacity` values. The allocator is const for the MoveInsertable requirement.
              */
             sparse_array(size_type capacity, Allocator const &const_alloc)
@@ -445,16 +435,6 @@ namespace dice::sparse_map {
             }
 
             sparse_array &operator=(sparse_array const &) = delete;
-
-            sparse_array &operator=(sparse_array &&other) noexcept {
-                values_ = std::exchange(other.values_, nullptr);
-                bitmap_vals_ = std::exchange(other.bitmap_vals_, 0);
-                bitmap_deleted_vals_ = std::exchange(other.bitmap_deleted_vals_, 0);
-                nb_elements_ = std::exchange(other.nb_elements_, 0);
-                capacity_ = std::exchange(other.capacity_, 0);
-                last_array_ = other.last_array_;
-                return *this;
-            }
 
             ~sparse_array() noexcept {
                 // the owner must have called clear(Allocator &) before
@@ -584,17 +564,6 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(has_deleted_value(index));
 
                 return values() + offset;
-            }
-
-            void swap(sparse_array &other) noexcept {
-                using std::swap;
-
-                swap(values_, other.values_);
-                swap(bitmap_vals_, other.bitmap_vals_);
-                swap(bitmap_deleted_vals_, other.bitmap_deleted_vals_);
-                swap(nb_elements_, other.nb_elements_);
-                swap(capacity_, other.capacity_);
-                swap(last_array_, other.last_array_);
             }
 
         private:
