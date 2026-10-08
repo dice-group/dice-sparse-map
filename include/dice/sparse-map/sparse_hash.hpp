@@ -832,10 +832,6 @@ namespace dice::sparse_map {
          */
         template<typename Access, typename Hash, typename KeyEqual, typename Allocator, sh::sparsity sparsity, sh::allocation_failure AllocationFailure>
         struct sparse_hash {
-        private:
-            template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
-            friend struct sparse_hash;
-
         public:
             template<bool is_const>
             struct sparse_iterator;
@@ -883,9 +879,6 @@ namespace dice::sparse_map {
             template<bool is_const>
             struct sparse_iterator {
             private:
-                friend struct sparse_hash;
-
-                template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
                 friend struct sparse_hash;
 
                 friend struct sparse_iterator<!is_const>;

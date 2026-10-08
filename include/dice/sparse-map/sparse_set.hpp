@@ -102,9 +102,6 @@ namespace dice::sparse_map {
     private:
         using ht = detail_sparse_hash::sparse_hash<detail_sparse_hash::set_access<Key>, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>;
 
-        template<typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
-        friend struct sparse_set;
-
         /// heterogeneous lookup and erasure are enabled by `KeyEqual::is_transparent`
         static constexpr bool is_transparent = detail_sparse_hash::IsTransparent<KeyEqual>;
 
