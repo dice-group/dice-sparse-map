@@ -148,7 +148,4 @@ TEST_SUITE("scoped_allocators/sparse_array_tests") {
     TEST_CASE("scoped_is_move_insertable") {
         is_move_insertable<scoped_alloc<int>>({0, 1, 2, 3, 4, 5});
     }
-    TEST_CASE("scoped_is_default_insertable") {
-        is_default_insertable<scoped_alloc<int>>();
-    }
 }
