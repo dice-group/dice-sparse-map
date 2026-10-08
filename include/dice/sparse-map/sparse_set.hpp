@@ -208,7 +208,6 @@ namespace dice::sparse_map {
 
         sparse_set &operator=(std::initializer_list<value_type> ilist) {
             ht_.clear();
-            ht_.reserve(ilist.size());
             ht_.insert(ilist.begin(), ilist.end());
 
             return *this;
