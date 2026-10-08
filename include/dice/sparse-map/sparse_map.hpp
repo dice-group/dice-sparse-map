@@ -158,7 +158,7 @@ namespace dice::sparse_map {
             : sparse_map(ht::default_init_bucket_count, alloc) {
         }
 
-        template<detail_sparse_hash::LegacyInputIterator InputIt>
+        template<typename InputIt>
         sparse_map(InputIt first,
                    InputIt last,
                    size_type bucket_count = ht::default_init_bucket_count,
@@ -169,17 +169,17 @@ namespace dice::sparse_map {
             insert(first, last);
         }
 
-        template<detail_sparse_hash::LegacyInputIterator InputIt>
+        template<typename InputIt>
         sparse_map(InputIt first, InputIt last, size_type bucket_count, Allocator const &alloc)
             : sparse_map(first, last, bucket_count, Hash(), KeyEqual(), alloc) {
         }
 
-        template<detail_sparse_hash::LegacyInputIterator InputIt>
+        template<typename InputIt>
         sparse_map(InputIt first, InputIt last, size_type bucket_count, Hash const &hash, Allocator const &alloc)
             : sparse_map(first, last, bucket_count, hash, KeyEqual(), alloc) {
         }
 
-        template<detail_sparse_hash::LegacyInputIterator InputIt>
+        template<typename InputIt>
         sparse_map(InputIt first, InputIt last, Allocator const &alloc)
             : sparse_map(first, last, ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {
         }
@@ -301,7 +301,7 @@ namespace dice::sparse_map {
             return ht_.emplace_hint(hint, std::forward<P>(value));
         }
 
-        template<detail_sparse_hash::LegacyInputIterator InputIt>
+        template<typename InputIt>
         void insert(InputIt first, InputIt last) {
             ht_.insert(first, last);
         }

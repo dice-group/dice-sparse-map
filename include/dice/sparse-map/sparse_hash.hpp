@@ -137,17 +137,6 @@ namespace dice::sparse_map {
         concept NotIterator = !std::is_convertible_v<K, Iterator> && !std::is_convertible_v<K, ConstIterator>;
 
         /**
-         * What the constructors and `insert(first, last)` take as an input iterator: a copyable type that can be
-         * dereferenced and incremented. Looser than `std::input_iterator`, so that iterators without
-         * `std::iterator_traits` work, too.
-         */
-        template<typename It>
-        concept LegacyInputIterator = std::copyable<It> && requires (It it) {
-            *it;
-            ++it;
-        };
-
-        /**
          * `std::ceil(value)` as `std::size_t`, for a non-negative `value`. Saturates at the maximum of `std::size_t`.
          */
         [[nodiscard]] inline std::size_t ceil_to_size(float value) noexcept {
@@ -1211,7 +1200,7 @@ namespace dice::sparse_map {
                 return insert(std::forward<V>(value)).first;
             }
 
-            template<LegacyInputIterator InputIt>
+            template<typename InputIt>
             void insert(InputIt first, InputIt last) {
                 if constexpr (std::forward_iterator<InputIt>) {
                     reserve_for_insertion(static_cast<std::size_t>(std::distance(first, last)));
