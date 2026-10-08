@@ -1790,7 +1790,8 @@ namespace dice::sparse_map {
                 std::size_t ibucket_first_deleted = bucket_count_;
 
                 sparse_array *const raw_buckets = buckets_begin();
-                for (std::size_t probe = 0;;) {
+                std::size_t probe = 0;
+                while (true) {
                     std::size_t const sparse_ibucket = sparse_array::sparse_ibucket(ibucket);
                     auto const index_in_sparse_bucket = sparse_array::index_in_sparse_bucket(ibucket);
                     sparse_array &bucket = raw_buckets[sparse_ibucket];
@@ -1853,7 +1854,8 @@ namespace dice::sparse_map {
 
                 sparse_array *const raw_buckets = buckets_begin();
                 std::size_t ibucket = bucket_for_hash(hash);
-                for (std::size_t probe = 0;;) {
+                std::size_t probe = 0;
+                while (true) {
                     std::size_t const sparse_ibucket = sparse_array::sparse_ibucket(ibucket);
                     auto const index_in_sparse_bucket = sparse_array::index_in_sparse_bucket(ibucket);
                     sparse_array &bucket = raw_buckets[sparse_ibucket];
@@ -1884,7 +1886,8 @@ namespace dice::sparse_map {
 
                 sparse_array const *const raw_buckets = buckets_begin();
                 std::size_t ibucket = bucket_for_hash(hash);
-                for (std::size_t probe = 0;;) {
+                std::size_t probe = 0;
+                while (true) {
                     std::size_t const sparse_ibucket = sparse_array::sparse_ibucket(ibucket);
                     auto const index_in_sparse_bucket = sparse_array::index_in_sparse_bucket(ibucket);
                     sparse_array const &bucket = raw_buckets[sparse_ibucket];
@@ -1985,7 +1988,8 @@ namespace dice::sparse_map {
                 std::size_t ibucket = bucket_for_hash(hash_key(Access::key(slot_value)));
                 sparse_array *const raw_buckets = buckets_begin();
 
-                for (std::size_t probe = 0;;) {
+                std::size_t probe = 0;
+                while (true) {
                     std::size_t const sparse_ibucket = sparse_array::sparse_ibucket(ibucket);
                     auto const index_in_sparse_bucket = sparse_array::index_in_sparse_bucket(ibucket);
                     sparse_array &bucket = raw_buckets[sparse_ibucket];
