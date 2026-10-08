@@ -579,7 +579,11 @@ namespace dice::sparse_map {
                 }
             }
 
+            /**
+             * Not assignable: an assignment could not free the old storage, because the allocator is not stored.
+             */
             sparse_array &operator=(sparse_array const &) = delete;
+            sparse_array &operator=(sparse_array &&) = delete;
 
             constexpr ~sparse_array() noexcept {
                 // the owner must have called clear(Allocator &) before
