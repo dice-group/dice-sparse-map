@@ -328,6 +328,25 @@ TEST_SUITE("erase_if and merge") {
         CHECK(target.contains(5));
     }
 
+    TEST_CASE("merge of sets moves the elements whose keys are missing from a set of another type") {
+        auto target = sparse_set<std::string>{"a", "b"};
+        // another hash function, key equality, sparsity and allocation failure mode
+        auto source = sparse_set<std::string,
+                                 tests::test_hash<std::string>,
+                                 string_equal,
+                                 std::allocator<std::string>,
+                                 sh::sparsity::high,
+                                 sh::allocation_failure::throwing>{"b", "c", "d"};
+
+        target.merge(source);
+
+        CHECK(target.size() == 4);
+        CHECK(target.contains("c"));
+        CHECK(target.contains("d"));
+        CHECK(source.size() == 1);  // the duplicate stays in the source
+        CHECK(source.contains("b"));
+    }
+
     TEST_CASE("merge of a container into itself changes nothing, also when the next insertion would rehash") {
         // with the default max load factor, 1, 2, 4, 8 and so on elements fill a table up to its threshold
         for (int size : {1, 2, 4, 8, 16, 5}) {
