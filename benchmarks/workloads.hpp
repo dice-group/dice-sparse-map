@@ -167,6 +167,41 @@ namespace dice::sparse_map::bench {
     }
 
     /**
+     * Builds a few maps (or sets) of `Map` with 1, 2 and 3 elements, looks up each element and one
+     * key that is not there, and destroys the maps. Returns the number of keys found, 6 for a correct
+     * map. `make_map` makes the empty maps.
+     *
+     * The benchmarks call it outside of the timed runs, once for every container type they time.
+     * A container with its own code path for small maps then runs that path in the same
+     * translation unit as the timed workloads on large maps. So the compiler sees both paths in
+     * use and cannot compile the large-map code as if the small-map path never ran. The keys come
+     * from a `volatile` value, so the compiler cannot compute the result in advance.
+     */
+    template<typename Map, typename Factory = default_factory<Map>>
+    std::size_t use_small_maps(Factory const &make_map = Factory{}) {
+        static std::uint64_t volatile first_value = 4711;
+        std::uint64_t const first = first_value;
+        std::size_t found = 0;
+        for (std::size_t n = 1; n <= 3; ++n) {
+            Map map = make_map();
+            for (std::size_t i = 0; i < n; ++i) {
+                if constexpr (requires { typename Map::mapped_type; }) {
+                    map[key_for<Map>(first + i)] = i;
+                } else {
+                    map.insert(key_for<Map>(first + i));
+                }
+            }
+            for (std::size_t i = 0; i <= n; ++i) {
+                if (map.find(key_for<Map>(first + i)) != map.end()) {
+                    ++found;
+                }
+            }
+        }
+        ankerl::nanobench::doNotOptimizeAway(found);
+        return found;
+    }
+
+    /**
      * A mapped type of the size a real one has.
      *
      * With eight bytes of payload, the property that separates the table designs stays hidden.

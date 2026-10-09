@@ -5,6 +5,7 @@
 - **Memory efficient:** only about 20 % more memory than a `std::vector` of the same elements (15 to 30 % measured for elements of 16 bytes at 1 to 10 million entries, less for larger ones, see the [benchmarks](#benchmarks)). For elements with a `noexcept` move constructor, the peak during a build is at most about 5 % higher than the memory after it.
 - **mmap-able to disk:** supports persistent allocators like [metall](https://github.com/LLNL/metall) through fancy pointers. The map, the set and their elements are standard layout if the hash function, the key equality, the allocator, its pointer type, the key and the mapped type are.
 - **The interface of `std::unordered_map` and `std::unordered_set` up to C++26** (see the [differences](doc/usage.md#differences-compared-to-stdunordered_map)).
+- **Small maps without an allocation:** with an inline capacity, a map keeps its first elements in the map object (see [small maps](doc/usage.md#small-maps)).
 
 Compromises:
 

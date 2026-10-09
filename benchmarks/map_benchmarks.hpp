@@ -64,6 +64,7 @@ namespace dice::sparse_map::bench {
     template<typename Map, typename Sizes, typename Source>
     void bench_all(ankerl::nanobench::Bench &bench, std::string_view name, Source const &source) {
         auto const make_map = [&source] { return source.template make<Map>(); };
+        CHECK(use_small_maps<Map>(make_map) == 6);
         bench.run(std::format("{} iterate while adding then removing", name), [&] {
             CHECK(iterate<Map, Sizes::iterate_elements>(make_map) == Sizes::iterate_checksum);
         });
@@ -154,6 +155,9 @@ namespace dice::sparse_map::bench {
         with_sizes<find_all_full, find_all_quick>([&]<typename Sizes>() {
             using int_map = typename Family::template map<std::uint64_t, std::size_t>;
             using str_map = typename Family::template map<std::string, std::size_t>;
+
+            CHECK(use_small_maps<int_map>([&source] { return source.template make<int_map>(); }) == 6);
+            CHECK(use_small_maps<str_map>([&source] { return source.template make<str_map>(); }) == 6);
 
             ankerl::nanobench::Bench bench;
             bench.title(std::format("find_all {}", container));

@@ -1,4 +1,5 @@
 #include "common.hpp"
+#include "workloads.hpp"
 
 #include <doctest/doctest.h>
 #include <nanobench.h>
@@ -43,6 +44,8 @@ namespace {
     void bench_find(std::string_view container) {
         static constexpr std::size_t num_total = 4;
         static constexpr std::size_t num_finds_per_iter = Sizes::num_finds_per_insert * num_total;
+
+        CHECK(use_small_maps<Map>() == 6);
 
         auto total = std::chrono::steady_clock::duration();
         for (std::size_t num_found = 0; num_found < 5; ++num_found) {

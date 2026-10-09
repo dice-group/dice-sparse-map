@@ -85,6 +85,37 @@ namespace {
     using plain_map = sparse_map<int, int>;
     using plain_set = sparse_set<int>;
 
+    /// with an inline group: its elements move one by one, which cannot throw
+    using inline_map = sparse_map<
+        int,
+        int,
+        tests::test_hash<int>,
+        std::equal_to<int>,
+        std::allocator<std::pair<int, int>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        4
+    >;
+    using inline_set = sparse_set<
+        int,
+        tests::test_hash<int>,
+        std::equal_to<int>,
+        std::allocator<int>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        4
+    >;
+    using inline_unequal_map = sparse_map<
+        int,
+        int,
+        tests::test_hash<int>,
+        std::equal_to<int>,
+        pmr_like_allocator<std::pair<int, int>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        4
+    >;
+
     using throwing_hash_map = sparse_map<int, int, throwing_hash>;
     using throwing_hash_set = sparse_set<int, throwing_hash>;
 
@@ -105,14 +136,14 @@ namespace {
     template<typename Container>
     struct with_throwing_allocation_failure;
 
-    template<typename K, typename T, typename H, typename E, typename A, sh::sparsity P>
-    struct with_throwing_allocation_failure<sparse_map<K, T, H, E, A, P, sh::allocation_failure::terminating>> {
-        using type = sparse_map<K, T, H, E, A, P, sh::allocation_failure::throwing>;
+    template<typename K, typename T, typename H, typename E, typename A, sh::sparsity P, std::size_t C>
+    struct with_throwing_allocation_failure<sparse_map<K, T, H, E, A, P, sh::allocation_failure::terminating, C>> {
+        using type = sparse_map<K, T, H, E, A, P, sh::allocation_failure::throwing, C>;
     };
 
-    template<typename K, typename H, typename E, typename A, sh::sparsity P>
-    struct with_throwing_allocation_failure<sparse_set<K, H, E, A, P, sh::allocation_failure::terminating>> {
-        using type = sparse_set<K, H, E, A, P, sh::allocation_failure::throwing>;
+    template<typename K, typename H, typename E, typename A, sh::sparsity P, std::size_t C>
+    struct with_throwing_allocation_failure<sparse_set<K, H, E, A, P, sh::allocation_failure::terminating, C>> {
+        using type = sparse_set<K, H, E, A, P, sh::allocation_failure::throwing, C>;
     };
 
     /**
@@ -157,6 +188,9 @@ namespace {
 
 TYPE_TO_STRING_AS("sparse_map<int, int>", plain_map);
 TYPE_TO_STRING_AS("sparse_set<int>", plain_set);
+TYPE_TO_STRING_AS("sparse_map<int, int, ..., 4>", inline_map);
+TYPE_TO_STRING_AS("sparse_set<int, ..., 4>", inline_set);
+TYPE_TO_STRING_AS("sparse_map<int, int, ..., pmr_like_allocator, ..., 4>", inline_unequal_map);
 TYPE_TO_STRING_AS("sparse_map<int, int, throwing_hash>", throwing_hash_map);
 TYPE_TO_STRING_AS("sparse_set<int, throwing_hash>", throwing_hash_set);
 TYPE_TO_STRING_AS("sparse_map<int, int, ..., pmr_like_allocator>", unequal_map);
@@ -170,7 +204,10 @@ TEST_CASE_TEMPLATE(
     plain_map,
     plain_set,
     unequal_map,
-    unequal_set
+    unequal_set,
+    inline_map,
+    inline_set,
+    inline_unequal_map
 ) {
     CHECK(std::is_nothrow_move_constructible_v<container_t>);
 }
@@ -198,7 +235,9 @@ TEST_CASE_TEMPLATE(
     "move assignment is noexcept when the allocator is always equal and the functors cannot throw",
     container_t,
     plain_map,
-    plain_set
+    plain_set,
+    inline_map,
+    inline_set
 ) {
     CHECK(std::is_nothrow_move_assignable_v<container_t>);
 }
@@ -228,7 +267,9 @@ TEST_CASE_TEMPLATE(
     "swap is noexcept when the allocator is always equal and the functors cannot throw",
     container_t,
     plain_map,
-    plain_set
+    plain_set,
+    inline_map,
+    inline_set
 ) {
     CHECK(noexcept(std::declval<container_t &>().swap(std::declval<container_t &>())));
     CHECK(std::is_nothrow_swappable_v<container_t>);
@@ -252,7 +293,9 @@ TEST_CASE_TEMPLATE(
     throwing_hash_map,
     throwing_hash_set,
     unequal_map,
-    unequal_set
+    unequal_set,
+    inline_map,
+    inline_set
 ) {
     CHECK(noexcept(std::declval<container_t &>().clear()));
     CHECK(noexcept(std::declval<container_t &>().erase(std::declval<typename container_t::iterator>())));
@@ -293,7 +336,10 @@ TEST_CASE_TEMPLATE(
     throwing_hash_map,
     throwing_hash_set,
     unequal_map,
-    unequal_set
+    unequal_set,
+    inline_map,
+    inline_set,
+    inline_unequal_map
 ) {
     using throwing_t = typename with_throwing_allocation_failure<container_t>::type;
     CHECK(noexcept_specification<container_t>() == noexcept_specification<throwing_t>());

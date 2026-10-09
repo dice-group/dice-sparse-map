@@ -1304,15 +1304,46 @@ TEST_SUITE("test_sparse_map") {
         CHECK(map.at(0) == original);
     }
 
+    TEST_CASE("a table with buckets has at least one full group of 64 buckets") {
+        auto map = dice::sparse_map::sparse_map<int, int, identity_hash<int>>{};
+        CHECK(map.bucket_count() == 0);
+        map.try_emplace(1, 1);
+        CHECK(map.bucket_count() == 64);
+        // the threshold of 64 buckets at the maximum load factor 0.5 is 32, so 32 elements need no growth
+        for (int key = 2; key <= 32; ++key) {
+            map.try_emplace(key, key);
+        }
+        CHECK(map.bucket_count() == 64);
+        map.try_emplace(33, 33);
+        CHECK(map.bucket_count() == 128);
+
+        auto reserved = dice::sparse_map::sparse_map<int, int, identity_hash<int>>{};
+        reserved.reserve(1);
+        CHECK(reserved.bucket_count() == 64);
+        reserved.reserve(32);
+        CHECK(reserved.bucket_count() == 64);
+        reserved.reserve(33);
+        CHECK(reserved.bucket_count() == 128);
+        auto constructed = dice::sparse_map::sparse_map<int, int, identity_hash<int>>(2);
+        CHECK(constructed.bucket_count() == 64);
+        constructed.rehash(3);
+        CHECK(constructed.bucket_count() == 64);
+        constructed.rehash(0);
+        CHECK(constructed.bucket_count() == 0);
+    }
+
     TEST_CASE("try_emplace with a mapped value that refers to an element, when the insertion grows the table") {
         auto map = dice::sparse_map::sparse_map<int, std::string, identity_hash<int>>{};
         auto const original = std::string(100, 'x');
-        map.try_emplace(1, original);
-        REQUIRE(map.bucket_count() == 2); // the threshold is 1, so the next insertion grows the table
+        for (int key = 1; key <= 32; ++key) {
+            map.try_emplace(key, original);
+        }
+        REQUIRE(map.bucket_count() == 64); // the threshold is 32, so the next insertion grows the table
 
-        map.try_emplace(5, map.at(1));
+        map.try_emplace(100, map.at(1));
 
-        CHECK(map.bucket_count() == 4);
+        CHECK(map.bucket_count() == 128);
+        CHECK(map.at(100) == original);
         CHECK(map.at(5) == original);
         CHECK(map.at(1) == original);
     }

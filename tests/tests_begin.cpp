@@ -181,6 +181,60 @@ TEST_CASE_TEMPLATE("begin follows the first group that holds an element", T, std
     check_begin(map, std::nullopt);
 }
 
+// The inline group has no group index: `begin()` of an inline map is its first inline element. The move into an
+// allocated group sets the first non-empty group to group 0, and to the number of groups for an empty group.
+TEST_CASE("begin of a map with an inline group, inline, after the move into an allocated group, and back") {
+    using inline_map = sparse_map<
+        std::size_t,
+        std::size_t,
+        fragile_bucket_hash,
+        std::equal_to<std::size_t>,
+        std::allocator<std::pair<std::size_t, std::size_t>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        2
+    >;
+    auto map = inline_map{};
+    check_begin(map, std::nullopt);
+    insert(map, 9);
+    insert(map, 5);
+    check_begin(map, 5);
+    insert(map, 7); // moves the elements into an allocated group
+    REQUIRE(map.bucket_count() == 64);
+    check_begin(map, 5);
+    map.erase(5);
+    check_begin(map, 7);
+    // the buckets 8, 11 and 14 of 64 buckets, after bucket 7
+    for (std::size_t const n : {72, 75, 78}) {
+        insert(map, n);
+    }
+    check_begin(map, 7);
+    map.erase(7);
+    map.erase(9);
+    check_begin(map, 72);
+
+    auto empty_group = inline_map{};
+    empty_group.rehash(10); // an empty map gets an allocated group of 64 buckets
+    REQUIRE(empty_group.bucket_count() == 64);
+    check_begin(empty_group, std::nullopt);
+    insert(empty_group, 3);
+    check_begin(empty_group, 3);
+    empty_group.erase(3);
+    empty_group.rehash(0); // an empty table without buckets is inline again
+    REQUIRE(empty_group.bucket_count() == 0);
+    check_begin(empty_group, std::nullopt);
+    insert(empty_group, 4);
+    check_begin(empty_group, 4);
+
+    // `reserve` moves the inline elements into an allocated group without an insertion after it
+    auto reserved = inline_map{};
+    insert(reserved, 9);
+    insert(reserved, 5);
+    reserved.reserve(3);
+    REQUIRE(reserved.bucket_count() == 64);
+    check_begin(reserved, 5);
+}
+
 TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, std::size_t, copied_number) {
     using map_t = map_of<T>;
 

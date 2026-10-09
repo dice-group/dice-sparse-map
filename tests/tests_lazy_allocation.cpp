@@ -23,18 +23,28 @@ namespace {
     using dice::sparse_map::tests::counting_allocator;
     using dice::sparse_map::tests::num_allocations;
 
-    template<sh::sparsity Sparsity>
+    template<sh::sparsity Sparsity, std::size_t inline_capacity = 0>
     using counted_map = sparse_map<
         int,
         int,
         tests::test_hash<int>,
         std::equal_to<int>,
         counting_allocator<std::pair<int, int>>,
-        Sparsity
+        Sparsity,
+        sh::allocation_failure::terminating,
+        inline_capacity
     >;
 
-    template<sh::sparsity Sparsity>
-    using counted_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<int>, Sparsity>;
+    template<sh::sparsity Sparsity, std::size_t inline_capacity = 0>
+    using counted_set = sparse_set<
+        int,
+        tests::test_hash<int>,
+        std::equal_to<int>,
+        counting_allocator<int>,
+        Sparsity,
+        sh::allocation_failure::terminating,
+        inline_capacity
+    >;
 
     /// the sparsity levels, with `test_hash` and an allocator that counts
     using counted_containers = std::tuple<
@@ -46,6 +56,21 @@ namespace {
         counted_set<sh::sparsity::low>
     >;
 
+    /// containers with an inline capacity of 4
+    using inline_containers = std::tuple<counted_map<sh::sparsity::medium, 4>, counted_set<sh::sparsity::high, 4>>;
+
+    /// the containers of `counted_containers` and of `inline_containers`
+    using all_containers = std::tuple<
+        counted_map<sh::sparsity::high>,
+        counted_map<sh::sparsity::medium>,
+        counted_map<sh::sparsity::low>,
+        counted_set<sh::sparsity::high>,
+        counted_set<sh::sparsity::medium>,
+        counted_set<sh::sparsity::low>,
+        counted_map<sh::sparsity::medium, 4>,
+        counted_set<sh::sparsity::high, 4>
+    >;
+
 } // namespace
 
 TYPE_TO_STRING_AS("map<high>", counted_map<sh::sparsity::high>);
@@ -54,6 +79,8 @@ TYPE_TO_STRING_AS("map<low>", counted_map<sh::sparsity::low>);
 TYPE_TO_STRING_AS("set<high>", counted_set<sh::sparsity::high>);
 TYPE_TO_STRING_AS("set<medium>", counted_set<sh::sparsity::medium>);
 TYPE_TO_STRING_AS("set<low>", counted_set<sh::sparsity::low>);
+TYPE_TO_STRING_AS("map<medium, 4>", counted_map<sh::sparsity::medium, 4>);
+TYPE_TO_STRING_AS("set<high, 4>", counted_set<sh::sparsity::high, 4>);
 
 TEST_CASE_TEMPLATE_DEFINE("a default constructed container allocates nothing", container_t, default_construction) {
     auto const before = num_allocations;
@@ -64,7 +91,7 @@ TEST_CASE_TEMPLATE_DEFINE("a default constructed container allocates nothing", c
     }
     CHECK(num_allocations == before);
 }
-TEST_CASE_TEMPLATE_APPLY(default_construction, counted_containers);
+TEST_CASE_TEMPLATE_APPLY(default_construction, all_containers);
 
 TEST_CASE_TEMPLATE_DEFINE(
     "a container constructed with a bucket count of 0 allocates nothing",
@@ -82,7 +109,7 @@ TEST_CASE_TEMPLATE_DEFINE(
     }
     CHECK(num_allocations == before);
 }
-TEST_CASE_TEMPLATE_APPLY(zero_bucket_count, counted_containers);
+TEST_CASE_TEMPLATE_APPLY(zero_bucket_count, all_containers);
 
 TEST_CASE_TEMPLATE_DEFINE("an empty container answers queries without allocating", container_t, empty_queries) {
     auto container = container_t{};
@@ -108,7 +135,7 @@ TEST_CASE_TEMPLATE_DEFINE("an empty container answers queries without allocating
     CHECK(num_allocations == before);
     CHECK(container.bucket_count() == 0);
 }
-TEST_CASE_TEMPLATE_APPLY(empty_queries, counted_containers);
+TEST_CASE_TEMPLATE_APPLY(empty_queries, all_containers);
 
 // The counter of the tests above sees the allocations of the container: the first insert allocates.
 TEST_CASE_TEMPLATE_DEFINE("the first insert allocates the buckets", container_t, first_insert) {
@@ -121,13 +148,39 @@ TEST_CASE_TEMPLATE_DEFINE("the first insert allocates the buckets", container_t,
 }
 TEST_CASE_TEMPLATE_APPLY(first_insert, counted_containers);
 
+// With an inline capacity, the first insertions that fit into the inline group allocate nothing.
+TEST_CASE_TEMPLATE_DEFINE(
+    "the first insert that does not fit inline allocates the buckets",
+    container_t,
+    first_insert_inline
+) {
+    auto container = container_t{};
+    auto const before = num_allocations;
+    for (int key = 0; key < 4; ++key) {
+        tests::insert_one(container, key);
+    }
+    CHECK(num_allocations == before);
+    CHECK(container.bucket_count() == 64);
+    for (int key = 0; key < 4; ++key) {
+        CHECK(container.contains(key));
+    }
+
+    tests::insert_one(container, 4);
+    CHECK(num_allocations > before);
+    CHECK(container.bucket_count() == 64);
+    for (int key = 0; key <= 4; ++key) {
+        CHECK(container.contains(key));
+    }
+}
+TEST_CASE_TEMPLATE_APPLY(first_insert_inline, inline_containers);
+
 TEST_CASE_TEMPLATE_DEFINE("an explicit bucket count is allocated up front", container_t, explicit_bucket_count) {
     auto const before = num_allocations;
     auto const container = container_t(100);
     CHECK(num_allocations > before);
     CHECK(container.bucket_count() >= 100);
 }
-TEST_CASE_TEMPLATE_APPLY(explicit_bucket_count, counted_containers);
+TEST_CASE_TEMPLATE_APPLY(explicit_bucket_count, all_containers);
 
 TEST_CASE_TEMPLATE_DEFINE("a copy of an empty container allocates nothing", container_t, empty_copy) {
     auto const source = container_t{};
@@ -137,7 +190,7 @@ TEST_CASE_TEMPLATE_DEFINE("a copy of an empty container allocates nothing", cont
     CHECK(copy.bucket_count() == 0);
     CHECK(copy.empty());
 }
-TEST_CASE_TEMPLATE_APPLY(empty_copy, counted_containers);
+TEST_CASE_TEMPLATE_APPLY(empty_copy, all_containers);
 
 TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", container_t, moved_from) {
     auto source = container_t{};
@@ -156,7 +209,7 @@ TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", c
     tests::insert_one(source, 1);
     CHECK(source.contains(1));
 }
-TEST_CASE_TEMPLATE_APPLY(moved_from, counted_containers);
+TEST_CASE_TEMPLATE_APPLY(moved_from, all_containers);
 
 // `reserve(n)` once per batch of insertions is a common pattern. It must not rebuild the table when the table has room.
 TEST_CASE_TEMPLATE_DEFINE(
@@ -179,4 +232,4 @@ TEST_CASE_TEMPLATE_DEFINE(
     CHECK(container.bucket_count() == bucket_count);
     CHECK(container.size() == 50);
 }
-TEST_CASE_TEMPLATE_APPLY(reserve_with_room, counted_containers);
+TEST_CASE_TEMPLATE_APPLY(reserve_with_room, all_containers);
