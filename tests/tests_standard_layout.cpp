@@ -7,9 +7,12 @@
 #include <doctest/doctest.h>
 #include <metall/metall.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -17,7 +20,8 @@
  * A container that is stored in a metall datastore must be standard layout. These tests check
  * `sparse_map`, `sparse_set` and their bucket group `sparse_array` with `std::allocator`, with an
  * allocator that hands out `boost::interprocess::offset_ptr`, and with the metall allocator, for the
- * three sparsity levels.
+ * three sparsity levels. A map stores its elements as `map_slot`, which is standard layout if the key
+ * and the mapped type are.
  */
 namespace {
     using namespace dice::sparse_map;
@@ -125,6 +129,61 @@ TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are stan
                    set_of<metall_allocator, low>) {
     MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
     CHECK(std::is_standard_layout_v<container_t>);
+}
+
+TEST_CASE("map_slot is standard layout") {
+    CHECK(std::is_standard_layout_v<dice::sparse_map::detail_sparse_hash::map_slot<std::uint64_t, std::uint64_t>>);
+}
+
+namespace {
+    /**
+     * `map_slot<Key, T>` has the size and the member offsets of `std::pair<Key, T>`, so a map stored in a
+     * datastore has the same bytes as one that stored its elements as `std::pair`.
+     */
+    template<typename Key, typename T>
+    void check_map_slot_has_the_layout_of_pair() {
+        using slot_t = dice::sparse_map::detail_sparse_hash::map_slot<Key, T>;
+        using pair_t = std::pair<Key, T>;
+        static_assert(sizeof(slot_t) == sizeof(pair_t));
+        static_assert(alignof(slot_t) == alignof(pair_t));
+
+        // `std::pair` is not standard layout by the standard, so its offsets are taken from an object
+        auto const pair = pair_t{};
+        auto const base = reinterpret_cast<char const *>(&pair);
+        CHECK(reinterpret_cast<char const *>(&pair.first) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, key)));
+        CHECK(reinterpret_cast<char const *>(&pair.second) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, value)));
+    }
+}  // namespace
+
+TEST_CASE("map_slot has the layout of std::pair") {
+    check_map_slot_has_the_layout_of_pair<std::uint64_t, std::uint64_t>();
+    check_map_slot_has_the_layout_of_pair<std::uint32_t, std::uint64_t>();
+    check_map_slot_has_the_layout_of_pair<std::uint64_t, std::uint8_t>();
+    check_map_slot_has_the_layout_of_pair<std::uint8_t, std::uint32_t>();
+}
+
+namespace {
+    /**
+     * Has two elements by `std::tuple_size`, but `std::get` does not take it.
+     */
+    struct tuple_size_without_get {
+        int first;
+        int second;
+    };
+}  // namespace
+
+template<>
+struct std::tuple_size<tuple_size_without_get> : std::integral_constant<std::size_t, 2> {};
+
+TEST_CASE("map_slot is constructible from types with two elements that std::get returns") {
+    using slot_t = dice::sparse_map::detail_sparse_hash::map_slot<int, int>;
+    using alloc_t = std::allocator<slot_t>;
+    static_assert(std::is_constructible_v<slot_t, std::pair<int, int>>);
+    static_assert(std::is_constructible_v<slot_t, std::tuple<int, int>>);
+    static_assert(std::is_constructible_v<slot_t, std::array<int, 2>>);
+    static_assert(std::is_constructible_v<slot_t, std::allocator_arg_t, alloc_t const &, std::pair<int, int>>);
+    static_assert(!std::is_constructible_v<slot_t, tuple_size_without_get>);
+    static_assert(!std::is_constructible_v<slot_t, std::allocator_arg_t, alloc_t const &, tuple_size_without_get>);
 }
 
 TEST_CASE("sizes") {
