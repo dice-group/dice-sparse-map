@@ -37,17 +37,13 @@ namespace dice::sparse_map::tests {
     struct copied_value {
         T value{};
 
-        constexpr explicit copied_value(T v) noexcept
-            : value(v) {
-        }
+        constexpr explicit copied_value(T v) noexcept : value(v) {}
 
-        constexpr copied_value(copied_value const &other) noexcept
-            : value(other.value) {
-        }
+        constexpr copied_value(copied_value const &other) noexcept : value(other.value) {}
 
-        constexpr copied_value(copied_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
-        }
+        constexpr copied_value(copied_value &&other) noexcept(false) // NOLINT(performance-noexcept-move-constructor)
+            :
+            value(other.value) {}
 
         constexpr copied_value &operator=(copied_value const &) = default;
         constexpr copied_value &operator=(copied_value &&) = default;
@@ -112,20 +108,27 @@ namespace dice::sparse_map::tests {
      * move-only types, `DiceHash` does not compile.
      */
     template<typename Key>
-    inline constexpr bool hashed_by_dice_hash = std::is_arithmetic_v<Key> || std::is_pointer_v<Key> || std::is_same_v<Key, std::string>;
+    inline constexpr bool hashed_by_dice_hash = std::is_arithmetic_v<Key>
+        || std::is_pointer_v<Key>
+        || std::is_same_v<Key, std::string>;
 
     template<typename First, typename Second>
-    inline constexpr bool hashed_by_dice_hash<std::pair<First, Second>> = hashed_by_dice_hash<First> && hashed_by_dice_hash<Second>;
+    inline constexpr bool hashed_by_dice_hash<std::pair<First, Second>> = hashed_by_dice_hash<First>
+        && hashed_by_dice_hash<Second>;
 
     /**
      * The default hash function of the containers if it hashes `Key`, otherwise `test_hash<Key>`.
      */
     template<typename Key>
-    using default_or_test_hash = std::conditional_t<hashed_by_dice_hash<Key>,
-                                                    detail_sparse_hash::default_hash<Key>,
-                                                    test_hash<Key>>;
+    using default_or_test_hash =
+        std::conditional_t<hashed_by_dice_hash<Key>, detail_sparse_hash::default_hash<Key>, test_hash<Key>>;
 
-    template<typename Key, typename T, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
+    template<
+        typename Key,
+        typename T,
+        typename Hash = default_or_test_hash<Key>,
+        typename KeyEqual = std::equal_to<Key>
+    >
     using map_medium = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
@@ -135,10 +138,12 @@ namespace dice::sparse_map::tests {
     using map_low = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::low>;
 
     template<typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_std_hash = sparse_map<Key, T, marked_avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
+    using map_std_hash =
+        sparse_map<Key, T, marked_avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_offset_ptr = sparse_map<Key, T, Hash, KeyEqual, offset_ptr_allocator<std::pair<Key, T>>, sh::sparsity::high>;
+    using map_offset_ptr =
+        sparse_map<Key, T, Hash, KeyEqual, offset_ptr_allocator<std::pair<Key, T>>, sh::sparsity::high>;
 
     template<typename Key, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using set_medium = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::sparsity::medium>;
@@ -164,15 +169,17 @@ namespace dice::sparse_map::tests {
      * allocation throws the exception of the allocator. The tests that make an allocation fail and expect the
      * exception use it.
      */
-    template<typename Key,
-             typename T,
-             typename Hash = detail_sparse_hash::default_hash<Key>,
-             typename KeyEqual = std::equal_to<Key>,
-             typename Allocator = std::allocator<std::pair<Key, T>>,
-             sh::sparsity Sparsity = sh::sparsity::medium>
+    template<
+        typename Key,
+        typename T,
+        typename Hash = detail_sparse_hash::default_hash<Key>,
+        typename KeyEqual = std::equal_to<Key>,
+        typename Allocator = std::allocator<std::pair<Key, T>>,
+        sh::sparsity Sparsity = sh::sparsity::medium
+    >
     using throwing_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, sh::allocation_failure::throwing>;
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
 /**
  * Defines a doctest template test case named `name` with the type parameter `map_t`. It runs once
@@ -180,27 +187,31 @@ namespace dice::sparse_map::tests {
  * `Key, T` and optionally `Hash, KeyEqual`.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_MAP(name, ...)                                                \
-    TEST_CASE_TEMPLATE(name,                                                    \
-                       map_t,                                                   \
-                       ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,      \
-                       ::dice::sparse_map::tests::map_high<__VA_ARGS__>,        \
-                       ::dice::sparse_map::tests::map_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
+#define TEST_CASE_MAP(name, ...)                               \
+    TEST_CASE_TEMPLATE(                                        \
+        name,                                                  \
+        map_t,                                                 \
+        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,    \
+        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,      \
+        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,       \
+        ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,  \
+        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__> \
+    )
 
 /**
  * Like `TEST_CASE_MAP`, for sets. The type parameter is `set_t`, the remaining arguments are
  * `Key` and optionally `Hash, KeyEqual`.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_SET(name, ...)                                                \
-    TEST_CASE_TEMPLATE(name,                                                    \
-                       set_t,                                                   \
-                       ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,      \
-                       ::dice::sparse_map::tests::set_high<__VA_ARGS__>,        \
-                       ::dice::sparse_map::tests::set_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__>)
+#define TEST_CASE_SET(name, ...)                               \
+    TEST_CASE_TEMPLATE(                                        \
+        name,                                                  \
+        set_t,                                                 \
+        ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,    \
+        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,      \
+        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,       \
+        ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,  \
+        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__> \
+    )
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_TEST_TYPES_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_TEST_TYPES_HPP

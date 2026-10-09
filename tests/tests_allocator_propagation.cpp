@@ -91,7 +91,7 @@ namespace {
         return typename Container::allocator_type{id, &counts};
     }
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("sparse_map", map_kind);
 TYPE_TO_STRING_AS("sparse_set", set_kind);
@@ -147,7 +147,12 @@ TEST_CASE_TEMPLATE("every block goes back to the allocator that made it", kind_t
     CHECK(counts.deallocations == counts.allocations);
 }
 
-TEST_CASE_TEMPLATE("copy assignment without propagation keeps the allocator of the target", kind_t, map_kind, set_kind) {
+TEST_CASE_TEMPLATE(
+    "copy assignment without propagation keeps the allocator of the target",
+    kind_t,
+    map_kind,
+    set_kind
+) {
     using container_t = typename kind_t::template with<inheriting_allocator>;
     auto source_counts = alloc_counts{};
     auto target_counts = alloc_counts{};
@@ -190,7 +195,12 @@ TEST_CASE_TEMPLATE("copy assignment with propagation takes the allocator of the 
     CHECK(holds(target, 200));
 }
 
-TEST_CASE_TEMPLATE("after a copy assignment with propagation the target holds no memory of its old allocator", kind_t, map_kind, set_kind) {
+TEST_CASE_TEMPLATE(
+    "after a copy assignment with propagation the target holds no memory of its old allocator",
+    kind_t,
+    map_kind,
+    set_kind
+) {
     using container_t = typename kind_t::template with<pocca_allocator>;
     auto source_counts = alloc_counts{};
     auto target_counts = alloc_counts{};
@@ -211,7 +221,12 @@ TEST_CASE_TEMPLATE("after a copy assignment with propagation the target holds no
     CHECK(target_counts.deallocations == target_counts.allocations);
 }
 
-TEST_CASE_TEMPLATE("move assignment with propagation takes the allocator and the memory of the source", kind_t, map_kind, set_kind) {
+TEST_CASE_TEMPLATE(
+    "move assignment with propagation takes the allocator and the memory of the source",
+    kind_t,
+    map_kind,
+    set_kind
+) {
     using container_t = typename kind_t::template with<pocma_allocator>;
     auto source_counts = alloc_counts{};
     auto target_counts = alloc_counts{};
@@ -231,7 +246,7 @@ TEST_CASE_TEMPLATE("move assignment with propagation takes the allocator and the
         CHECK(target_counts.deallocations == target_counts.allocations);
 
         // the source is still usable
-        source.clear();  // NOLINT(bugprone-use-after-move)
+        source.clear(); // NOLINT(bugprone-use-after-move)
         insert_keys(source, 10);
         CHECK(holds(source, 10));
     }
@@ -256,7 +271,12 @@ TEST_CASE_TEMPLATE("move assignment with equal allocators takes the memory of th
     CHECK(counts.deallocations == counts.allocations);
 }
 
-TEST_CASE_TEMPLATE("move assignment with unequal allocators moves the elements into the memory of the target", kind_t, map_kind, set_kind) {
+TEST_CASE_TEMPLATE(
+    "move assignment with unequal allocators moves the elements into the memory of the target",
+    kind_t,
+    map_kind,
+    set_kind
+) {
     using container_t = typename kind_t::template with<inheriting_allocator>;
     auto source_counts = alloc_counts{};
     auto target_counts = alloc_counts{};

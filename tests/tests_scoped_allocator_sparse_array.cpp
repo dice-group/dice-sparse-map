@@ -57,16 +57,18 @@ void trailing_allocator_convention(Args...) {
 
 template<typename T>
 void trailing_allocator_convention_without_parameters() {
-    using alloc_type = typename std::allocator_traits<
-        typename T::allocator_type>::template rebind_alloc<typename T::array_type>;
+    using alloc_type = typename std::allocator_traits<typename T::allocator_type>::template rebind_alloc<
+        typename T::array_type
+    >;
     // trailing_allocator thinks construction is not possible
     REQUIRE((std::is_constructible<typename T::array_type, alloc_type const &>::value));
 }
 
 template<typename T>
 void is_move_insertable(std::initializer_list<typename T::value_type> l) {
-    using array_alloc_type = typename std::allocator_traits<
-        typename T::allocator_type>::template rebind_alloc<typename T::array_type>;
+    using array_alloc_type = typename std::allocator_traits<typename T::allocator_type>::template rebind_alloc<
+        typename T::array_type
+    >;
     array_alloc_type m;
     auto p = std::allocator_traits<array_alloc_type>::allocate(m, 1);
     typename T::allocator_type array_alloc;
@@ -84,8 +86,9 @@ void is_move_insertable(std::initializer_list<typename T::value_type> l) {
 
 template<typename T>
 void is_default_insertable() {
-    using array_alloc_type = typename std::allocator_traits<
-        typename T::allocator_type>::template rebind_alloc<typename T::array_type>;
+    using array_alloc_type = typename std::allocator_traits<typename T::allocator_type>::template rebind_alloc<
+        typename T::array_type
+    >;
     array_alloc_type m;
     typename T::array_type *p = std::allocator_traits<array_alloc_type>::allocate(m, 1);
     std::allocator_traits<array_alloc_type>::construct(m, p);
@@ -96,18 +99,27 @@ template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map:
 struct normal_alloc {
     using value_type = T;
     using allocator_type = std::allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<
+        T,
+        allocator_type,
+        Sparsity,
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
 };
 
 template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 struct scoped_alloc {
     using value_type = T;
     using allocator_type = std::scoped_allocator_adaptor<std::allocator<T>>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, allocator_type, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<
+        T,
+        allocator_type,
+        Sparsity,
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
 };
 
 TEST_SUITE("scoped_allocators/sparse_array_tests") {
-
     TEST_CASE("normal_compilation") {
         compilation<normal_alloc<int>>();
     }

@@ -39,7 +39,7 @@ namespace {
     using namespace dice::sparse_map::tests;
 
     /// calls of `throwing_hash` that are left before it throws, -1 never throws
-    int hash_calls_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    int hash_calls_until_throw = -1; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * Arms the countdown of `throwing_hash` while it is in scope.
@@ -83,26 +83,32 @@ namespace {
     };
 
     template<sh::sparsity Sparsity, typename Hash = test_hash<counter::obj>>
-    using moving_map = throwing_map<counter::obj,
-                                    counter::obj,
-                                    Hash,
-                                    std::equal_to<counter::obj>,
-                                    leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                    Sparsity>;
+    using moving_map = throwing_map<
+        counter::obj,
+        counter::obj,
+        Hash,
+        std::equal_to<counter::obj>,
+        leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
+        Sparsity
+    >;
 
     template<typename Hash = test_hash<counter::obj>>
-    using copying_map = throwing_map<copied_obj,
-                                     copied_obj,
-                                     Hash,
-                                     std::equal_to<counter::obj>,
-                                     leak_checking_allocator<std::pair<copied_obj, copied_obj>>>;
+    using copying_map = throwing_map<
+        copied_obj,
+        copied_obj,
+        Hash,
+        std::equal_to<counter::obj>,
+        leak_checking_allocator<std::pair<copied_obj, copied_obj>>
+    >;
 
     template<typename Hash = test_hash<std::size_t>>
-    using trivial_map = throwing_map<std::size_t,
-                                     std::size_t,
-                                     Hash,
-                                     std::equal_to<std::size_t>,
-                                     leak_checking_allocator<std::pair<std::size_t, std::size_t>>>;
+    using trivial_map = throwing_map<
+        std::size_t,
+        std::size_t,
+        Hash,
+        std::equal_to<std::size_t>,
+        leak_checking_allocator<std::pair<std::size_t, std::size_t>>
+    >;
 
     /// the type in which `Map` stores its elements
     template<typename Map>
@@ -122,8 +128,13 @@ namespace {
 
     /// number of `counter::obj` that were constructed and not destroyed yet
     std::size_t alive(counter const &counts) {
-        return counts.ctor() + counts.default_ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor()
-               - counts.dtor() - counter::static_dtor;
+        return counts.ctor()
+            + counts.default_ctor()
+            + counter::static_ctor
+            + counts.copy_ctor()
+            + counts.move_ctor()
+            - counts.dtor()
+            - counter::static_dtor;
     }
 
     /// the key or mapped value `n` of the type `T`
@@ -212,7 +223,7 @@ namespace {
     /// upper bound for the allocation budgets a test walks through, only a guard against an endless loop
     constexpr int max_budget = 100000;
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("moving, high", moving_map<sh::sparsity::high>);
 TYPE_TO_STRING_AS("moving, medium", moving_map<sh::sparsity::medium>);
@@ -225,13 +236,15 @@ TYPE_TO_STRING_AS("trivial, throwing hash", trivial_map<throwing_hash>);
 
 // A rehash that moves frees each old group right after its elements are moved, so it leaves the map empty if an
 // allocation fails while it moves. Any other failed allocation leaves the contents unchanged.
-TEST_CASE_TEMPLATE("an insert that rehashes and throws leaves the contents unchanged or empty",
-                   map_t,
-                   moving_map<sh::sparsity::high>,
-                   moving_map<sh::sparsity::medium>,
-                   moving_map<sh::sparsity::low>,
-                   copying_map<>,
-                   trivial_map<>) {
+TEST_CASE_TEMPLATE(
+    "an insert that rehashes and throws leaves the contents unchanged or empty",
+    map_t,
+    moving_map<sh::sparsity::high>,
+    moving_map<sh::sparsity::medium>,
+    moving_map<sh::sparsity::low>,
+    copying_map<>,
+    trivial_map<>
+) {
     auto counts = counter{};
     std::size_t unchanged = 0;
     std::size_t emptied = 0;
@@ -274,13 +287,15 @@ TEST_CASE_TEMPLATE("an insert that rehashes and throws leaves the contents uncha
 }
 
 // As above: only a rehash that moves can leave the map empty.
-TEST_CASE_TEMPLATE("a reserve that throws leaves the contents unchanged or empty",
-                   map_t,
-                   moving_map<sh::sparsity::high>,
-                   moving_map<sh::sparsity::medium>,
-                   moving_map<sh::sparsity::low>,
-                   copying_map<>,
-                   trivial_map<>) {
+TEST_CASE_TEMPLATE(
+    "a reserve that throws leaves the contents unchanged or empty",
+    map_t,
+    moving_map<sh::sparsity::high>,
+    moving_map<sh::sparsity::medium>,
+    moving_map<sh::sparsity::low>,
+    copying_map<>,
+    trivial_map<>
+) {
     auto counts = counter{};
     std::size_t unchanged = 0;
     std::size_t emptied = 0;
@@ -325,11 +340,13 @@ TEST_CASE_TEMPLATE("a reserve that throws leaves the contents unchanged or empty
 
 // A rehash that moves hashes the elements while it moves them, so it leaves the map empty whenever the hash
 // function throws. A rehash that copies leaves it unchanged.
-TEST_CASE_TEMPLATE("a rehash whose hash function throws leaves the contents unchanged or empty",
-                   map_t,
-                   moving_map<sh::sparsity::medium, throwing_hash>,
-                   copying_map<throwing_hash>,
-                   trivial_map<throwing_hash>) {
+TEST_CASE_TEMPLATE(
+    "a rehash whose hash function throws leaves the contents unchanged or empty",
+    map_t,
+    moving_map<sh::sparsity::medium, throwing_hash>,
+    copying_map<throwing_hash>,
+    trivial_map<throwing_hash>
+) {
     auto counts = counter{};
     std::size_t unchanged = 0;
     std::size_t emptied = 0;
@@ -371,11 +388,13 @@ TEST_CASE_TEMPLATE("a rehash whose hash function throws leaves the contents unch
 // A rehash that moves frees each old group right after its elements are moved, so it needs less memory than the new
 // table on top of the old one. A rehash that copies frees the old groups at the end, so both tables are in memory at
 // once.
-TEST_CASE_TEMPLATE("a rehash frees the old groups while it moves and keeps them while it copies",
-                   map_t,
-                   moving_map<sh::sparsity::medium>,
-                   copying_map<>,
-                   trivial_map<>) {
+TEST_CASE_TEMPLATE(
+    "a rehash frees the old groups while it moves and keeps them while it copies",
+    map_t,
+    moving_map<sh::sparsity::medium>,
+    copying_map<>,
+    trivial_map<>
+) {
     auto counts = counter{};
     {
         auto map = map_t{};
@@ -402,12 +421,14 @@ TEST_CASE_TEMPLATE("a rehash frees the old groups while it moves and keeps them 
     CHECK(live_blocks == 0);
 }
 
-TEST_CASE_TEMPLATE("an insert that throws without a rehash leaves the other elements alone",
-                   map_t,
-                   moving_map<sh::sparsity::high>,
-                   moving_map<sh::sparsity::medium>,
-                   moving_map<sh::sparsity::low>,
-                   copying_map<>) {
+TEST_CASE_TEMPLATE(
+    "an insert that throws without a rehash leaves the other elements alone",
+    map_t,
+    moving_map<sh::sparsity::high>,
+    moving_map<sh::sparsity::medium>,
+    moving_map<sh::sparsity::low>,
+    copying_map<>
+) {
     auto counts = counter{};
     std::size_t failures = 0;
     bool completed = false;
@@ -447,11 +468,13 @@ TEST_CASE_TEMPLATE("an insert that throws without a rehash leaves the other elem
     CHECK(completed);
 }
 
-TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
-                   map_t,
-                   moving_map<sh::sparsity::high>,
-                   moving_map<sh::sparsity::medium>,
-                   moving_map<sh::sparsity::low>) {
+TEST_CASE_TEMPLATE(
+    "a copy assignment that throws leaks nothing",
+    map_t,
+    moving_map<sh::sparsity::high>,
+    moving_map<sh::sparsity::medium>,
+    moving_map<sh::sparsity::low>
+) {
     auto counts = counter{};
     {
         auto source = map_t{};
@@ -494,11 +517,13 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
     CHECK(live_blocks == 0);
 }
 
-TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map",
-                   map_t,
-                   moving_map<sh::sparsity::high>,
-                   moving_map<sh::sparsity::medium>,
-                   moving_map<sh::sparsity::low>) {
+TEST_CASE_TEMPLATE(
+    "a copy assignment that throws leaves a usable map",
+    map_t,
+    moving_map<sh::sparsity::high>,
+    moving_map<sh::sparsity::medium>,
+    moving_map<sh::sparsity::low>
+) {
     auto counts = counter{};
     {
         auto source = map_t{};
@@ -558,9 +583,7 @@ TEST_CASE("erase of an element whose move constructor can throw does not throw")
         CHECK(erased == 1);
         CHECK_NOTHROW(map.erase(std::next(map.cbegin(), 10), std::next(map.cbegin(), 20)));
         CHECK(map.size() == 88);
-        CHECK_NOTHROW(erased = erase_if(map, [](auto const &entry) {
-                          return entry.first.get() % 3 == 0;
-                      }));
+        CHECK_NOTHROW(erased = erase_if(map, [](auto const &entry) { return entry.first.get() % 3 == 0; }));
         CHECK(erased > 0);
         CHECK(map.size() == 88 - erased);
         check_consistent(map, counts, 100);
@@ -572,7 +595,7 @@ TEST_CASE("erase of an element whose move constructor can throw does not throw")
 namespace {
 
     /// the move assignment of `fragile_hash` throws while this is true
-    bool hash_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    bool hash_moves_throw = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * A hash whose move assignment throws while `hash_moves_throw` is true. `std::swap` of two of them
@@ -611,7 +634,7 @@ namespace {
         CHECK(found == count);
         CHECK(static_cast<std::size_t>(std::distance(map.begin(), map.end())) == count);
     }
-}  // namespace
+} // namespace
 
 TEST_CASE("a rehash does not swap the hash function") {
     using map_t = sparse_map<std::size_t, std::string, fragile_hash>;
@@ -649,9 +672,9 @@ TEST_CASE("a move assignment whose hash throws leaves both maps usable") {
     hash_moves_throw = false;
 
     check_holds(target, 0, 0);
-    check_holds(source, 0, 100);  // NOLINT(bugprone-use-after-move)
+    check_holds(source, 0, 100); // NOLINT(bugprone-use-after-move)
     target[5000] = 5000;
-    source[5000] = 5000;  // NOLINT(bugprone-use-after-move)
+    source[5000] = 5000; // NOLINT(bugprone-use-after-move)
     check_holds(target, 5000, 1);
     CHECK(source.size() == 101);
 }
@@ -699,7 +722,7 @@ namespace {
     };
 
     /// the move assignment of `fragile_key_equal` throws while this is true
-    bool key_equal_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    bool key_equal_moves_throw = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * A key equality whose move assignment throws while `key_equal_moves_throw` is true. `std::swap` of two of
@@ -723,7 +746,7 @@ namespace {
             return lhs == rhs;
         }
     };
-}  // namespace
+} // namespace
 
 TEST_CASE("a swap whose key equality throws leaves both maps able to find their elements") {
     using map_t = sparse_map<std::size_t, std::size_t, seeded_hash, fragile_key_equal>;
@@ -746,7 +769,7 @@ TEST_CASE("a swap whose key equality throws leaves both maps able to find their 
 
 namespace {
     /// moves and copies of `countdown_value` that are left before one throws, -1 never throws
-    int value_transfers_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    int value_transfers_until_throw = -1; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * A value whose move constructor can throw. Each move and copy counts `value_transfers_until_throw`
@@ -755,17 +778,15 @@ namespace {
     struct countdown_value {
         int value = 0;
 
-        explicit countdown_value(int v) noexcept
-            : value(v) {
-        }
+        explicit countdown_value(int v) noexcept : value(v) {}
 
-        countdown_value(countdown_value const &other)
-            : value(other.value) {
+        countdown_value(countdown_value const &other) : value(other.value) {
             count_down();
         }
 
-        countdown_value(countdown_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
+        countdown_value(countdown_value &&other) noexcept(false) // NOLINT(performance-noexcept-move-constructor)
+            :
+            value(other.value) {
             count_down();
             other.value = -1;
         }
@@ -781,11 +802,12 @@ namespace {
             }
         }
     };
-}  // namespace
+} // namespace
 
 TEST_CASE("a move assignment to an unequal allocator that throws keeps the values of the source") {
     using allocator_t = id_allocator<std::pair<std::size_t, countdown_value>>;
-    using map_t = sparse_map<std::size_t, countdown_value, test_hash<std::size_t>, std::equal_to<std::size_t>, allocator_t>;
+    using map_t =
+        sparse_map<std::size_t, countdown_value, test_hash<std::size_t>, std::equal_to<std::size_t>, allocator_t>;
     auto source = map_t{allocator_t{1}};
     for (std::size_t key = 0; key < 100; ++key) {
         source.try_emplace(key, static_cast<int>(key));
@@ -801,10 +823,10 @@ TEST_CASE("a move assignment to an unequal allocator that throws keeps the value
 
     CHECK(target.empty());
     CHECK(target.get_allocator().id == 2);
-    CHECK(source.size() == 100);  // NOLINT(bugprone-use-after-move)
+    CHECK(source.size() == 100); // NOLINT(bugprone-use-after-move)
     std::size_t kept = 0;
     for (std::size_t key = 0; key < 100; ++key) {
-        auto const it = source.find(key);  // NOLINT(bugprone-use-after-move)
+        auto const it = source.find(key); // NOLINT(bugprone-use-after-move)
         kept += (it != source.end() && it->second.value == static_cast<int>(key)) ? 1 : 0;
     }
     CHECK(kept == 100);
@@ -826,7 +848,8 @@ namespace {
     };
 
     using seeded_allocator_t = id_allocator<std::pair<std::size_t, countdown_value>>;
-    using seeded_map_t = sparse_map<std::size_t, countdown_value, move_sensitive_hash, std::equal_to<std::size_t>, seeded_allocator_t>;
+    using seeded_map_t =
+        sparse_map<std::size_t, countdown_value, move_sensitive_hash, std::equal_to<std::size_t>, seeded_allocator_t>;
 
     /// number of the keys 0 to 99 that `map` finds with their value
     std::size_t nb_found_with_value(seeded_map_t const &map) {
@@ -837,7 +860,7 @@ namespace {
         }
         return found;
     }
-}  // namespace
+} // namespace
 
 TEST_CASE("a move assignment to an unequal allocator that throws leaves the source able to find its values") {
     auto source = seeded_map_t{seeded_allocator_t{1}};
@@ -852,8 +875,8 @@ TEST_CASE("a move assignment to an unequal allocator that throws leaves the sour
     value_transfers_until_throw = -1;
 
     CHECK(target.empty());
-    CHECK(source.size() == 100);                // NOLINT(bugprone-use-after-move)
-    CHECK(nb_found_with_value(source) == 100);  // NOLINT(bugprone-use-after-move)
+    CHECK(source.size() == 100); // NOLINT(bugprone-use-after-move)
+    CHECK(nb_found_with_value(source) == 100); // NOLINT(bugprone-use-after-move)
 }
 
 TEST_CASE("a move construction with an unequal allocator that throws leaves the source able to find its values") {
@@ -867,8 +890,8 @@ TEST_CASE("a move construction with an unequal allocator that throws leaves the 
     CHECK_THROWS_AS((seeded_map_t{std::move(source), seeded_allocator_t{2}}), std::runtime_error);
     value_transfers_until_throw = -1;
 
-    CHECK(source.size() == 100);                // NOLINT(bugprone-use-after-move)
-    CHECK(nb_found_with_value(source) == 100);  // NOLINT(bugprone-use-after-move)
+    CHECK(source.size() == 100); // NOLINT(bugprone-use-after-move)
+    CHECK(nb_found_with_value(source) == 100); // NOLINT(bugprone-use-after-move)
 }
 
 namespace {
@@ -878,12 +901,14 @@ namespace {
     }
 
     template<sh::sparsity Sparsity>
-    using bombing_string_map = throwing_map<std::size_t,
-                                            std::string,
-                                            test_hash<std::size_t>,
-                                            std::equal_to<std::size_t>,
-                                            leak_checking_allocator<std::pair<std::size_t, std::string>>,
-                                            Sparsity>;
+    using bombing_string_map = throwing_map<
+        std::size_t,
+        std::string,
+        test_hash<std::size_t>,
+        std::equal_to<std::size_t>,
+        leak_checking_allocator<std::pair<std::size_t, std::string>>,
+        Sparsity
+    >;
 
     /// the next insertion of a new key into `map` rehashes it
     template<typename Map>
@@ -896,7 +921,7 @@ namespace {
     }
 
     /// number of copies that are left before `fragile_string` throws, -1 never throws
-    int copies_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    int copies_until_throw = -1; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * A string whose move constructor is not `noexcept`, and whose copy constructor throws when
@@ -905,35 +930,32 @@ namespace {
     struct fragile_string {
         std::string value;
 
-        explicit fragile_string(std::string v)
-            : value(std::move(v)) {
-        }
+        explicit fragile_string(std::string v) : value(std::move(v)) {}
 
-        fragile_string(fragile_string const &other)
-            : value(other.value) {
+        fragile_string(fragile_string const &other) : value(other.value) {
             if (copies_until_throw >= 0 && 0 == copies_until_throw--) {
                 throw std::runtime_error("fragile_string copy");
             }
         }
 
-        fragile_string(fragile_string &&other) noexcept(false)
-            : value(std::move(other.value)) {
-        }
+        fragile_string(fragile_string &&other) noexcept(false) : value(std::move(other.value)) {}
 
         fragile_string &operator=(fragile_string const &) = default;
         fragile_string &operator=(fragile_string &&) noexcept(false) = default;
         ~fragile_string() = default;
     };
-}  // namespace
+} // namespace
 
 // The rehash of the target moves the strings, so an allocation that fails while it moves leaves the target empty.
 // A failed allocation of the new buckets, or of the new element after the rehash, leaves the target unchanged. The
 // element stays in the source in both cases.
-TEST_CASE_TEMPLATE("a merge that throws in the rehash of the target leaves the element in the source",
-                   map_t,
-                   bombing_string_map<sh::sparsity::high>,
-                   bombing_string_map<sh::sparsity::medium>,
-                   bombing_string_map<sh::sparsity::low>) {
+TEST_CASE_TEMPLATE(
+    "a merge that throws in the rehash of the target leaves the element in the source",
+    map_t,
+    bombing_string_map<sh::sparsity::high>,
+    bombing_string_map<sh::sparsity::medium>,
+    bombing_string_map<sh::sparsity::low>
+) {
     std::size_t unchanged = 0;
     std::size_t emptied = 0;
     bool completed = false;
@@ -977,11 +999,13 @@ TEST_CASE_TEMPLATE("a merge that throws in the rehash of the target leaves the e
 // The clean-up rehash of the target moves the strings, so an allocation that fails while it moves leaves the target
 // empty. A failed allocation of the new buckets leaves the target unchanged. The element stays in the source in
 // both cases.
-TEST_CASE_TEMPLATE("a merge that throws in the clean-up rehash of the target leaves the element in the source",
-                   map_t,
-                   bombing_string_map<sh::sparsity::high>,
-                   bombing_string_map<sh::sparsity::medium>,
-                   bombing_string_map<sh::sparsity::low>) {
+TEST_CASE_TEMPLATE(
+    "a merge that throws in the clean-up rehash of the target leaves the element in the source",
+    map_t,
+    bombing_string_map<sh::sparsity::high>,
+    bombing_string_map<sh::sparsity::medium>,
+    bombing_string_map<sh::sparsity::low>
+) {
     std::size_t unchanged = 0;
     std::size_t emptied = 0;
     bool completed = false;
@@ -1033,13 +1057,17 @@ TEST_CASE_TEMPLATE("a merge that throws in the clean-up rehash of the target lea
     CHECK(completed);
 }
 
-TEST_CASE("a merge copies an element whose move constructor can throw, so that the element stays in the source on an exception") {
-    using map_t = sparse_map<std::size_t,
-                             fragile_string,
-                             test_hash<std::size_t>,
-                             std::equal_to<std::size_t>,
-                             std::allocator<std::pair<std::size_t, fragile_string>>,
-                             sh::sparsity::high>;
+TEST_CASE(
+    "a merge copies an element whose move constructor can throw, so that the element stays in the source on an exception"
+) {
+    using map_t = sparse_map<
+        std::size_t,
+        fragile_string,
+        test_hash<std::size_t>,
+        std::equal_to<std::size_t>,
+        std::allocator<std::pair<std::size_t, fragile_string>>,
+        sh::sparsity::high
+    >;
     auto target = map_t{};
     target.rehash(64);
     // one group. With sparsity high a group of 10 elements has no free capacity, so the next insertion
@@ -1069,8 +1097,7 @@ TEST_CASE("a merge copies an element whose move constructor can throw, so that t
         try {
             target.merge(source);
             completed = true;
-        } catch (std::runtime_error const &) {
-        }
+        } catch (std::runtime_error const &) {}
         copies_until_throw = -1;
         if (completed) {
             CHECK(source.empty());

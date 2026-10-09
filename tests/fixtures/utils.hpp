@@ -85,25 +85,17 @@ namespace dice::sparse_map::tests {
      * The move constructor copies and is not `noexcept`.
      */
     struct self_reference_member_test {
-        self_reference_member_test()
-            : value_(std::to_string(-1)),
-              value_ptr_(&value_) {
-        }
+        self_reference_member_test() : value_(std::to_string(-1)), value_ptr_(&value_) {}
 
-        explicit self_reference_member_test(std::int64_t value)
-            : value_(std::to_string(value)),
-              value_ptr_(&value_) {
-        }
+        explicit self_reference_member_test(std::int64_t value) : value_(std::to_string(value)), value_ptr_(&value_) {}
 
-        self_reference_member_test(self_reference_member_test const &other)
-            : value_(*other.value_ptr_),
-              value_ptr_(&value_) {
-        }
+        self_reference_member_test(self_reference_member_test const &other) :
+            value_(*other.value_ptr_),
+            value_ptr_(&value_) {}
 
-        self_reference_member_test(self_reference_member_test &&other)
-            : value_(*other.value_ptr_),
-              value_ptr_(&value_) {
-        }
+        self_reference_member_test(self_reference_member_test &&other) :
+            value_(*other.value_ptr_),
+            value_ptr_(&value_) {}
 
         self_reference_member_test &operator=(self_reference_member_test const &other) {
             value_ = *other.value_ptr_;
@@ -150,13 +142,9 @@ namespace dice::sparse_map::tests {
      * Value that can be moved but not copied. A moved from object holds no value.
      */
     struct move_only_test {
-        explicit move_only_test(std::int64_t value)
-            : value_(new std::string(std::to_string(value))) {
-        }
+        explicit move_only_test(std::int64_t value) : value_(new std::string(std::to_string(value))) {}
 
-        explicit move_only_test(std::string value)
-            : value_(new std::string(std::move(value))) {
-        }
+        explicit move_only_test(std::string value) : value_(new std::string(std::move(value))) {}
 
         move_only_test(move_only_test const &) = delete;
         move_only_test(move_only_test &&) = default;
@@ -209,13 +197,9 @@ namespace dice::sparse_map::tests {
      * Value that can be copied but has no move constructor, so a move copies.
      */
     struct copy_only_test {
-        explicit copy_only_test(std::int64_t value)
-            : value_(std::to_string(value)) {
-        }
+        explicit copy_only_test(std::int64_t value) : value_(std::to_string(value)) {}
 
-        copy_only_test(copy_only_test const &other)
-            : value_(other.value_) {
-        }
+        copy_only_test(copy_only_test const &other) : value_(other.value_) {}
 
         copy_only_test &operator=(copy_only_test const &other) {
             value_ = other.value_;
@@ -223,8 +207,7 @@ namespace dice::sparse_map::tests {
             return *this;
         }
 
-        ~copy_only_test() {
-        }
+        ~copy_only_test() {}
 
         friend std::ostream &operator<<(std::ostream &stream, copy_only_test const &value) {
             stream << value.value_;
@@ -252,7 +235,7 @@ namespace dice::sparse_map::tests {
         std::string value_;
     };
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
 namespace std {
     template<>
@@ -275,7 +258,7 @@ namespace std {
             return std::hash<std::string>()(val.value());
         }
     };
-}  // namespace std
+} // namespace std
 
 namespace dice::sparse_map::tests {
 
@@ -359,6 +342,6 @@ namespace dice::sparse_map::tests {
         return map;
     }
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_UTILS_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_UTILS_HPP

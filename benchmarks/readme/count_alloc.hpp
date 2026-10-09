@@ -88,83 +88,87 @@ namespace dice::sparse_map::bench::readme::count_alloc {
         }
     }
 
-}  // namespace dice::sparse_map::bench::readme::count_alloc
+} // namespace dice::sparse_map::bench::readme::count_alloc
 
 extern "C" {
 
-// glibc's own functions, so that the functions below do not call themselves
-void *__libc_malloc(std::size_t n);
-void *__libc_calloc(std::size_t count, std::size_t size);
-void *__libc_realloc(void *p, std::size_t n);
-void __libc_free(void *p);
+    // glibc's own functions, so that the functions below do not call themselves
+    void *__libc_malloc(std::size_t n);
+    void *__libc_calloc(std::size_t count, std::size_t size);
+    void *__libc_realloc(void *p, std::size_t n);
+    void __libc_free(void *p);
 
-void *malloc(std::size_t n) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    void *p = __libc_malloc(n);
-    ca::add_block(p);
-    return p;
-}
-
-void *calloc(std::size_t count, std::size_t size) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    void *p = __libc_calloc(count, size);
-    ca::add_block(p);
-    return p;
-}
-
-void free(void *p) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    ca::remove_block(p);
-    __libc_free(p);
-}
-
-void *realloc(void *p, std::size_t n) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    ca::remove_block(p);
-    void *fresh = __libc_realloc(p, n);
-    ca::add_block(fresh);
-    return fresh;
-}
-
-// over-aligned blocks, for example from an over-aligned `operator new`
-void *aligned_alloc(std::size_t alignment, std::size_t n) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    static auto *real = reinterpret_cast<void *(*) (std::size_t, std::size_t)>(dlsym(RTLD_NEXT, "aligned_alloc"));
-    void *p = real(alignment, n);
-    ca::add_block(p);
-    return p;
-}
-
-int posix_memalign(void **out, std::size_t alignment, std::size_t n) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    static auto *real = reinterpret_cast<int (*)(void **, std::size_t, std::size_t)>(dlsym(RTLD_NEXT, "posix_memalign"));
-    int const rc = real(out, alignment, n);
-    if (rc == 0) {
-        ca::add_block(*out);
+    void *malloc(std::size_t n) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        void *p = __libc_malloc(n);
+        ca::add_block(p);
+        return p;
     }
-    return rc;
-}
 
-// blocks that an allocator maps itself and that never touch the heap
-void *mmap(void *addr, std::size_t length, int prot, int flags, int fd, off_t offset) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    static auto *real = reinterpret_cast<void *(*) (void *, std::size_t, int, int, int, off_t)>(dlsym(RTLD_NEXT, "mmap"));
-    void *p = real(addr, length, prot, flags, fd, offset);
-    if (p != MAP_FAILED) {
-        ca::add(length, 0);
+    void *calloc(std::size_t count, std::size_t size) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        void *p = __libc_calloc(count, size);
+        ca::add_block(p);
+        return p;
     }
-    return p;
-}
 
-int munmap(void *addr, std::size_t length) noexcept {
-    namespace ca = dice::sparse_map::bench::readme::count_alloc;
-    static auto *real = reinterpret_cast<int (*)(void *, std::size_t)>(dlsym(RTLD_NEXT, "munmap"));
-    ca::remove(length, 0);
-    return real(addr, length);
-}
+    void free(void *p) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        ca::remove_block(p);
+        __libc_free(p);
+    }
 
-}  // extern "C"
-#endif  // DSM_README_COUNT_ALLOC
+    void *realloc(void *p, std::size_t n) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        ca::remove_block(p);
+        void *fresh = __libc_realloc(p, n);
+        ca::add_block(fresh);
+        return fresh;
+    }
+
+    // over-aligned blocks, for example from an over-aligned `operator new`
+    void *aligned_alloc(std::size_t alignment, std::size_t n) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        static auto *real = reinterpret_cast<void *(*)(std::size_t, std::size_t)>(dlsym(RTLD_NEXT, "aligned_alloc"));
+        void *p = real(alignment, n);
+        ca::add_block(p);
+        return p;
+    }
+
+    int posix_memalign(void **out, std::size_t alignment, std::size_t n) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        static auto *real = reinterpret_cast<int (*)(void **, std::size_t, std::size_t)>(
+            dlsym(RTLD_NEXT, "posix_memalign")
+        );
+        int const rc = real(out, alignment, n);
+        if (rc == 0) {
+            ca::add_block(*out);
+        }
+        return rc;
+    }
+
+    // blocks that an allocator maps itself and that never touch the heap
+    void *mmap(void *addr, std::size_t length, int prot, int flags, int fd, off_t offset) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        static auto *real = reinterpret_cast<void *(*)(void *, std::size_t, int, int, int, off_t)>(
+            dlsym(RTLD_NEXT, "mmap")
+        );
+        void *p = real(addr, length, prot, flags, fd, offset);
+        if (p != MAP_FAILED) {
+            ca::add(length, 0);
+        }
+        return p;
+    }
+
+    int munmap(void *addr, std::size_t length) noexcept {
+        namespace ca = dice::sparse_map::bench::readme::count_alloc;
+        static auto *real = reinterpret_cast<int (*)(void *, std::size_t)>(dlsym(RTLD_NEXT, "munmap"));
+        ca::remove(length, 0);
+        return real(addr, length);
+    }
+
+} // extern "C"
+#endif // DSM_README_COUNT_ALLOC
 
 namespace dice::sparse_map::bench::readme::count_alloc {
 
@@ -218,6 +222,6 @@ namespace dice::sparse_map::bench::readme::count_alloc {
 #endif
     }
 
-}  // namespace dice::sparse_map::bench::readme::count_alloc
+} // namespace dice::sparse_map::bench::readme::count_alloc
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_README_COUNT_ALLOC_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_README_COUNT_ALLOC_HPP

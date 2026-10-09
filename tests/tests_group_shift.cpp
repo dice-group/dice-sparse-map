@@ -33,7 +33,9 @@ namespace {
         throwing_assign_obj(throwing_assign_obj &&other) noexcept = default;
         throwing_assign_obj &operator=(throwing_assign_obj const &other) = default;
 
-        throwing_assign_obj &operator=(throwing_assign_obj &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
+        throwing_assign_obj &operator=(throwing_assign_obj &&other) noexcept(
+            false
+        ) { // NOLINT(performance-noexcept-move-constructor)
             counter::obj::operator=(std::move(other));
             return *this;
         }
@@ -41,14 +43,27 @@ namespace {
         ~throwing_assign_obj() = default;
     };
 
-    static_assert(std::is_nothrow_move_constructible_v<counter::obj> && std::is_nothrow_move_assignable_v<counter::obj>);
+    static_assert(
+        std::is_nothrow_move_constructible_v<counter::obj> && std::is_nothrow_move_assignable_v<counter::obj>
+    );
     static_assert(std::is_nothrow_move_constructible_v<throwing_assign_obj>);
     static_assert(!std::is_nothrow_move_assignable_v<throwing_assign_obj>);
 
     template<typename T>
-    using group_t = detail_sparse_hash::sparse_array<T, construct_counting_allocator<T>, sh::sparsity::medium, sh::allocation_failure::terminating>;
+    using group_t = detail_sparse_hash::sparse_array<
+        T,
+        construct_counting_allocator<T>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating
+    >;
 
-    using map_t = sparse_map<counter::obj, counter::obj, bucket_hash, std::equal_to<counter::obj>, construct_counting_allocator<std::pair<counter::obj, counter::obj>>>;
+    using map_t = sparse_map<
+        counter::obj,
+        counter::obj,
+        bucket_hash,
+        std::equal_to<counter::obj>,
+        construct_counting_allocator<std::pair<counter::obj, counter::obj>>
+    >;
 
     /**
      * What an operation did: the calls of `construct` and `destroy` of the allocator, and the move constructions,
@@ -90,18 +105,14 @@ namespace {
         }
         REQUIRE(group.size() == 3);
 
-        auto const insertion = counted(counts, [&] {
-            group.set(alloc, 5, std::size_t{5}, counts);
-        });
+        auto const insertion = counted(counts, [&] { group.set(alloc, 5, std::size_t{5}, counts); });
         REQUIRE(group.size() == 4);
         CHECK(group.value(5)->get() == 5);
         CHECK(group.value(10)->get() == 10);
         CHECK(group.value(20)->get() == 20);
         CHECK(group.value(30)->get() == 30);
 
-        auto const erase = counted(counts, [&] {
-            group.erase(alloc, group.value(5), 5);
-        });
+        auto const erase = counted(counts, [&] { group.erase(alloc, group.value(5), 5); });
         REQUIRE(group.size() == 3);
         CHECK(group.value(10)->get() == 10);
         CHECK(group.value(20)->get() == 20);
@@ -111,7 +122,7 @@ namespace {
         return {insertion, erase};
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("a nothrow move assignable value moves by assignment in its group") {
     auto counts = counter{};
@@ -163,9 +174,7 @@ TEST_CASE("an insertion right before the last value and an erase of the last val
     }
 
     // 25 goes between 20 and 30, at the offset of the last value
-    auto const insertion = counted(counts, [&] {
-        group.set(alloc, 25, std::size_t{25}, counts);
-    });
+    auto const insertion = counted(counts, [&] { group.set(alloc, 25, std::size_t{25}, counts); });
     REQUIRE(group.size() == 4);
     CHECK(group.value(20)->get() == 20);
     CHECK(group.value(25)->get() == 25);
@@ -180,9 +189,7 @@ TEST_CASE("an insertion right before the last value and an erase of the last val
     CHECK(insertion.dtor == 1);
 
     // 30 is the last value, so nothing moves
-    auto const erase = counted(counts, [&] {
-        group.erase(alloc, group.value(30), 30);
-    });
+    auto const erase = counted(counts, [&] { group.erase(alloc, group.value(30), 30); });
     REQUIRE(group.size() == 3);
     CHECK(group.value(10)->get() == 10);
     CHECK(group.value(20)->get() == 20);
@@ -202,9 +209,7 @@ TEST_CASE("a group of one value: an insertion in front of it and an erase of eac
     group_t<counter::obj> group;
     group.set(alloc, 10, std::size_t{10}, counts);
 
-    auto const insertion = counted(counts, [&] {
-        group.set(alloc, 5, std::size_t{5}, counts);
-    });
+    auto const insertion = counted(counts, [&] { group.set(alloc, 5, std::size_t{5}, counts); });
     REQUIRE(group.size() == 2);
     CHECK(group.value(5)->get() == 5);
     CHECK(group.value(10)->get() == 10);
@@ -218,7 +223,11 @@ TEST_CASE("a group of one value: an insertion in front of it and an erase of eac
     // 10 is the last value, then 5 is the only one: nothing moves
     for (std::size_t const n : {10, 5}) {
         auto const erase = counted(counts, [&] {
-            group.erase(alloc, group.value(static_cast<group_t<counter::obj>::size_type>(n)), static_cast<group_t<counter::obj>::size_type>(n));
+            group.erase(
+                alloc,
+                group.value(static_cast<group_t<counter::obj>::size_type>(n)),
+                static_cast<group_t<counter::obj>::size_type>(n)
+            );
         });
         CHECK(erase.constructs == 0);
         CHECK(erase.move_ctor == 0);
@@ -242,9 +251,7 @@ TEST_CASE("an insertion and an erase in front of the elements of a group of a ma
 
     // key 5 goes in front of 10, 20 and 30, into a group with room for one more element
     counter::obj key{5, counts};
-    auto const insertion = counted(counts, [&] {
-        map.try_emplace(std::move(key), std::size_t{5}, counts);
-    });
+    auto const insertion = counted(counts, [&] { map.try_emplace(std::move(key), std::size_t{5}, counts); });
     REQUIRE(map.size() == 4);
 
     // the new element in its holder (its key is moved in), and the last element moved into the slot behind it
@@ -258,9 +265,7 @@ TEST_CASE("an insertion and an erase in front of the elements of a group of a ma
 
     auto const it = map.find(counter::obj{5, counts});
     REQUIRE(it != map.end());
-    auto const erase = counted(counts, [&] {
-        map.erase(it);
-    });
+    auto const erase = counted(counts, [&] { map.erase(it); });
     REQUIRE(map.size() == 3);
 
     // key and value of 10, 20 and 30 one place to the front, then the last slot, which is moved from

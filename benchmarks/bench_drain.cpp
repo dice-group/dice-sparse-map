@@ -54,13 +54,15 @@ namespace {
                 CHECK(sum == Sizes::num_elements * (Sizes::num_elements - 1) / 2);
             }
             std::ranges::sort(times);
-            std::cout << std::format("{:.6f}s {} uint64_t -> size_t drain\n",
-                                     std::chrono::duration<double>(times[times.size() / 2]).count(),
-                                     container);
+            std::cout << std::format(
+                "{:.6f}s {} uint64_t -> size_t drain\n",
+                std::chrono::duration<double>(times[times.size() / 2]).count(),
+                container
+            );
         });
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("drain sparse_map high") {
     drain_rounds<sparse_high>("sparse_map high");

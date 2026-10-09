@@ -76,9 +76,9 @@ namespace dice::sparse_map::bench::readme::disk_usage {
 
     /// why a sample was taken
     enum struct trigger : std::size_t {
-        periodic = 0,  ///< every 1/256 of the inserts
-        growth = 1,    ///< right after an insert that changed `bucket_count()`
-        punch = 2,     ///< right before metall punches a hole (`MADV_REMOVE`)
+        periodic = 0, ///< every 1/256 of the inserts
+        growth = 1, ///< right after an insert that changed `bucket_count()`
+        punch = 2, ///< right before metall punches a hole (`MADV_REMOVE`)
     };
 
     inline constexpr std::size_t trigger_count = 3;
@@ -95,9 +95,7 @@ namespace dice::sparse_map::bench::readme::disk_usage {
         std::uint64_t punched_bytes = 0;
         clock_type::duration spent{};
 
-        explicit sampler(std::filesystem::path path)
-            : dir(std::move(path)) {
-        }
+        explicit sampler(std::filesystem::path path) : dir(std::move(path)) {}
 
         /// the disk usage now, also counted as a sample of kind `why`
         std::uint64_t sample(trigger why) {
@@ -139,24 +137,24 @@ namespace dice::sparse_map::bench::readme::disk_usage {
 #endif
     }
 
-}  // namespace dice::sparse_map::bench::readme::disk_usage
+} // namespace dice::sparse_map::bench::readme::disk_usage
 
 #if defined(DSM_README_DISK_USAGE)
 extern "C" {
 
-// metall frees the file space of a free chunk with `madvise(MADV_REMOVE)`. This takes a sample
-// before the hole is punched and then makes the system call itself.
-int madvise(void *addr, std::size_t length, int advice) noexcept {
-    namespace du = dice::sparse_map::bench::readme::disk_usage;
-    if (advice == MADV_REMOVE && du::punch_sampler != nullptr) {
-        du::punch_sampler->sample(du::trigger::punch);
-        ++du::punch_sampler->punches;
-        du::punch_sampler->punched_bytes += length;
+    // metall frees the file space of a free chunk with `madvise(MADV_REMOVE)`. This takes a sample
+    // before the hole is punched and then makes the system call itself.
+    int madvise(void *addr, std::size_t length, int advice) noexcept {
+        namespace du = dice::sparse_map::bench::readme::disk_usage;
+        if (advice == MADV_REMOVE && du::punch_sampler != nullptr) {
+            du::punch_sampler->sample(du::trigger::punch);
+            ++du::punch_sampler->punches;
+            du::punch_sampler->punched_bytes += length;
+        }
+        return static_cast<int>(::syscall(SYS_madvise, addr, length, advice));
     }
-    return static_cast<int>(::syscall(SYS_madvise, addr, length, advice));
-}
 
-}  // extern "C"
-#endif  // DSM_README_DISK_USAGE
+} // extern "C"
+#endif // DSM_README_DISK_USAGE
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_README_DISK_USAGE_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_README_DISK_USAGE_HPP

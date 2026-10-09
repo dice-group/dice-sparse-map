@@ -34,17 +34,40 @@ namespace {
     using namespace dice::sparse_map;
     using namespace dice::sparse_map::tests;
 
-    using map_t = throwing_map<copied_obj, copied_obj, bucket_hash, std::equal_to<counter::obj>, leak_checking_allocator<std::pair<copied_obj, copied_obj>>>;
-    using set_t = sparse_set<copied_obj, bucket_hash, std::equal_to<counter::obj>, leak_checking_allocator<copied_obj>, sh::sparsity::medium, sh::allocation_failure::throwing>;
+    using map_t = throwing_map<
+        copied_obj,
+        copied_obj,
+        bucket_hash,
+        std::equal_to<counter::obj>,
+        leak_checking_allocator<std::pair<copied_obj, copied_obj>>
+    >;
+    using set_t = sparse_set<
+        copied_obj,
+        bucket_hash,
+        std::equal_to<counter::obj>,
+        leak_checking_allocator<copied_obj>,
+        sh::sparsity::medium,
+        sh::allocation_failure::throwing
+    >;
     using slot_t = detail_sparse_hash::map_slot<copied_obj, copied_obj>;
-    using group_t = detail_sparse_hash::sparse_array<slot_t, leak_checking_allocator<slot_t>, sh::sparsity::medium, sh::allocation_failure::throwing>;
+    using group_t = detail_sparse_hash::sparse_array<
+        slot_t,
+        leak_checking_allocator<slot_t>,
+        sh::sparsity::medium,
+        sh::allocation_failure::throwing
+    >;
 
     static_assert(!std::is_nothrow_move_constructible_v<slot_t>);
 
     /// number of `counter::obj` that were constructed and not destroyed yet
     std::size_t alive(counter const &counts) {
-        return counts.ctor() + counts.default_ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor()
-               - counts.dtor() - counter::static_dtor;
+        return counts.ctor()
+            + counts.default_ctor()
+            + counter::static_ctor
+            + counts.copy_ctor()
+            + counts.move_ctor()
+            - counts.dtor()
+            - counter::static_dtor;
     }
 
     copied_obj key(counter &counts, std::size_t n) {
@@ -130,7 +153,7 @@ namespace {
         return all;
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("an erase in the middle of a group moves, copies and allocates nothing") {
     auto counts = counter{};
@@ -289,7 +312,11 @@ TEST_CASE("iteration and find over groups with and without holes") {
             for (; it != map.end(); ++it) {
                 rest.push_back(it->first.get());
             }
-            rest_right = rest_right && std::ranges::equal(rest, std::ranges::subrange(expected.begin() + static_cast<std::ptrdiff_t>(i) + 1, expected.end()));
+            rest_right = rest_right
+                && std::ranges::equal(
+                    rest,
+                    std::ranges::subrange(expected.begin() + static_cast<std::ptrdiff_t>(i) + 1, expected.end())
+                );
         }
         CHECK(next_right);
         CHECK(rest_right);
@@ -321,9 +348,7 @@ TEST_CASE("an erase while iterating gives a group without holes its first hole")
         }
         CHECK(visited == concat({range(0, 10), range(64, 74)}));
         std::vector<std::size_t> kept;
-        std::ranges::copy_if(visited, std::back_inserter(kept), [](std::size_t n) {
-            return n % 3 != 1;
-        });
+        std::ranges::copy_if(visited, std::back_inserter(kept), [](std::size_t n) { return n % 3 != 1; });
         CHECK(iterated_keys(map) == kept);
 
         // through a `const_iterator` that `++` reached, in a group with holes
@@ -710,15 +735,11 @@ TEST_CASE("copies, swap, erase_if and clear of a map with holes") {
             std::size_t erased = 0;
             {
                 auto const bomb = bomb_after{0};
-                CHECK_NOTHROW(erased = erase_if(map, [](auto const &entry) {
-                                  return entry.first.get() % 2 == 0;
-                              }));
+                CHECK_NOTHROW(erased = erase_if(map, [](auto const &entry) { return entry.first.get() % 2 == 0; }));
             }
             CHECK(erased == nb_even);
             CHECK(map.size() == keys.size() - nb_even);
-            CHECK(std::ranges::all_of(iterated_keys(map), [](std::size_t n) {
-                return n % 2 == 1;
-            }));
+            CHECK(std::ranges::all_of(iterated_keys(map), [](std::size_t n) { return n % 2 == 1; }));
             check_consistent(map, counts, 200);
         }
         SUBCASE("clear") {
@@ -756,7 +777,7 @@ TEST_CASE("a move with an unequal allocator copies a map with holes and leaves t
         auto moved = id_map_t{std::move(source), allocator_t{2, &counts_2}};
         CHECK(moved.get_allocator().id == 2);
         CHECK(iterated_keys(moved) == keys);
-        CHECK(source.empty());  // NOLINT(bugprone-use-after-move)
+        CHECK(source.empty()); // NOLINT(bugprone-use-after-move)
         bool all_found = true;
         for (auto const n : keys) {
             auto const it = moved.find(key(counts, n));
@@ -778,24 +799,20 @@ TEST_CASE("a move with an unequal allocator copies a map with holes and leaves t
 
 namespace {
     /// copies and moves of `fragile_copied_obj` that are left before one throws, -1 never throws
-    int transfers_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    int transfers_until_throw = -1; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * `copied_obj` whose copy constructor throws `std::runtime_error` when `transfers_until_throw` reaches 0. Its move
      * constructor copies and counts the same way.
      */
     struct fragile_copied_obj : copied_obj {
-        fragile_copied_obj(std::size_t n, counter &counts)
-            : copied_obj(n, counts) {
-        }
+        fragile_copied_obj(std::size_t n, counter &counts) : copied_obj(n, counts) {}
 
-        fragile_copied_obj(fragile_copied_obj const &other)
-            : copied_obj(count_down(other)) {
-        }
+        fragile_copied_obj(fragile_copied_obj const &other) : copied_obj(count_down(other)) {}
 
-        fragile_copied_obj(fragile_copied_obj &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : copied_obj(count_down(other)) {
-        }
+        fragile_copied_obj(fragile_copied_obj &&other) noexcept(false) // NOLINT(performance-noexcept-move-constructor)
+            :
+            copied_obj(count_down(other)) {}
 
         fragile_copied_obj &operator=(fragile_copied_obj const &) = default;
         fragile_copied_obj &operator=(fragile_copied_obj &&) noexcept(false) = default;
@@ -810,13 +827,19 @@ namespace {
         }
     };
 
-    using fragile_map_t = throwing_map<fragile_copied_obj, fragile_copied_obj, bucket_hash, std::equal_to<counter::obj>, leak_checking_allocator<std::pair<fragile_copied_obj, fragile_copied_obj>>>;
+    using fragile_map_t = throwing_map<
+        fragile_copied_obj,
+        fragile_copied_obj,
+        bucket_hash,
+        std::equal_to<counter::obj>,
+        leak_checking_allocator<std::pair<fragile_copied_obj, fragile_copied_obj>>
+    >;
 
     /// inserts the key `n` mapped to `n` with the lvalues `k`, so that the copies into the map are the only transfers
     void insert_from_lvalue(fragile_map_t &map, fragile_copied_obj const &k) {
         map.try_emplace(k, k);
     }
-}  // namespace
+} // namespace
 
 // The bits of a bucket change after its value is constructed, and the new storage of a copying insertion or of a copy
 // is complete before the old one is touched. So a copy that throws leaves everything as it was. Each copy and move of
@@ -861,8 +884,7 @@ TEST_CASE("a copy that throws leaves a hole, a group with holes and the source o
                     insert_from_lvalue(map, k);
                     transfers_until_throw = -1;
                     break;
-                } catch (std::runtime_error const &) {
-                }
+                } catch (std::runtime_error const &) {}
                 transfers_until_throw = -1;
                 CHECK(iterated_keys(map) == keys);
                 CHECK(live_bytes == bytes);
@@ -884,8 +906,7 @@ TEST_CASE("a copy that throws leaves a hole, a group with holes and the source o
                     transfers_until_throw = -1;
                     CHECK(iterated_keys(copy) == keys);
                     break;
-                } catch (std::runtime_error const &) {
-                }
+                } catch (std::runtime_error const &) {}
                 transfers_until_throw = -1;
                 CHECK(alive(counts) == alive_before);
                 CHECK(live_blocks == blocks);

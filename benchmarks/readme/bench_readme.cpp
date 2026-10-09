@@ -59,8 +59,8 @@
 #include "alloc_timeline.hpp"
 #include "count_alloc.hpp"
 #include "disk_usage.hpp"
-#include "max_rss.hpp"
 #include "maps.hpp"
+#include "max_rss.hpp"
 
 #include <array>
 #include <bit>
@@ -135,8 +135,16 @@ namespace {
     /// reports a failed check and ends the process
     [[noreturn]] void fail(char const *what) {
         std::fflush(stdout);
-        std::fprintf(stderr, "FAILED %s %s %s %.*s: %s\n", variant_name, key_name, map_desc::name,
-                     static_cast<int>(current_work.size()), current_work.data(), what);
+        std::fprintf(
+            stderr,
+            "FAILED %s %s %s %.*s: %s\n",
+            variant_name,
+            key_name,
+            map_desc::name,
+            static_cast<int>(current_work.size()),
+            current_work.data(),
+            what
+        );
         std::fflush(stderr);
         std::_Exit(3);
     }
@@ -204,9 +212,9 @@ namespace {
      */
     constexpr std::size_t min_key_length = 8;
     constexpr std::size_t max_key_length = 135;
-    constexpr std::string_view key_filler =
-            "service.name/attribute.count/http.status_code/db.query.duration_ms/net.peer.address.family/"
-            "process.runtime.description/log.record.uid/k8s.pod.namespace";
+    constexpr std::string_view
+        key_filler = "service.name/attribute.count/http.status_code/db.query.duration_ms/net.peer.address.family/"
+                     "process.runtime.description/log.record.uid/k8s.pod.namespace";
     static_assert(key_filler.size() >= max_key_length);
 
     template<typename Key>
@@ -236,11 +244,10 @@ namespace {
         std::vector<key_type> absent;
         std::vector<key_type> spare;
 
-        explicit pools(std::size_t n)
-            : present(make_keys(0, n, 1)),
-              absent(make_keys(std::uint64_t{1} << 63U, n, 2)),
-              spare(make_keys(std::uint64_t{1} << 62U, n, 3)) {
-        }
+        explicit pools(std::size_t n) :
+            present(make_keys(0, n, 1)),
+            absent(make_keys(std::uint64_t{1} << 63U, n, 2)),
+            spare(make_keys(std::uint64_t{1} << 62U, n, 3)) {}
 
         static std::vector<key_type> make_keys(std::uint64_t pool, std::size_t n, std::uint64_t seed) {
             std::vector<key_type> keys;
@@ -286,8 +293,7 @@ namespace {
         std::optional<metall::manager> manager_;
 
     public:
-        explicit context(std::filesystem::path path)
-            : path_(std::move(path)) {
+        explicit context(std::filesystem::path path) : path_(std::move(path)) {
             remove_datastore(path_);
             std::filesystem::create_directories(path_.parent_path());
             manager_.emplace(metall::create_only, path_.c_str());
@@ -323,9 +329,9 @@ namespace {
 #if defined(DSM_README_DISK_USAGE)
     /// metall's own numbers, read from `metall::manager::profile`, in bytes
     struct metall_numbers {
-        double segment = 0.0;  ///< the chunks up to the last one in use
-        double chunks = 0.0;   ///< the chunks in use
-        double objects = 0.0;  ///< the live objects, each rounded up to its size class
+        double segment = 0.0; ///< the chunks up to the last one in use
+        double chunks = 0.0; ///< the chunks in use
+        double objects = 0.0; ///< the live objects, each rounded up to its size class
         /// per object size: the chunks in use and the live objects
         std::map<std::uint64_t, std::pair<double, double>> classes;
     };
@@ -382,13 +388,11 @@ namespace {
         return {};
     }
 
-    void remove_datastore(std::filesystem::path const &) {
-    }
+    void remove_datastore(std::filesystem::path const &) {}
 
     /// makes every map with `Map()`
     struct context {
-        explicit context(std::filesystem::path const &) {
-        }
+        explicit context(std::filesystem::path const &) {}
 
         template<typename Map>
         [[nodiscard]] Map make() {
@@ -424,7 +428,17 @@ namespace {
 
 #if defined(DSM_README_DISK_USAGE)
     /// the quantities of the `disk` panel, one line each, in this order
-    constexpr std::array<char const *, 9> disk_quantities{"disk", "diskpeak", "diskflushed", "diskclear", "diskfreed", "diskempty", "metallsegment", "metallchunks", "metallobjects"};
+    constexpr std::array<char const *, 9> disk_quantities{
+        "disk",
+        "diskpeak",
+        "diskflushed",
+        "diskclear",
+        "diskfreed",
+        "diskempty",
+        "metallsegment",
+        "metallchunks",
+        "metallobjects"
+    };
 
     /**
      * `fill` with samples of the disk usage: every 1/256 of the inserts, and right after every
@@ -490,50 +504,60 @@ namespace {
         auto const p_index = static_cast<std::size_t>(disk_usage::trigger::periodic);
         auto const g_index = static_cast<std::size_t>(disk_usage::trigger::growth);
         auto const h_index = static_cast<std::size_t>(disk_usage::trigger::punch);
-        std::fprintf(stderr,
-                     "disk-detail %s %s %s n %zu buckets %zu empty_bytes %llu built_bytes %llu peak_bytes %llu "
-                     "samples periodic %zu growth %zu punch %zu largest_per_entry periodic %.4f growth %.4f "
-                     "punch %.4f punches %zu punched_bytes %llu sample_us %.1f fill_ms %.1f "
-                     "files %zu empty_metall segment %.0f chunks %.0f objects %.0f\n",
-                     variant_name,
-                     key_name,
-                     map_desc::name,
-                     n,
-                     buckets,
-                     static_cast<unsigned long long>(empty),
-                     static_cast<unsigned long long>(built),
-                     static_cast<unsigned long long>(sampler.peak),
-                     sampler.samples[p_index],
-                     sampler.samples[g_index],
-                     sampler.samples[h_index],
-                     sampler.samples[p_index] > 0 ? per_entry(sampler.largest[p_index]) : 0.0,
-                     sampler.samples[g_index] > 0 ? per_entry(sampler.largest[g_index]) : 0.0,
-                     sampler.samples[h_index] > 0 ? per_entry(sampler.largest[h_index]) : 0.0,
-                     sampler.punches,
-                     static_cast<unsigned long long>(sampler.punched_bytes),
-                     sampler.total_samples() > 0
-                         ? nanoseconds(sampler.spent) / 1000.0 / static_cast<double>(sampler.total_samples())
-                         : 0.0,
-                     nanoseconds(t1 - t0) / 1e6,
-                     files,
-                     empty_metall.segment,
-                     empty_metall.chunks,
-                     empty_metall.objects);
+        std::fprintf(
+            stderr,
+            "disk-detail %s %s %s n %zu buckets %zu empty_bytes %llu built_bytes %llu peak_bytes %llu "
+            "samples periodic %zu growth %zu punch %zu largest_per_entry periodic %.4f growth %.4f "
+            "punch %.4f punches %zu punched_bytes %llu sample_us %.1f fill_ms %.1f "
+            "files %zu empty_metall segment %.0f chunks %.0f objects %.0f\n",
+            variant_name,
+            key_name,
+            map_desc::name,
+            n,
+            buckets,
+            static_cast<unsigned long long>(empty),
+            static_cast<unsigned long long>(built),
+            static_cast<unsigned long long>(sampler.peak),
+            sampler.samples[p_index],
+            sampler.samples[g_index],
+            sampler.samples[h_index],
+            sampler.samples[p_index] > 0 ? per_entry(sampler.largest[p_index]) : 0.0,
+            sampler.samples[g_index] > 0 ? per_entry(sampler.largest[g_index]) : 0.0,
+            sampler.samples[h_index] > 0 ? per_entry(sampler.largest[h_index]) : 0.0,
+            sampler.punches,
+            static_cast<unsigned long long>(sampler.punched_bytes),
+            sampler.total_samples() > 0
+                ? nanoseconds(sampler.spent) / 1000.0 / static_cast<double>(sampler.total_samples())
+                : 0.0,
+            nanoseconds(t1 - t0) / 1e6,
+            files,
+            empty_metall.segment,
+            empty_metall.chunks,
+            empty_metall.objects
+        );
         std::fprintf(stderr, "disk-classes %s %s %s n %zu", variant_name, key_name, map_desc::name, n);
         for (auto const &[object_size, of_class] : metall.classes) {
-            std::fprintf(stderr, " %llu:%.0f:%.0f", static_cast<unsigned long long>(object_size), of_class.first, of_class.second);
+            std::fprintf(
+                stderr,
+                " %llu:%.0f:%.0f",
+                static_cast<unsigned long long>(object_size),
+                of_class.first,
+                of_class.second
+            );
         }
         std::fprintf(stderr, "\n");
 
-        return {per_entry(built),
-                per_entry(sampler.peak),
-                per_entry(flushed),
-                per_entry(cleared),
-                per_entry(freed),
-                per_entry(emptied),
-                (metall.segment - empty_metall.segment) / entries,
-                (metall.chunks - empty_metall.chunks) / entries,
-                (metall.objects - empty_metall.objects) / entries};
+        return {
+            per_entry(built),
+            per_entry(sampler.peak),
+            per_entry(flushed),
+            per_entry(cleared),
+            per_entry(freed),
+            per_entry(emptied),
+            (metall.segment - empty_metall.segment) / entries,
+            (metall.chunks - empty_metall.chunks) / entries,
+            (metall.objects - empty_metall.objects) / entries
+        };
     }
 
     /// runs the `disk` panel at the five sizes and prints one line per quantity
@@ -580,7 +604,9 @@ namespace {
         std::size_t const bins = env_size("DSM_README_TIMELINE_BINS", 2000);
         // Up to 2.8 events per insert (`sparse_map` with sparsity high, two for a node map). Mapped and
         // faulted in now.
-        std::size_t const capacity = env_size("DSM_README_TIMELINE_CAPACITY", 3 * n + 1'000'000) / (every > 0 ? every : 1) + 16;
+        std::size_t const capacity = env_size("DSM_README_TIMELINE_CAPACITY", 3 * n + 1'000'000)
+                / (every > 0 ? every : 1)
+            + 16;
         alloc_timeline::recorder recorder{capacity, every};
         context ctx{fresh_datastore_path()};
 
@@ -609,20 +635,22 @@ namespace {
         }
         double const total = recorder.seconds();
         double const insert = recorder.seconds_at(inserted_at);
-        std::printf("%s %s %s timeline %zu insert_s %.6f destroy_s %.6f total_s %.6f every %zu events %zu recorded %zu "
-                    "peak_bytes %zu inserted_bytes %zu\n",
-                    variant_name,
-                    key_name,
-                    map_desc::name,
-                    n,
-                    insert,
-                    total - insert,
-                    total,
-                    alloc_timeline::available() ? every : 0,
-                    alloc_timeline::seen,
-                    alloc_timeline::recorded,
-                    alloc_timeline::peak,
-                    inserted_bytes);
+        std::printf(
+            "%s %s %s timeline %zu insert_s %.6f destroy_s %.6f total_s %.6f every %zu events %zu recorded %zu "
+            "peak_bytes %zu inserted_bytes %zu\n",
+            variant_name,
+            key_name,
+            map_desc::name,
+            n,
+            insert,
+            total - insert,
+            total,
+            alloc_timeline::available() ? every : 0,
+            alloc_timeline::seen,
+            alloc_timeline::recorded,
+            alloc_timeline::peak,
+            inserted_bytes
+        );
         std::fflush(stdout);
         if (alloc_timeline::available() && csv != nullptr && !recorder.write(csv, bins)) {
             fail("cannot write the timeline CSV");
@@ -652,23 +680,24 @@ namespace {
             auto const path = fresh_datastore_path();
             std::fflush(stdout);
             double const bytes = max_rss::of(
-                    [&](max_rss::probe &probe) {
-                        context ctx{path};
-                        probe.start();
-                        auto map = ctx.make<map_t>();
-                        fill(map, p.present);
-                        keep(map.size());
-                        probe.stop();
-                        if (map.size() != n) {
-                            fail("size after fill");
-                        }
-                    },
-                    [&](max_rss::probe &probe) {
-                        context ctx{path};
-                        probe.start();
-                        probe.stop();
-                    },
-                    [&] { remove_datastore(path); });
+                [&](max_rss::probe &probe) {
+                    context ctx{path};
+                    probe.start();
+                    auto map = ctx.make<map_t>();
+                    fill(map, p.present);
+                    keep(map.size());
+                    probe.stop();
+                    if (map.size() != n) {
+                        fail("size after fill");
+                    }
+                },
+                [&](max_rss::probe &probe) {
+                    context ctx{path};
+                    probe.start();
+                    probe.stop();
+                },
+                [&] { remove_datastore(path); }
+            );
             if (bytes < 0.0) {
                 fail("peak resident set (is /proc/self/clear_refs writable?)");
             }
@@ -774,11 +803,11 @@ namespace {
             return nanoseconds(t1 - t0) / static_cast<double>(sweeps * n);
         };
 
-        static_cast<void>(once());  // warmup, not reported
+        static_cast<void>(once()); // warmup, not reported
         return once();
     }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char **argv) {
     tame_allocator();
@@ -790,7 +819,8 @@ int main(int argc, char **argv) {
     std::string_view const work{argv[1]};
     current_work = work;
     std::size_t const base = std::strtoull(argv[2], nullptr, 10);
-    static constexpr std::array<std::string_view, 9> known{"build", "buildfree", "find", "churn", "iterate", "rss", "memory", "disk", "timeline"};
+    static constexpr std::array<std::string_view, 9>
+        known{"build", "buildfree", "find", "churn", "iterate", "rss", "memory", "disk", "timeline"};
     bool is_known = false;
     for (auto const &name : known) {
         is_known = is_known || name == work;

@@ -33,28 +33,37 @@ namespace {
     using metall_allocator = metall::manager::allocator_type<T>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using map_of = sparse_map<std::uint64_t,
-                              std::uint64_t,
-                              tests::test_hash<std::uint64_t>,
-                              std::equal_to<std::uint64_t>,
-                              AllocatorOf<entry_t>,
-                              Sparsity>;
+    using map_of = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        AllocatorOf<entry_t>,
+        Sparsity
+    >;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using set_of = sparse_set<std::uint64_t,
-                              tests::test_hash<std::uint64_t>,
-                              std::equal_to<std::uint64_t>,
-                              AllocatorOf<std::uint64_t>,
-                              Sparsity>;
+    using set_of = sparse_set<
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        AllocatorOf<std::uint64_t>,
+        Sparsity
+    >;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using array_of = detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
+    using array_of = detail_sparse_hash::sparse_array<
+        entry_t,
+        AllocatorOf<entry_t>,
+        Sparsity,
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
 
     constexpr auto high = sh::sparsity::high;
     constexpr auto medium = sh::sparsity::medium;
     constexpr auto low = sh::sparsity::low;
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("sparse_array<std::allocator, high>", array_of<std::allocator, high>);
 TYPE_TO_STRING_AS("sparse_array<std::allocator, medium>", array_of<std::allocator, medium>);
@@ -86,47 +95,53 @@ TYPE_TO_STRING_AS("sparse_set<metall, high>", set_of<metall_allocator, high>);
 TYPE_TO_STRING_AS("sparse_set<metall, medium>", set_of<metall_allocator, medium>);
 TYPE_TO_STRING_AS("sparse_set<metall, low>", set_of<metall_allocator, low>);
 
-TEST_CASE_TEMPLATE("sparse_array is standard layout",
-                   array_t,
-                   array_of<std::allocator, high>,
-                   array_of<std::allocator, medium>,
-                   array_of<std::allocator, low>,
-                   array_of<offset_ptr_allocator, high>,
-                   array_of<offset_ptr_allocator, medium>,
-                   array_of<offset_ptr_allocator, low>,
-                   array_of<metall_allocator, high>,
-                   array_of<metall_allocator, medium>,
-                   array_of<metall_allocator, low>) {
+TEST_CASE_TEMPLATE(
+    "sparse_array is standard layout",
+    array_t,
+    array_of<std::allocator, high>,
+    array_of<std::allocator, medium>,
+    array_of<std::allocator, low>,
+    array_of<offset_ptr_allocator, high>,
+    array_of<offset_ptr_allocator, medium>,
+    array_of<offset_ptr_allocator, low>,
+    array_of<metall_allocator, high>,
+    array_of<metall_allocator, medium>,
+    array_of<metall_allocator, low>
+) {
     MESSAGE(doctest::toString<array_t>() << ": sizeof " << sizeof(array_t));
     CHECK(std::is_standard_layout_v<array_t>);
 }
 
-TEST_CASE_TEMPLATE("sparse_map and sparse_set with a stateless allocator are standard layout",
-                   container_t,
-                   map_of<std::allocator, high>,
-                   map_of<std::allocator, medium>,
-                   map_of<std::allocator, low>,
-                   map_of<offset_ptr_allocator, high>,
-                   map_of<offset_ptr_allocator, medium>,
-                   map_of<offset_ptr_allocator, low>,
-                   set_of<std::allocator, high>,
-                   set_of<std::allocator, medium>,
-                   set_of<std::allocator, low>,
-                   set_of<offset_ptr_allocator, high>,
-                   set_of<offset_ptr_allocator, medium>,
-                   set_of<offset_ptr_allocator, low>) {
+TEST_CASE_TEMPLATE(
+    "sparse_map and sparse_set with a stateless allocator are standard layout",
+    container_t,
+    map_of<std::allocator, high>,
+    map_of<std::allocator, medium>,
+    map_of<std::allocator, low>,
+    map_of<offset_ptr_allocator, high>,
+    map_of<offset_ptr_allocator, medium>,
+    map_of<offset_ptr_allocator, low>,
+    set_of<std::allocator, high>,
+    set_of<std::allocator, medium>,
+    set_of<std::allocator, low>,
+    set_of<offset_ptr_allocator, high>,
+    set_of<offset_ptr_allocator, medium>,
+    set_of<offset_ptr_allocator, low>
+) {
     MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
     CHECK(std::is_standard_layout_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are standard layout",
-                   container_t,
-                   map_of<metall_allocator, high>,
-                   map_of<metall_allocator, medium>,
-                   map_of<metall_allocator, low>,
-                   set_of<metall_allocator, high>,
-                   set_of<metall_allocator, medium>,
-                   set_of<metall_allocator, low>) {
+TEST_CASE_TEMPLATE(
+    "sparse_map and sparse_set with the metall allocator are standard layout",
+    container_t,
+    map_of<metall_allocator, high>,
+    map_of<metall_allocator, medium>,
+    map_of<metall_allocator, low>,
+    set_of<metall_allocator, high>,
+    set_of<metall_allocator, medium>,
+    set_of<metall_allocator, low>
+) {
     MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
     CHECK(std::is_standard_layout_v<container_t>);
 }
@@ -151,12 +166,14 @@ namespace {
         auto const pair = pair_t{};
         auto const base = reinterpret_cast<char const *>(&pair);
         CHECK(reinterpret_cast<char const *>(&pair.first) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, key)));
-        CHECK(reinterpret_cast<char const *>(&pair.second) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, value)));
+        CHECK(
+            reinterpret_cast<char const *>(&pair.second) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, value))
+        );
     }
 
     /// a value whose move constructor can throw, so that the groups of a map of it have holes
     using copied_value = dice::sparse_map::tests::copied_value<int>;
-}  // namespace
+} // namespace
 
 TEST_CASE("map_slot has the layout of std::pair") {
     check_map_slot_has_the_layout_of_pair<std::uint64_t, std::uint64_t>();
@@ -173,7 +190,7 @@ namespace {
         int first;
         int second;
     };
-}  // namespace
+} // namespace
 
 template<>
 struct std::tuple_size<tuple_size_without_get> : std::integral_constant<std::size_t, 2> {};
@@ -199,10 +216,20 @@ TEST_CASE("sizes") {
     // factor, a float, with 4 bytes of padding.
     CHECK(sizeof(map_t) == 72);
     // the pointer to the values, two bitmaps, the number of values, the capacity and the flag of the last group
-    CHECK(sizeof(dice::sparse_map::detail_sparse_hash::sparse_array<entry_t, std::allocator<entry_t>, sh::sparsity::medium, sh::allocation_failure::terminating>) == 32);
+    CHECK(
+        sizeof(dice::sparse_map::detail_sparse_hash::sparse_array<
+            entry_t,
+            std::allocator<entry_t>,
+            sh::sparsity::medium,
+            sh::allocation_failure::terminating
+        >)
+        == 32
+    );
     // the group, the element, and the end of the elements of the group or, with holes, the run of the element (two
     // 32 bit counters)
-    static_assert(!std::is_nothrow_move_constructible_v<dice::sparse_map::detail_sparse_hash::map_slot<int, copied_value>>);
+    static_assert(
+        !std::is_nothrow_move_constructible_v<dice::sparse_map::detail_sparse_hash::map_slot<int, copied_value>>
+    );
     CHECK(sizeof(map_t::iterator) == 24);
     CHECK(sizeof(map_t::const_iterator) == 24);
     CHECK(sizeof(holes_map_t::iterator) == 24);

@@ -48,19 +48,23 @@ namespace {
     using metall_allocator = metall::manager::allocator_type<T>;
 
     template<sh::sparsity Sparsity>
-    using persistent_map = sparse_map<std::uint64_t,
-                                      std::uint64_t,
-                                      tests::test_hash<std::uint64_t>,
-                                      std::equal_to<std::uint64_t>,
-                                      metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
-                                      Sparsity>;
+    using persistent_map = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
+        Sparsity
+    >;
 
     template<sh::sparsity Sparsity>
-    using persistent_set = sparse_set<std::uint64_t,
-                                      tests::test_hash<std::uint64_t>,
-                                      std::equal_to<std::uint64_t>,
-                                      metall_allocator<std::uint64_t>,
-                                      Sparsity>;
+    using persistent_set = sparse_set<
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::uint64_t>,
+        Sparsity
+    >;
 
     /// number of elements a container holds after it was filled, and again after it was changed
     constexpr std::uint64_t num_elements = 100000;
@@ -156,8 +160,14 @@ namespace {
     struct datastore_path {
         std::filesystem::path path;
 
-        explicit datastore_path(std::string const &name)
-            : path(std::filesystem::temp_directory_path() / ("dice_sparse_map_tests_metall_" + file_name_part(name) + "_" + std::to_string(std::random_device{}()))) {
+        explicit datastore_path(std::string const &name) :
+            path(
+                std::filesystem::temp_directory_path()
+                / ("dice_sparse_map_tests_metall_"
+                    + file_name_part(name)
+                    + "_"
+                    + std::to_string(std::random_device{}()))
+            ) {
             static_cast<void>(metall::manager::remove(path.c_str()));
         }
 
@@ -177,10 +187,16 @@ namespace {
      * raw pointer into the old mapping crashes on it instead of reading the old data.
      */
     struct address_blocker {
-        address_blocker(void const *address, std::size_t size) noexcept
-            : size_(size) {
+        address_blocker(void const *address, std::size_t size) noexcept : size_(size) {
             void *const requested = const_cast<void *>(address);
-            void *const mapped = ::mmap(requested, size_, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
+            void *const mapped = ::mmap(
+                requested,
+                size_,
+                PROT_NONE,
+                MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE,
+                -1,
+                0
+            );
             if (mapped == requested) {
                 block_ = mapped;
             } else if (mapped != MAP_FAILED) {
@@ -313,11 +329,13 @@ namespace {
     using inner_map = persistent_map<sh::sparsity::medium>;
 
     /// The outer map passes its allocator to every inner map it constructs (uses-allocator construction).
-    using scoped_outer_map = sparse_map<std::uint64_t,
-                                        inner_map,
-                                        tests::test_hash<std::uint64_t>,
-                                        std::equal_to<std::uint64_t>,
-                                        std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, inner_map>>>>;
+    using scoped_outer_map = sparse_map<
+        std::uint64_t,
+        inner_map,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, inner_map>>>
+    >;
 
     constexpr std::uint64_t num_outer = 100;
     constexpr std::uint64_t num_inner = 100;
@@ -382,7 +400,9 @@ namespace {
                 all_found = all_found && inner.size() == num_inner;
                 for (std::uint64_t inner_key = 0; inner_key < num_inner; ++inner_key) {
                     auto const inner_it = inner.find(inner_key);
-                    all_found = all_found && inner_it != inner.end() && inner_it->second == value_of(outer_key * num_inner + inner_key);
+                    all_found = all_found
+                        && inner_it != inner.end()
+                        && inner_it->second == value_of(outer_key * num_inner + inner_key);
                 }
             }
             CHECK(all_found);
@@ -401,7 +421,7 @@ namespace {
         }
     }
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("sparse_map<metall, high>", persistent_map<sh::sparsity::high>);
 TYPE_TO_STRING_AS("sparse_map<metall, medium>", persistent_map<sh::sparsity::medium>);
@@ -410,14 +430,16 @@ TYPE_TO_STRING_AS("sparse_set<metall, high>", persistent_set<sh::sparsity::high>
 TYPE_TO_STRING_AS("sparse_set<metall, medium>", persistent_set<sh::sparsity::medium>);
 TYPE_TO_STRING_AS("sparse_set<metall, low>", persistent_set<sh::sparsity::low>);
 
-TEST_CASE_TEMPLATE("a container in a metall datastore survives closing and opening",
-                   container_t,
-                   persistent_map<sh::sparsity::high>,
-                   persistent_map<sh::sparsity::medium>,
-                   persistent_map<sh::sparsity::low>,
-                   persistent_set<sh::sparsity::high>,
-                   persistent_set<sh::sparsity::medium>,
-                   persistent_set<sh::sparsity::low>) {
+TEST_CASE_TEMPLATE(
+    "a container in a metall datastore survives closing and opening",
+    container_t,
+    persistent_map<sh::sparsity::high>,
+    persistent_map<sh::sparsity::medium>,
+    persistent_map<sh::sparsity::low>,
+    persistent_set<sh::sparsity::high>,
+    persistent_set<sh::sparsity::medium>,
+    persistent_set<sh::sparsity::low>
+) {
     check_round_trip<container_t>(doctest::toString<container_t>().c_str());
 }
 
@@ -430,13 +452,17 @@ namespace {
     /// it instead of moving it, and an erase leaves a hole in the group.
     using copied_value = tests::copied_value<std::uint64_t>;
 
-    using map_with_holes = sparse_map<std::uint64_t,
-                                      copied_value,
-                                      tests::test_hash<std::uint64_t>,
-                                      std::equal_to<std::uint64_t>,
-                                      metall_allocator<std::pair<std::uint64_t, copied_value>>>;
+    using map_with_holes = sparse_map<
+        std::uint64_t,
+        copied_value,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::pair<std::uint64_t, copied_value>>
+    >;
 
-    static_assert(!std::is_nothrow_move_constructible_v<dice::sparse_map::detail_sparse_hash::map_slot<std::uint64_t, copied_value>>);
+    static_assert(!std::is_nothrow_move_constructible_v<
+        dice::sparse_map::detail_sparse_hash::map_slot<std::uint64_t, copied_value>
+    >);
     static_assert(std::is_standard_layout_v<map_with_holes>);
 
     /// true if `map` holds exactly the keys below `end` for which `expected(key)` is true, each with its value
@@ -461,7 +487,7 @@ namespace {
         }
         return found_right && iterated_right && nb_iterated == nb_expected && map.size() == nb_expected;
     }
-}  // namespace
+} // namespace
 
 // The holes stay in the groups when the datastore is closed. After it is opened again, iteration and find skip them,
 // and insertions fill them.
@@ -483,9 +509,7 @@ TEST_CASE("a map whose groups have holes survives closing and opening") {
         for (std::uint64_t key = 0; key < nb_keys; key += 3) {
             map->erase(key);
         }
-        CHECK(holds_exactly(*map, nb_keys, [](std::uint64_t key) {
-            return key % 3 != 0;
-        }));
+        CHECK(holds_exactly(*map, nb_keys, [](std::uint64_t key) { return key % 3 != 0; }));
     }
 
     {
@@ -497,9 +521,7 @@ TEST_CASE("a map whose groups have holes survives closing and opening") {
         last_mapping = mapping_of(manager);
         auto *map = std::get<0>(manager.find<map_with_holes>(object_name));
         REQUIRE(map != nullptr);
-        CHECK(holds_exactly(*map, nb_keys, [](std::uint64_t key) {
-            return key % 3 != 0;
-        }));
+        CHECK(holds_exactly(*map, nb_keys, [](std::uint64_t key) { return key % 3 != 0; }));
 
         // more holes, then the keys of the first holes again, and new keys
         for (std::uint64_t key = 1; key < nb_keys; key += 3) {
@@ -536,12 +558,14 @@ TEST_CASE("a map whose groups have holes survives closing and opening") {
 
 namespace {
     /// `identity_hash` puts key `64 * g` into group `g`
-    using bucket_map = sparse_map<std::uint64_t,
-                                  std::uint64_t,
-                                  tests::identity_hash<std::uint64_t>,
-                                  std::equal_to<std::uint64_t>,
-                                  metall_allocator<std::pair<std::uint64_t, std::uint64_t>>>;
-}  // namespace
+    using bucket_map = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::identity_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::pair<std::uint64_t, std::uint64_t>>
+    >;
+} // namespace
 
 // metall maps a datastore that is open read-only without write access, so a write into the map faults. `begin()` of a
 // const map reads where the first element is and writes nothing.
@@ -558,7 +582,9 @@ TEST_CASE("begin, iteration and find of a map in a datastore that is open read-o
         map->reserve(1000);
         REQUIRE(map->bucket_count() == 2048);
         // the first group with an element is group 10
-        for (std::uint64_t const key : {std::uint64_t{0}, std::uint64_t{640}, std::uint64_t{1300}, std::uint64_t{1920}}) {
+        for (
+            std::uint64_t const key :
+            {std::uint64_t{0}, std::uint64_t{640}, std::uint64_t{1300}, std::uint64_t{1920}}) {
             map->try_emplace(key, value_of(key));
         }
         CHECK(map->erase(0) == 1);

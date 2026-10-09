@@ -34,9 +34,7 @@ namespace {
         using pointer = value_type const *;
         using reference = value_type const &;
 
-        counting_input_iterator(std::size_t val, counter &counts)
-            : kv_({val, counts}, {val, counts}) {
-        }
+        counting_input_iterator(std::size_t val, counter &counts) : kv_({val, counts}, {val, counts}) {}
 
         counting_input_iterator &operator++() {
             ++kv_.first.get();
@@ -56,7 +54,7 @@ namespace {
         std::pair<counter::obj, counter::obj> kv_;
     };
 
-}  // namespace
+} // namespace
 
 // ctors
 
@@ -68,18 +66,10 @@ TEST_CASE_MAP("ctors_map", counter::obj, counter::obj) {
     auto counts = counter();
     INFO(counts);
 
-    {
-        auto m = map_t{};
-    }
-    {
-        auto m = map_t{0, alloc_t{}};
-    }
-    {
-        auto m = map_t{0, hash_t{}, alloc_t{}};
-    }
-    {
-        auto m = map_t{alloc_t{}};
-    }
+    { auto m = map_t{}; }
+    { auto m = map_t{0, alloc_t{}}; }
+    { auto m = map_t{0, hash_t{}, alloc_t{}}; }
+    { auto m = map_t{alloc_t{}}; }
     REQUIRE(counts.dtor() == 0);
 
     {
@@ -149,7 +139,12 @@ TEST_CASE_MAP("insert_hint", unsigned int, int) {
     REQUIRE(map.size() == 3);
     REQUIRE(map[10] == 11);
 
-    it = map.emplace_hint(map.find(3), std::piecewise_construct, std::forward_as_tuple(123), std::forward_as_tuple(321));
+    it = map.emplace_hint(
+        map.find(3),
+        std::piecewise_construct,
+        std::forward_as_tuple(123),
+        std::forward_as_tuple(321)
+    );
     REQUIRE(map.size() == 4);
     REQUIRE(it == map.find(123));
     REQUIRE(map[123] == 321);
@@ -165,7 +160,7 @@ TEST_CASE_MAP("insert_present_key_leaves_the_argument", std::string, std::string
     REQUIRE_FALSE(r.second);
     REQUIRE(r.first->second == "first");
     REQUIRE(map.size() == 1);
-    REQUIRE(vt.second == std::string(100, 'x'));  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    REQUIRE(vt.second == std::string(100, 'x')); // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
 }
 
 TEST_CASE_SET("insert_present_key_leaves_the_argument_set", std::string) {
@@ -174,7 +169,7 @@ TEST_CASE_SET("insert_present_key_leaves_the_argument_set", std::string) {
     auto key = std::string(100, 'x');
     REQUIRE_FALSE(set.insert(std::move(key)).second);
     REQUIRE(set.size() == 1);
-    REQUIRE(key == std::string(100, 'x'));  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    REQUIRE(key == std::string(100, 'x')); // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
 }
 
 TEST_CASE_MAP("insert_present_key_copies_nothing", counter::obj, counter::obj) {
@@ -207,16 +202,15 @@ namespace {
      * A mapped value built from something else, which counts how often that happens.
      */
     struct converted {
-        inline static int constructed = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        inline static int constructed = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
         int value;
 
-        explicit converted(int v)
-            : value(v) {
+        explicit converted(int v) : value(v) {
             ++constructed;
         }
     };
 
-}  // namespace
+} // namespace
 
 // Arguments the value is converted from are consumed on a present key: the value is built and destroyed. So
 // `emplace(k, new int)` cannot leak its pointer.
@@ -250,10 +244,7 @@ TEST_CASE_SET("emplace_without_arguments_set", int) {
 namespace {
 
     struct regular_type {
-        regular_type(std::size_t i, std::string s) noexcept
-            : s_(std::move(s)),
-              i_(i) {
-        }
+        regular_type(std::size_t i, std::string s) noexcept : s_(std::move(s)), i_(i) {}
 
         friend bool operator==(regular_type const &r1, regular_type const &r2) {
             return r1.i_ == r2.i_ && r1.s_ == r2.s_;
@@ -264,7 +255,7 @@ namespace {
         std::size_t i_;
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("try_emplace", std::string, regular_type) {
     map_t map;
@@ -362,7 +353,7 @@ namespace {
         return it != map.end() && it->second == second;
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("insert_initializer_list", int, int) {
     auto m = map_t();
@@ -460,7 +451,7 @@ namespace {
         return input;
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("range_insert_matches_a_loop_of_single_inserts") {
     auto input = range_insert_input();
@@ -499,7 +490,7 @@ TEST_CASE("range_insert_keeps_the_first_of_each_duplicate") {
     map.insert(input.begin(), input.end());
     REQUIRE(map.size() == 20U);
     for (int i = 0; i < 20; ++i) {
-        REQUIRE(map.at(i) == 0);  // the value of the first round, not of the last
+        REQUIRE(map.at(i) == 0); // the value of the first round, not of the last
     }
 }
 
@@ -520,9 +511,9 @@ TEST_CASE("range_insert_into_a_populated_and_an_empty_map") {
     }
     populated.insert(input.begin(), input.end());
     REQUIRE(populated.size() == 1500U);
-    REQUIRE(populated.at(0) == 0);      // new, from the range
-    REQUIRE(populated.at(999) == -1);   // already there, so the range did not overwrite it
-    REQUIRE(populated.at(1499) == -1);  // untouched
+    REQUIRE(populated.at(0) == 0); // new, from the range
+    REQUIRE(populated.at(999) == -1); // already there, so the range did not overwrite it
+    REQUIRE(populated.at(1499) == -1); // untouched
 }
 
 // A single pass iterator cannot be walked twice to measure the range, so it takes the plain loop.
@@ -584,16 +575,18 @@ TEST_CASE("range_insert_initializer_list_and_from_a_copy") {
 // sparse_map sizes the table for the whole length of a forward range, duplicates included. So the range insert never
 // ends with fewer buckets than the loop, and it may end with more.
 TEST_CASE("range_insert_matches_a_loop_at_many_lengths_and_duplicate_rates") {
-    for (auto const len : {std::size_t{1},
-                           std::size_t{2},
-                           std::size_t{3},
-                           std::size_t{4095},
-                           std::size_t{4096},
-                           std::size_t{4097},
-                           std::size_t{8191},
-                           std::size_t{8192},
-                           std::size_t{8193},
-                           std::size_t{12289}}) {
+    for (
+        auto const len :
+        {std::size_t{1},
+            std::size_t{2},
+            std::size_t{3},
+            std::size_t{4095},
+            std::size_t{4096},
+            std::size_t{4097},
+            std::size_t{8191},
+            std::size_t{8192},
+            std::size_t{8193},
+            std::size_t{12289}}) {
         for (auto const distinct : {std::size_t{7}, std::size_t{1000}}) {
             auto const input = range_insert_input_of(len, distinct);
 

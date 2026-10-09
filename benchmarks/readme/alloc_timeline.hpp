@@ -48,8 +48,8 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
     }
 
     struct event {
-        std::uint64_t ticks;  ///< the time stamp counter
-        std::uint64_t bytes;  ///< the allocated bytes after the event
+        std::uint64_t ticks; ///< the time stamp counter
+        std::uint64_t bytes; ///< the allocated bytes after the event
     };
 
     using clock_type = std::chrono::steady_clock;
@@ -63,22 +63,24 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
         asm volatile("mrs %0, cntvct_el0" : "=r"(value));
         return value;
 #else
-        return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(clock_type::now().time_since_epoch()).count());
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(clock_type::now().time_since_epoch()).count()
+        );
 #endif
     }
 
     // The state of the recording. The replaced `malloc` reaches it from everywhere, so it is global.
     inline bool recording = false;
     inline event *events = nullptr;
-    inline std::size_t capacity = 0;   ///< events that fit into `events`
-    inline std::size_t recorded = 0;   ///< events in `events`
-    inline std::size_t seen = 0;       ///< events, also those that were not recorded
-    inline std::size_t every = 1;      ///< only every `every`-th event is recorded
-    inline std::size_t countdown = 1;  ///< events until the next recorded one
-    inline std::size_t live = 0;       ///< allocated bytes
-    inline std::size_t peak = 0;       ///< largest value of `live`
-    inline std::size_t unmatched = 0;  ///< bytes freed that were allocated before the recording
-    inline bool overflow = false;      ///< true if an event did not fit into `events`
+    inline std::size_t capacity = 0; ///< events that fit into `events`
+    inline std::size_t recorded = 0; ///< events in `events`
+    inline std::size_t seen = 0; ///< events, also those that were not recorded
+    inline std::size_t every = 1; ///< only every `every`-th event is recorded
+    inline std::size_t countdown = 1; ///< events until the next recorded one
+    inline std::size_t live = 0; ///< allocated bytes
+    inline std::size_t peak = 0; ///< largest value of `live`
+    inline std::size_t unmatched = 0; ///< bytes freed that were allocated before the recording
+    inline bool overflow = false; ///< true if an event did not fit into `events`
 
     inline void record() noexcept {
         ++seen;
@@ -134,7 +136,8 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
         explicit recorder(std::size_t capacity_events, std::size_t record_every) {
 #if defined(DSM_README_ALLOC_TIMELINE)
             std::size_t const length = capacity_events * sizeof(event);
-            void *p = ::mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+            void
+                *p = ::mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
             if (p == MAP_FAILED) {
                 std::fprintf(stderr, "alloc_timeline: cannot map %zu bytes\n", length);
                 std::exit(4);
@@ -207,7 +210,9 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
             std::fprintf(out, "seconds,bytes\n0,0\n");
             double const span = static_cast<double>(ticks_stop_ - ticks_start_);
             auto bin_of = [&](std::size_t i) {
-                double const at = static_cast<double>(events[i].ticks - ticks_start_) / span * static_cast<double>(bins);
+                double const at = static_cast<double>(events[i].ticks - ticks_start_)
+                    / span
+                    * static_cast<double>(bins);
                 return std::min(static_cast<std::size_t>(at), bins - 1);
             };
             std::size_t i = 0;
@@ -241,6 +246,6 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
         }
     };
 
-}  // namespace dice::sparse_map::bench::readme::alloc_timeline
+} // namespace dice::sparse_map::bench::readme::alloc_timeline
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_README_ALLOC_TIMELINE_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_README_ALLOC_TIMELINE_HPP

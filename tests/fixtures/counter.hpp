@@ -141,12 +141,13 @@ namespace dice::sparse_map::tests {
         friend std::ostream &operator<<(std::ostream &os, counter const &c);
 
         /// constructions of objects without a counter: default constructed, or copied or moved from such an object
-        static std::size_t static_ctor;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-        static std::size_t static_dtor;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        static std::size_t static_ctor; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        static std::size_t static_dtor; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     private:
         data_t data_{};
-        std::string records_ = "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
+        std::string records_ =
+            "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
     };
 
     /**
@@ -171,13 +172,13 @@ namespace dice::sparse_map::tests {
 
         copied_obj(copied_obj const &other) = default;
 
-        copied_obj(copied_obj &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : counter::obj(static_cast<counter::obj const &>(other)) {
-        }
+        copied_obj(copied_obj &&other) noexcept(false) // NOLINT(performance-noexcept-move-constructor)
+            :
+            counter::obj(static_cast<counter::obj const &>(other)) {}
 
         copied_obj &operator=(copied_obj const &other) = default;
 
-        copied_obj &operator=(copied_obj &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
+        copied_obj &operator=(copied_obj &&other) noexcept(false) { // NOLINT(performance-noexcept-move-constructor)
             counter::obj::operator=(static_cast<counter::obj const &>(other));
             return *this;
         }
@@ -185,7 +186,7 @@ namespace dice::sparse_map::tests {
         ~copied_obj() = default;
     };
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
 template<>
 struct std::hash<dice::sparse_map::tests::counter::obj> {
@@ -194,4 +195,4 @@ struct std::hash<dice::sparse_map::tests::counter::obj> {
     }
 };
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTER_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTER_HPP

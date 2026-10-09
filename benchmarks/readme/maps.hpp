@@ -59,11 +59,13 @@ namespace dice::sparse_map::bench::readme {
      * `Plain<Key>`, so with `std::allocator` this is `Plain<Key>` itself.
      */
     template<template<typename, typename, typename, typename, typename> typename Map, typename Plain>
-    using with_allocator = Map<typename Plain::key_type,
-                               typename Plain::mapped_type,
-                               typename Plain::hasher,
-                               typename Plain::key_equal,
-                               allocator<typename std::allocator_traits<typename Plain::allocator_type>::value_type>>;
+    using with_allocator = Map<
+        typename Plain::key_type,
+        typename Plain::mapped_type,
+        typename Plain::hasher,
+        typename Plain::key_equal,
+        allocator<typename std::allocator_traits<typename Plain::allocator_type>::value_type>
+    >;
 
     template<sh::sparsity sparsity>
     struct sparse_map_of {
@@ -72,20 +74,24 @@ namespace dice::sparse_map::bench::readme {
         using default_hash = typename ::dice::sparse_map::sparse_map<Key, mapped_t>::hasher;
 
         template<typename Key>
-        using plain = ::dice::sparse_map::sparse_map<Key,
-                                                     mapped_t,
-                                                     default_hash<Key>,
-                                                     std::equal_to<Key>,
-                                                     std::allocator<std::pair<Key, mapped_t>>,
-                                                     sparsity>;
+        using plain = ::dice::sparse_map::sparse_map<
+            Key,
+            mapped_t,
+            default_hash<Key>,
+            std::equal_to<Key>,
+            std::allocator<std::pair<Key, mapped_t>>,
+            sparsity
+        >;
 
         template<typename Key>
-        using type = ::dice::sparse_map::sparse_map<Key,
-                                                    mapped_t,
-                                                    typename plain<Key>::hasher,
-                                                    typename plain<Key>::key_equal,
-                                                    allocator<std::pair<Key, mapped_t>>,
-                                                    sparsity>;
+        using type = ::dice::sparse_map::sparse_map<
+            Key,
+            mapped_t,
+            typename plain<Key>::hasher,
+            typename plain<Key>::key_equal,
+            allocator<std::pair<Key, mapped_t>>,
+            sparsity
+        >;
     };
 
     /// `dice::sparse_map::sparse_map<Key, std::size_t>`, the reference of the plots
@@ -118,11 +124,13 @@ namespace dice::sparse_map::bench::readme {
 
 #if defined(DSM_README_METALL)
         template<typename Key>
-        using type = ankerl::unordered_dense::map<Key,
-                                                  mapped_t,
-                                                  typename plain<Key>::hasher,
-                                                  typename plain<Key>::key_equal,
-                                                  metall::container::vector<std::pair<Key, mapped_t>>>;
+        using type = ankerl::unordered_dense::map<
+            Key,
+            mapped_t,
+            typename plain<Key>::hasher,
+            typename plain<Key>::key_equal,
+            metall::container::vector<std::pair<Key, mapped_t>>
+        >;
 #else
         template<typename Key>
         using type = plain<Key>;
@@ -154,11 +162,13 @@ namespace dice::sparse_map::bench::readme {
         using plain = ankerl::unordered_dense::map<Key, mapped_t>;
 
         template<typename Key>
-        using type = ankerl::unordered_dense::map<Key,
-                                                  mapped_t,
-                                                  typename plain<Key>::hasher,
-                                                  typename plain<Key>::key_equal,
-                                                  allocator<std::pair<Key, mapped_t>>>;
+        using type = ankerl::unordered_dense::map<
+            Key,
+            mapped_t,
+            typename plain<Key>::hasher,
+            typename plain<Key>::key_equal,
+            allocator<std::pair<Key, mapped_t>>
+        >;
     };
 
     struct std_unordered_map {
@@ -209,13 +219,15 @@ namespace dice::sparse_map::bench::readme {
     static_assert(std::is_same_v<std_unordered_map::type<int>, std::unordered_map<int, mapped_t>>);
     static_assert(std::is_same_v<boost_flat::type<int>, boost::unordered_flat_map<int, mapped_t>>);
     static_assert(std::is_same_v<unordered_dense::type<int>, ankerl::unordered_dense::map<int, mapped_t>>);
-    static_assert(std::is_same_v<unordered_dense_segmented::type<int>, ankerl::unordered_dense::segmented_map<int, mapped_t>>);
+    static_assert(
+        std::is_same_v<unordered_dense_segmented::type<int>, ankerl::unordered_dense::segmented_map<int, mapped_t>>
+    );
 #if defined(DSM_README_ABSL)
     static_assert(std::is_same_v<absl_flat::type<int>, absl::flat_hash_map<int, mapped_t>>);
     static_assert(std::is_same_v<absl_node::type<int>, absl::node_hash_map<int, mapped_t>>);
 #endif
 #endif
 
-}  // namespace dice::sparse_map::bench::readme
+} // namespace dice::sparse_map::bench::readme
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_README_MAPS_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_README_MAPS_HPP

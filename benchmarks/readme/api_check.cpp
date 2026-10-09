@@ -68,19 +68,23 @@ namespace {
         map.reserve(1000);
         map.rehash(2000);
         auto moved = std::move(copy);
-        bool const right = sum == 11 + 3 + 3 + 4 + 6 && map.size() == 4 && moved.size() == 4 && map.count(key_of(2)) == 1 &&
-                           moved.count(key_of(2)) == 0;
+        bool const right = sum == 11 + 3 + 3 + 4 + 6
+            && map.size() == 4
+            && moved.size() == 4
+            && map.count(key_of(2)) == 1
+            && moved.count(key_of(2)) == 0;
         map.clear();
         return right && map.empty();
     }
 
-}  // namespace
+} // namespace
 
 int main() {
 #if defined(DSM_README_METALL)
     char const *dir = std::getenv("DSM_README_METALL_DIR");
-    std::filesystem::path const path = std::filesystem::path{dir != nullptr && *dir != '\0' ? dir : "/tmp/dsm-readme-metall"} /
-                                       ("api-check-" + std::to_string(::getpid()));
+    std::filesystem::path const
+        path = std::filesystem::path{dir != nullptr && *dir != '\0' ? dir : "/tmp/dsm-readme-metall"}
+        / ("api-check-" + std::to_string(::getpid()));
     std::filesystem::create_directories(path.parent_path());
     bool ok = false;
     {

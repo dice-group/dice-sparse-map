@@ -120,19 +120,15 @@ namespace {
 
     template<typename Family>
     void quick_overall_metall(std::string_view container) {
-        with_datastore([&](metall_source const &source) {
-            quick_overall<Family>(container, source);
-        });
+        with_datastore([&](metall_source const &source) { quick_overall<Family>(container, source); });
     }
 
     template<typename Family>
     void find_all_metall(std::string_view container) {
-        with_datastore([&](metall_source const &source) {
-            find_all_hits_or_misses<Family>(container, source);
-        });
+        with_datastore([&](metall_source const &source) { find_all_hits_or_misses<Family>(container, source); });
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("quick_overall metall sparse_map high") {
     quick_overall_metall<metall_sparse<sh::sparsity::high>>("metall sparse_map high");

@@ -31,16 +31,19 @@ namespace details {
         std::equal_to<Key>,
         Alloc,
         dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::allocation_failure::terminating>;
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
 
     template<typename T>
     typename T::map_type default_construct_map() {
         using key_type = typename T::key_type;
-        return typename T::map_type(T::map_type::default_init_bucket_count,
-                                    dice::sparse_map::tests::test_hash<key_type>(),
-                                    std::equal_to<key_type>(),
-                                    typename T::allocator_type(),
-                                    T::map_type::default_max_load_factor);
+        return typename T::map_type(
+            T::map_type::default_init_bucket_count,
+            dice::sparse_map::tests::test_hash<key_type>(),
+            std::equal_to<key_type>(),
+            typename T::allocator_type(),
+            T::map_type::default_max_load_factor
+        );
     }
 
     /** Checks if all values of the map are in the initializer_list and then if the lengths are equal.
@@ -59,9 +62,10 @@ namespace details {
         auto check_in_map = [&custom_map](typename Map2::value_type const &p) {
             return custom_map.count(p.first) == 1 && custom_map.at(p.first) == p.second;
         };
-        return std::all_of(normal_map.begin(), normal_map.end(), check_in_map) && custom_map.size() == normal_map.size();
+        return std::all_of(normal_map.begin(), normal_map.end(), check_in_map)
+            && custom_map.size() == normal_map.size();
     }
-}  // namespace details
+} // namespace details
 
 template<typename T>
 void construction() {
@@ -112,13 +116,15 @@ void value(std::initializer_list<typename T::value_type> l, typename T::value_ty
     map.insert(l.begin(), l.end());
     map[to_change.first] = to_change.second;
 
-    std::unordered_map<typename T::value_type::first_type, typename T::value_type::second_type> check(l.begin(), l.end());
+    std::unordered_map<typename T::value_type::first_type, typename T::value_type::second_type> check(
+        l.begin(),
+        l.end()
+    );
     check[to_change.first] = to_change.second;
 
     // changing a single value didn't work
     REQUIRE(details::is_equal(map, check));
 }
-
 
 template<typename Key, typename T>
 struct std_alloc {
@@ -136,9 +142,7 @@ struct custom_alloc {
     using map_type = details::sparse_map<Key, T, allocator_type>;
 };
 
-
 TEST_SUITE("fancy_pointers/sparse_hash_map_tests") {
-
     TEST_CASE("std_alloc_compiles") {
         construction<std_alloc<int, int>>();
     }
@@ -178,13 +182,15 @@ TEST_SUITE("fancy_pointers/sparse_hash_map_tests") {
     }
 
     TEST_CASE("full_map") {
-        dice::sparse_map::sparse_map<int, int, dice::sparse_map::tests::test_hash<int>, std::equal_to<int>, offset_ptr_allocator<std::pair<int, int>>> map;
-        std::vector<std::pair<int, int>> data = {
-            {0, 1},
-            {2, 3},
-            {4, 5},
-            {6, 7},
-            {8, 9}};
+        dice::sparse_map::sparse_map<
+            int,
+            int,
+            dice::sparse_map::tests::test_hash<int>,
+            std::equal_to<int>,
+            offset_ptr_allocator<std::pair<int, int>>
+        >
+            map;
+        std::vector<std::pair<int, int>> data = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {8, 9}};
         map.insert(data.begin(), data.end());
         auto check = [&map](std::pair<int, int> p) {
             if (!map.contains(p.first)) {

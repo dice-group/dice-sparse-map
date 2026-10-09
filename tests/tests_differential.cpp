@@ -34,9 +34,7 @@ namespace {
 
     /// splitmix64, a small random generator that gives the same numbers on every platform
     struct random_source {
-        explicit random_source(std::uint64_t seed) noexcept
-            : state_(seed) {
-        }
+        explicit random_source(std::uint64_t seed) noexcept : state_(seed) {}
 
         std::uint64_t next() noexcept {
             state_ += 0x9e3779b97f4a7c15ULL;
@@ -229,16 +227,18 @@ namespace {
      * for the operations that need two containers.
      */
     template<typename Container, typename Reference, typename Insert>
-    bool run_common_op(std::string_view op,
-                       random_source &random,
-                       std::size_t key,
-                       std::size_t key_range,
-                       counter &counts,
-                       Container &container,
-                       Reference &reference,
-                       Container &side,
-                       Reference &side_reference,
-                       Insert const &insert_into) {
+    bool run_common_op(
+        std::string_view op,
+        random_source &random,
+        std::size_t key,
+        std::size_t key_range,
+        counter &counts,
+        Container &container,
+        Reference &reference,
+        Container &side,
+        Reference &side_reference,
+        Insert const &insert_into
+    ) {
         if (op == "erase_key") {
             REQUIRE(container.erase(typename Container::key_type{key, counts}) == reference.erase(key));
         } else if (op == "erase_iterator") {
@@ -315,13 +315,13 @@ namespace {
             if (random.below(2) == 0) {
                 side = std::move(container);
                 side_reference = std::move(reference);
-                container.clear();  // NOLINT(bugprone-use-after-move)
-                reference.clear();  // NOLINT(bugprone-use-after-move)
+                container.clear(); // NOLINT(bugprone-use-after-move)
+                reference.clear(); // NOLINT(bugprone-use-after-move)
             } else {
                 container = std::move(side);
                 reference = std::move(side_reference);
-                side.clear();            // NOLINT(bugprone-use-after-move)
-                side_reference.clear();  // NOLINT(bugprone-use-after-move)
+                side.clear(); // NOLINT(bugprone-use-after-move)
+                side_reference.clear(); // NOLINT(bugprone-use-after-move)
             }
         } else if (op == "swap") {
             if (random.below(2) == 0) {
@@ -337,9 +337,7 @@ namespace {
             REQUIRE(side.size() == side_reference.size());
         } else if (op == "erase_if") {
             auto const divisor = random.below(4) + 2;
-            auto const pred = [divisor](auto const &element) {
-                return key_of(element) % divisor == 0;
-            };
+            auto const pred = [divisor](auto const &element) { return key_of(element) % divisor == 0; };
             REQUIRE(erase_if(container, pred) == std::erase_if(reference, pred));
         } else if (op == "fill_side") {
             auto const num = random.below(8) + 1;
@@ -366,13 +364,12 @@ namespace {
             auto random = random_source{seed};
             std::size_t key_range = key_ranges.front();
 
-            auto const obj = [&counts](std::size_t data) {
-                return typename Map::key_type{data, counts};
-            };
-            auto const insert_into = [&obj](Map &target, reference_map &target_reference, std::size_t key, std::size_t value) {
-                target.insert_or_assign(obj(key), obj(value));
-                target_reference.insert_or_assign(key, value);
-            };
+            auto const obj = [&counts](std::size_t data) { return typename Map::key_type{data, counts}; };
+            auto const insert_into =
+                [&obj](Map &target, reference_map &target_reference, std::size_t key, std::size_t value) {
+                    target.insert_or_assign(obj(key), obj(value));
+                    target_reference.insert_or_assign(key, value);
+                };
 
             for (std::size_t step = 0; step < steps_per_seed; ++step) {
                 if (step % phase_length == 0) {
@@ -438,7 +435,18 @@ namespace {
                         REQUIRE_THROWS_AS(static_cast<void>(const_map.at(obj(key))), std::out_of_range);
                     }
                 } else {
-                    REQUIRE(run_common_op(op, random, key, key_range, counts, map, reference, side, side_reference, insert_into));
+                    REQUIRE(run_common_op(
+                        op,
+                        random,
+                        key,
+                        key_range,
+                        counts,
+                        map,
+                        reference,
+                        side,
+                        side_reference,
+                        insert_into
+                    ));
                 }
 
                 REQUIRE(map.size() == reference.size());
@@ -451,7 +459,10 @@ namespace {
             REQUIRE(same_contents(map, reference, counts));
             REQUIRE(same_contents(side, side_reference, counts));
         }
-        CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor());
+        CHECK(
+            counts.dtor() + counter::static_dtor
+            == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor()
+        );
     }
 
     template<typename Set, std::size_t num_ranges>
@@ -465,10 +476,11 @@ namespace {
             auto random = random_source{seed};
             std::size_t key_range = key_ranges.front();
 
-            auto const insert_into = [&counts](Set &target, reference_set &target_reference, std::size_t key, std::size_t /*value*/) {
-                target.insert(typename Set::key_type{key, counts});
-                target_reference.insert(key);
-            };
+            auto const insert_into =
+                [&counts](Set &target, reference_set &target_reference, std::size_t key, std::size_t /*value*/) {
+                    target.insert(typename Set::key_type{key, counts});
+                    target_reference.insert(key);
+                };
 
             for (std::size_t step = 0; step < steps_per_seed; ++step) {
                 if (step % phase_length == 0) {
@@ -503,7 +515,18 @@ namespace {
                         }
                     }
                 } else {
-                    REQUIRE(run_common_op(op, random, key, key_range, counts, set, reference, side, side_reference, insert_into));
+                    REQUIRE(run_common_op(
+                        op,
+                        random,
+                        key,
+                        key_range,
+                        counts,
+                        set,
+                        reference,
+                        side,
+                        side_reference,
+                        insert_into
+                    ));
                 }
 
                 REQUIRE(set.size() == reference.size());
@@ -516,10 +539,13 @@ namespace {
             REQUIRE(same_contents(set, reference, counts));
             REQUIRE(same_contents(side, side_reference, counts));
         }
-        CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor());
+        CHECK(
+            counts.dtor() + counter::static_dtor
+            == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor()
+        );
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("a map agrees with std::unordered_map, with std::hash", counter::obj, counter::obj) {
     for (auto const seed : seeds) {
@@ -536,46 +562,56 @@ TEST_CASE_SET("a set agrees with std::unordered_set, with std::hash", counter::o
 namespace {
     /// a map whose elements have a move constructor that can throw, so that its groups have holes
     template<dice::sparse_map::sh::sparsity Sparsity, typename Hash = test_hash<counter::obj>>
-    using copied_map = dice::sparse_map::sparse_map<copied_obj,
-                                                    copied_obj,
-                                                    Hash,
-                                                    std::equal_to<counter::obj>,
-                                                    std::allocator<std::pair<copied_obj, copied_obj>>,
-                                                    Sparsity>;
+    using copied_map = dice::sparse_map::sparse_map<
+        copied_obj,
+        copied_obj,
+        Hash,
+        std::equal_to<counter::obj>,
+        std::allocator<std::pair<copied_obj, copied_obj>>,
+        Sparsity
+    >;
 
     /// a set whose elements have a move constructor that can throw, so that its groups have holes
     template<dice::sparse_map::sh::sparsity Sparsity, typename Hash = test_hash<counter::obj>>
-    using copied_set = dice::sparse_map::sparse_set<copied_obj,
-                                                    Hash,
-                                                    std::equal_to<counter::obj>,
-                                                    std::allocator<copied_obj>,
-                                                    Sparsity>;
+    using copied_set = dice::sparse_map::sparse_set<
+        copied_obj,
+        Hash,
+        std::equal_to<counter::obj>,
+        std::allocator<copied_obj>,
+        Sparsity
+    >;
 
     namespace sh = dice::sparse_map::sh;
-}  // namespace
+} // namespace
 
-TEST_CASE_TEMPLATE("a map of elements whose move constructor can throw agrees with std::unordered_map, with test_hash",
-                   map_t,
-                   copied_map<sh::sparsity::high>,
-                   copied_map<sh::sparsity::medium>,
-                   copied_map<sh::sparsity::low>) {
+TEST_CASE_TEMPLATE(
+    "a map of elements whose move constructor can throw agrees with std::unordered_map, with test_hash",
+    map_t,
+    copied_map<sh::sparsity::high>,
+    copied_map<sh::sparsity::medium>,
+    copied_map<sh::sparsity::low>
+) {
     for (auto const seed : seeds) {
         run_map_test<map_t>(seed, spread_key_ranges);
     }
 }
 
-TEST_CASE_TEMPLATE("a map of elements whose move constructor can throw agrees with std::unordered_map, with a colliding hash",
-                   map_t,
-                   copied_map<sh::sparsity::medium, colliding_hash>) {
+TEST_CASE_TEMPLATE(
+    "a map of elements whose move constructor can throw agrees with std::unordered_map, with a colliding hash",
+    map_t,
+    copied_map<sh::sparsity::medium, colliding_hash>
+) {
     for (auto const seed : seeds) {
         run_map_test<map_t>(seed, colliding_key_ranges);
     }
 }
 
-TEST_CASE_TEMPLATE("a set of elements whose move constructor can throw agrees with std::unordered_set",
-                   set_t,
-                   copied_set<sh::sparsity::medium>,
-                   copied_set<sh::sparsity::medium, colliding_hash>) {
+TEST_CASE_TEMPLATE(
+    "a set of elements whose move constructor can throw agrees with std::unordered_set",
+    set_t,
+    copied_set<sh::sparsity::medium>,
+    copied_set<sh::sparsity::medium, colliding_hash>
+) {
     for (auto const seed : seeds) {
         if constexpr (std::is_same_v<typename set_t::hasher, colliding_hash>) {
             run_set_test<set_t>(seed, colliding_key_ranges);

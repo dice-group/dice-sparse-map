@@ -28,9 +28,26 @@ namespace {
     using dice::sparse_map::tests::counting_resource;
 
     using pmr_value = std::pair<std::pmr::string, std::pmr::vector<int>>;
-    using pmr_map = sparse_map<std::pmr::string, std::pmr::vector<int>, tests::test_hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<pmr_value>>;
-    using pmr_set = sparse_set<std::pmr::string, tests::test_hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<std::pmr::string>>;
-    using pmr_int_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, std::pmr::polymorphic_allocator<std::pair<int, int>>>;
+    using pmr_map = sparse_map<
+        std::pmr::string,
+        std::pmr::vector<int>,
+        tests::test_hash<std::pmr::string>,
+        std::equal_to<std::pmr::string>,
+        std::pmr::polymorphic_allocator<pmr_value>
+    >;
+    using pmr_set = sparse_set<
+        std::pmr::string,
+        tests::test_hash<std::pmr::string>,
+        std::equal_to<std::pmr::string>,
+        std::pmr::polymorphic_allocator<std::pmr::string>
+    >;
+    using pmr_int_map = sparse_map<
+        int,
+        int,
+        tests::test_hash<int>,
+        std::equal_to<int>,
+        std::pmr::polymorphic_allocator<std::pair<int, int>>
+    >;
 
     /// a key that is too long for the small string buffer, so that the string allocates
     std::pmr::string long_key(int i) {
@@ -40,7 +57,8 @@ namespace {
     /// true if the key and the value of every entry of `map` allocate from `resource`
     bool entries_use(pmr_map const &map, std::pmr::memory_resource *resource) {
         for (auto const &entry : map) {
-            if (entry.first.get_allocator().resource() != resource || entry.second.get_allocator().resource() != resource) {
+            if (entry.first.get_allocator().resource() != resource
+                || entry.second.get_allocator().resource() != resource) {
                 return false;
             }
         }
@@ -59,9 +77,8 @@ namespace {
 
     /// sets the default memory resource while it is in scope
     struct default_resource_guard {
-        explicit default_resource_guard(std::pmr::memory_resource *resource) noexcept
-            : previous_(std::pmr::set_default_resource(resource)) {
-        }
+        explicit default_resource_guard(std::pmr::memory_resource *resource) noexcept :
+            previous_(std::pmr::set_default_resource(resource)) {}
 
         default_resource_guard(default_resource_guard const &) = delete;
         default_resource_guard(default_resource_guard &&) = delete;
@@ -76,7 +93,7 @@ namespace {
         std::pmr::memory_resource *previous_;
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE("a pmr map takes its buckets from its resource") {
     auto resource = counting_resource{};
@@ -109,9 +126,7 @@ TEST_CASE("the keys and values of a pmr map use the resource of the map") {
     auto resource = counting_resource{};
     {
         auto map = pmr_map{&resource};
-        auto const vector_of = [](std::initializer_list<int> values) {
-            return std::pmr::vector<int>{values};
-        };
+        auto const vector_of = [](std::initializer_list<int> values) { return std::pmr::vector<int>{values}; };
 
         SUBCASE("insert") {
             auto const value = pmr_value{long_key(0), vector_of({1, 2, 3})};
@@ -168,7 +183,10 @@ TEST_CASE("emplace and insert of a pair-like value take no memory from the defau
         auto set = pmr_set{&resource};
         auto const key = std::pmr::string{"a key that is too long for the small string buffer", &resource};
         auto const value = std::pmr::vector<int>{{1, 2, 3}, &resource};
-        auto const pair_like = std::pair<char const *, std::pmr::vector<int>>{"another string literal that is too long for the small string buffer", value};
+        auto const pair_like = std::pair<char const *, std::pmr::vector<int>>{
+            "another string literal that is too long for the small string buffer",
+            value
+        };
 
         auto const guard = default_resource_guard{&default_resource};
         map.emplace(key, value);
@@ -186,9 +204,7 @@ TEST_CASE("emplace and insert of a pair-like value take no memory from the defau
 
 TEST_CASE("a pmr map never asks its resource for 0 bytes and never gives back a null pointer") {
     auto resource = counting_resource{};
-    {
-        auto const map = pmr_map{&resource};
-    }
+    { auto const map = pmr_map{&resource}; }
     {
         auto map = pmr_map{&resource};
         map[long_key(0)].push_back(1);
@@ -334,7 +350,7 @@ namespace {
             CHECK(entries_use(target, &resource_1));
 
             // the moved from source still works
-            source.clear();  // NOLINT(bugprone-use-after-move)
+            source.clear(); // NOLINT(bugprone-use-after-move)
             source[long_key(7)].push_back(7);
             CHECK(source.size() == 1);
         }
@@ -342,7 +358,7 @@ namespace {
         CHECK(resource_2.bytes_in_use() == 0);
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("a copy of a pmr map uses the default resource") {
     check_copy_construction<pmr_map>();
@@ -363,9 +379,7 @@ namespace {
     struct no_move {
         int data = 0;
 
-        explicit no_move(int data) noexcept
-            : data(data) {
-        }
+        explicit no_move(int data) noexcept : data(data) {}
 
         no_move(no_move const &) = default;
         no_move(no_move &&) = delete;
@@ -375,8 +389,14 @@ namespace {
     };
 
     /// the key uses the allocator, so the elements are constructed with the allocator, see `std::uses_allocator`
-    using pmr_no_move_map = sparse_map<std::pmr::string, no_move, tests::test_hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<std::pair<std::pmr::string, no_move>>>;
-}  // namespace
+    using pmr_no_move_map = sparse_map<
+        std::pmr::string,
+        no_move,
+        tests::test_hash<std::pmr::string>,
+        std::equal_to<std::pmr::string>,
+        std::pmr::polymorphic_allocator<std::pair<std::pmr::string, no_move>>
+    >;
+} // namespace
 
 TEST_CASE("a pmr map copies a mapped value whose move constructor is deleted") {
     auto resource = counting_resource{};
@@ -389,7 +409,7 @@ TEST_CASE("a pmr map copies a mapped value whose move constructor is deleted") {
         map.emplace(std::piecewise_construct, std::forward_as_tuple(long_key(3)), std::forward_as_tuple(30));
         map.try_emplace(long_key(4), 40);
         for (int i = 100; i < 300; ++i) {
-            map.try_emplace(long_key(i), i);  // rehashes
+            map.try_emplace(long_key(i), i); // rehashes
         }
 
         CHECK(map.size() == 204);

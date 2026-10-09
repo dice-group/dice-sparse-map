@@ -19,11 +19,11 @@ namespace dice::hash {
             return dice_hash_templates<Policy>::dice_hash(id.value);
         }
     };
-}  // namespace dice::hash
+} // namespace dice::hash
 
 template<>
-struct dice::sparse_map::sh::hash_is_avalanching<dice::hash::DiceHash<node_id, dice::hash::Policies::Martinus>>
-    : std::true_type {};
+struct dice::sparse_map::sh::hash_is_avalanching<dice::hash::DiceHash<node_id, dice::hash::Policies::Martinus>> :
+    std::true_type {};
 
 int main() {
     dice::sparse_map::sparse_map<node_id, int, dice::hash::DiceHash<node_id, dice::hash::Policies::Martinus>> map;

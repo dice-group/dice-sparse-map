@@ -92,10 +92,12 @@ namespace {
                 checksum += map.size();
                 auto const after = std::chrono::steady_clock::now();
                 total += after - before;
-                std::cout << std::format("{:.6f}s random find {}% success {}\n",
-                                         std::chrono::duration<double>(after - before).count(),
-                                         num_found * 100 / num_total,
-                                         container);
+                std::cout << std::format(
+                    "{:.6f}s random find {}% success {}\n",
+                    std::chrono::duration<double>(after - before).count(),
+                    num_found * 100 / num_total,
+                    container
+                );
             }
             REQUIRE(checksum == Sizes::checksums[num_found]);
         }
@@ -109,7 +111,7 @@ namespace {
         });
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("find_random sparse_map high") {
     find_random<sparse_high>("sparse_map high");
