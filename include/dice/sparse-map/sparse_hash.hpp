@@ -137,11 +137,14 @@ namespace dice::sparse_map {
         concept NotIterator = !std::is_convertible_v<K, Iterator> && !std::is_convertible_v<K, ConstIterator>;
 
         /**
-         * A type with the tuple protocol and two elements, like `std::pair`.
+         * A type with two elements that `std::get` returns, like `std::pair`, `std::tuple` or `std::array`.
          */
         template<typename P>
-        concept PairLike = requires { std::tuple_size<std::remove_cvref_t<P>>::value; }
-                           && std::tuple_size<std::remove_cvref_t<P>>::value == 2;
+        concept PairLike = requires (P &&pair) {
+            requires std::tuple_size<std::remove_cvref_t<P>>::value == 2;
+            std::get<0>(std::forward<P>(pair));
+            std::get<1>(std::forward<P>(pair));
+        };
 
         /**
          * `std::ceil(value)` as `std::size_t`, for a non-negative `value`. Saturates at the maximum of `std::size_t`.

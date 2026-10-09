@@ -7,10 +7,12 @@
 #include <doctest/doctest.h>
 #include <metall/metall.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -158,6 +160,30 @@ TEST_CASE("map_slot has the layout of std::pair") {
     check_map_slot_has_the_layout_of_pair<std::uint32_t, std::uint64_t>();
     check_map_slot_has_the_layout_of_pair<std::uint64_t, std::uint8_t>();
     check_map_slot_has_the_layout_of_pair<std::uint8_t, std::uint32_t>();
+}
+
+namespace {
+    /**
+     * Has two elements by `std::tuple_size`, but `std::get` does not take it.
+     */
+    struct tuple_size_without_get {
+        int first;
+        int second;
+    };
+}  // namespace
+
+template<>
+struct std::tuple_size<tuple_size_without_get> : std::integral_constant<std::size_t, 2> {};
+
+TEST_CASE("map_slot is constructible from types with two elements that std::get returns") {
+    using slot_t = dice::sparse_map::detail_sparse_hash::map_slot<int, int>;
+    using alloc_t = std::allocator<slot_t>;
+    static_assert(std::is_constructible_v<slot_t, std::pair<int, int>>);
+    static_assert(std::is_constructible_v<slot_t, std::tuple<int, int>>);
+    static_assert(std::is_constructible_v<slot_t, std::array<int, 2>>);
+    static_assert(std::is_constructible_v<slot_t, std::allocator_arg_t, alloc_t const &, std::pair<int, int>>);
+    static_assert(!std::is_constructible_v<slot_t, tuple_size_without_get>);
+    static_assert(!std::is_constructible_v<slot_t, std::allocator_arg_t, alloc_t const &, tuple_size_without_get>);
 }
 
 TEST_CASE("sizes") {
