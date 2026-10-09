@@ -38,71 +38,6 @@ namespace {
     using namespace dice::sparse_map;
     using namespace dice::sparse_map::tests;
 
-    /// blocks that `leak_checking_allocator` handed out and did not get back yet
-    std::ptrdiff_t live_blocks = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
-    /// bytes that `leak_checking_allocator` handed out and did not get back yet
-    std::size_t live_bytes = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
-    /// the maximum of `live_bytes` since a test set it
-    std::size_t peak_bytes = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
-    /**
-     * `bombing_allocator` that also counts the blocks and the bytes it hands out and gets back, so that a
-     * test can check that a failed operation leaks no memory, and how much memory an operation needs at
-     * most. All instances compare equal.
-     */
-    template<typename T>
-    struct leak_checking_allocator {
-        using value_type = T;
-
-        leak_checking_allocator() noexcept = default;
-
-        template<typename U>
-        leak_checking_allocator(leak_checking_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
-        }
-
-        T *allocate(std::size_t n) {
-            T *p = bombing_allocator<T>{}.allocate(n);
-            ++live_blocks;
-            live_bytes += n * sizeof(T);
-            peak_bytes = std::max(peak_bytes, live_bytes);
-            return p;
-        }
-
-        void deallocate(T *p, std::size_t n) noexcept {
-            --live_blocks;
-            live_bytes -= n * sizeof(T);
-            bombing_allocator<T>{}.deallocate(p, n);
-        }
-
-        friend bool operator==(leak_checking_allocator const & /*lhs*/, leak_checking_allocator const & /*rhs*/) noexcept {
-            return true;
-        }
-    };
-
-    /**
-     * `counter::obj` whose move constructor can throw, so that a rehash copies it. Its move operations copy.
-     */
-    struct copied_obj : counter::obj {
-        using counter::obj::obj;
-
-        copied_obj(copied_obj const &other) = default;
-
-        copied_obj(copied_obj &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : counter::obj(static_cast<counter::obj const &>(other)) {
-        }
-
-        copied_obj &operator=(copied_obj const &other) = default;
-
-        copied_obj &operator=(copied_obj &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
-            counter::obj::operator=(static_cast<counter::obj const &>(other));
-            return *this;
-        }
-
-        ~copied_obj() = default;
-    };
-
     /// calls of `throwing_hash` that are left before it throws, -1 never throws
     int hash_calls_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
@@ -594,6 +529,41 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map",
             CHECK(failures > 0);
             CHECK(completed);
         }
+    }
+    CHECK(alive(counts) == 0);
+    CHECK(live_blocks == 0);
+}
+
+// No erase function of an unordered container throws, unless the hash function or the key equality throws
+// ([unord.req.except] of the standard). An element whose move constructor can throw is erased in place, so the erase
+// allocates nothing and copies nothing.
+TEST_CASE("erase of an element whose move constructor can throw does not throw") {
+    auto counts = counter{};
+    {
+        auto map = copying_map<>{};
+        for (std::size_t key = 0; key < 100; ++key) {
+            insert_key(map, counts, key);
+        }
+
+        // the first element of its group, so that other elements follow it in the group
+        auto const bomb = bomb_after{0};
+        CHECK_NOTHROW(map.erase(map.begin()));
+        CHECK(map.size() == 99);
+        check_consistent(map, counts, 100);
+
+        // by key, a range and a predicate
+        auto const key = map.begin()->first.get();
+        std::size_t erased = 0;
+        CHECK_NOTHROW(erased = map.erase(make<copied_obj>(counts, key)));
+        CHECK(erased == 1);
+        CHECK_NOTHROW(map.erase(std::next(map.cbegin(), 10), std::next(map.cbegin(), 20)));
+        CHECK(map.size() == 88);
+        CHECK_NOTHROW(erased = erase_if(map, [](auto const &entry) {
+                          return entry.first.get() % 3 == 0;
+                      }));
+        CHECK(erased > 0);
+        CHECK(map.size() == 88 - erased);
+        check_consistent(map, counts, 100);
     }
     CHECK(alive(counts) == 0);
     CHECK(live_blocks == 0);
@@ -1112,5 +1082,45 @@ TEST_CASE("a merge copies an element whose move constructor can throw, so that t
             CHECK(source.at(new_key).value == long_value(new_key));
         }
     }
+    CHECK(completed);
+}
+
+// `merge` erases an element from the source after it inserted it into the target, and that erase does not throw. So
+// an exception, here from the insertion of the next element, leaves every element in exactly one of the two maps.
+TEST_CASE("a merge that throws leaves every element whose move constructor can throw in exactly one map") {
+    using map_t = copying_map<bucket_hash>;
+    auto counts = counter{};
+    std::size_t failures = 0;
+    bool completed = false;
+    for (int budget = 0; budget < max_budget && !completed; ++budget) {
+        CAPTURE(budget);
+        {
+            // no rehash in either map, and the keys 1 and 2 share the first group in both maps
+            auto target = map_t{};
+            target.reserve(100);
+            auto source = map_t{};
+            source.reserve(100);
+            insert_key(source, counts, 1);
+            insert_key(source, counts, 2);
+            try {
+                auto const bomb = bomb_after{budget};
+                target.merge(source);
+                completed = true;
+            } catch (std::bad_alloc const &) {
+                ++failures;
+            }
+            CHECK(contains_key(target, counts, 1) != contains_key(source, counts, 1));
+            CHECK(contains_key(target, counts, 2) != contains_key(source, counts, 2));
+            CHECK(target.size() + source.size() == 2);
+            check_consistent(target, counts, 3);
+            check_consistent(source, counts, 3);
+            if (completed) {
+                CHECK(target.size() == 2);
+            }
+        }
+        CHECK(alive(counts) == 0);
+        CHECK(live_blocks == 0);
+    }
+    CHECK(failures > 0);
     CHECK(completed);
 }

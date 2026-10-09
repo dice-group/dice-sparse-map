@@ -1,6 +1,7 @@
 #ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
 #define DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <new>
@@ -60,6 +61,53 @@ namespace dice::sparse_map::tests {
         }
 
         friend bool operator==(bombing_allocator const & /*lhs*/, bombing_allocator const & /*rhs*/) noexcept {
+            return true;
+        }
+    };
+
+    /// blocks that `leak_checking_allocator` handed out and did not get back yet
+    inline std::ptrdiff_t live_blocks = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /// bytes that `leak_checking_allocator` handed out and did not get back yet
+    inline std::size_t live_bytes = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /// the maximum of `live_bytes` since a test set it
+    inline std::size_t peak_bytes = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /// all allocations of `leak_checking_allocator`
+    inline std::size_t nb_allocations = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * `bombing_allocator` that also counts the blocks and the bytes it hands out and gets back, so that a
+     * test can check that a failed operation leaks no memory, and how much memory an operation needs at
+     * most. All instances compare equal.
+     */
+    template<typename T>
+    struct leak_checking_allocator {
+        using value_type = T;
+
+        leak_checking_allocator() noexcept = default;
+
+        template<typename U>
+        leak_checking_allocator(leak_checking_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        }
+
+        T *allocate(std::size_t n) {
+            T *p = bombing_allocator<T>{}.allocate(n);
+            ++live_blocks;
+            ++nb_allocations;
+            live_bytes += n * sizeof(T);
+            peak_bytes = std::max(peak_bytes, live_bytes);
+            return p;
+        }
+
+        void deallocate(T *p, std::size_t n) noexcept {
+            --live_blocks;
+            live_bytes -= n * sizeof(T);
+            bombing_allocator<T>{}.deallocate(p, n);
+        }
+
+        friend bool operator==(leak_checking_allocator const & /*lhs*/, leak_checking_allocator const & /*rhs*/) noexcept {
             return true;
         }
     };

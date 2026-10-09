@@ -66,9 +66,13 @@ of `find_all`, whose sum changes from run to run, and `hash_strings`, which meas
 | `quick_overall metall sparse_map <sparsity>` | `bench_metall.cpp` | The quick overall score with metall's allocator: the maps live in a metall datastore. |
 | `quick_overall offset_ptr sparse_map <sparsity>` | `bench_metall.cpp` | The quick overall score with `offset_ptr_allocator` of the tests: fancy pointers (`boost::interprocess::offset_ptr`) with memory from the heap. The difference to `quick_overall sparse_map <sparsity>` is the cost of the fancy pointer, the difference to `quick_overall metall sparse_map <sparsity>` is the cost of metall's allocator. |
 | `find_all metall sparse_map <sparsity>`, `find_all offset_ptr sparse_map <sparsity>` | `bench_metall.cpp` | `find_all` with metall's allocator and with `offset_ptr_allocator`. |
+| `throwing_move <container>` | `bench_quick_overall.cpp` | The five workloads of the quick overall score for `uint64_t -> throwing_move_value`, a mapped type with a `size_t` payload whose move constructor can throw. A container copies such a value where it would move another one. For `sparse_map medium`, `unordered_dense` and `std::unordered_map`. Not part of the score. |
+| `throwing_move metall sparse_map medium` | `bench_metall.cpp` | `throwing_move` with metall's allocator. |
+| `drain <container>` | `bench_drain.cpp` | `map.erase(map.begin())` until the map is empty, the pattern of a worklist, for a map of 100000 `uint64_t -> size_t` entries. Only the drain is timed, with `std::chrono::steady_clock`. Prints the median of 5 rounds in seconds. |
 | `set <container>` | `bench_set.cpp` | `build`, `find_50` and `churn` for a set of `uint64_t`, with the geometric mean. |
 | `find_random <container>` | `bench_find_random.cpp` | Random finds with 0%, 25%, 50%, 75% and 100% success in a `size_t -> size_t` map that grows to 200000 entries, 100 million finds per success rate. Timed with `std::chrono::steady_clock`, one run per success rate. |
 | `memory` | `bench_memory.cpp` | Memory per element of maps with 1000, 100000 and 1000000 elements, `uint64_t -> uint64_t` and `std::string -> uint64_t`. A tracking allocator counts what the container requests: bytes per element after the build, peak bytes per element during the build, live allocations (`live allocs`), bucket count, load factor and `sizeof` of the map. The heap memory of `std::string` keys and the overhead of malloc are not counted. |
+| `memory after erasing half` | `bench_memory.cpp` | Maps with 1000, 100000 and 1000000 elements, `uint64_t -> size_t` and `uint64_t -> throwing_move_value`, for `sparse_map medium`, `unordered_dense` and `std::unordered_map`. Bytes per element and live allocations after the build, and bytes per live element and live allocations after the elements with an even number were erased. Counted by the tracking allocator, as in `memory`. |
 | `small_maps` | `bench_small_maps.cpp` | 100000 maps with 1 to 16 `uint64_t -> uint64_t` entries each (fixed seed), the pattern of the edge maps of a hypertrie in tentris. Times the build, the lookups that hit and that miss (maps in a random order), the iteration over all maps and the destruction, with the median over 11 rounds. Also the heap bytes and allocations per map from a tracking allocator, and `sizeof` of the map. |
 
 `<container>` is one of `sparse_map high`, `sparse_map medium`, `sparse_map low`, `unordered_dense` and
@@ -84,7 +88,7 @@ as a raw pointer.
 | file | content |
 |---|---|
 | `benchmark_main.cpp` | doctest's `main` and the nanobench implementation |
-| `workloads.hpp` | the workloads, ported from upstream's `workloads.h`, and set versions of three of them |
+| `workloads.hpp` | the workloads, ported from upstream's `workloads.h`, set versions of three of them, and the drain |
 | `common.hpp` | quick mode, nanobench settings, geometric mean, the container configurations |
-| `map_benchmarks.hpp` | sizes and checksums of the scored workloads, the quick overall score and `find_all` of one configuration |
+| `map_benchmarks.hpp` | sizes and checksums of the scored workloads, the quick overall score, `throwing_move` and `find_all` of one configuration |
 | `tracking_allocator.hpp` | allocator that counts current and peak bytes and allocations |

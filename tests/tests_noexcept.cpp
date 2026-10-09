@@ -204,8 +204,10 @@ TEST_CASE_TEMPLATE("swap is not noexcept when the hash can throw on a swap", con
     CHECK_FALSE(std::is_nothrow_swappable_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("clear, size, empty, begin and end are noexcept", container_t, plain_map, plain_set, throwing_hash_map, throwing_hash_set, unequal_map, unequal_set) {
+TEST_CASE_TEMPLATE("clear, size, empty, begin, end and the erase of an iterator are noexcept", container_t, plain_map, plain_set, throwing_hash_map, throwing_hash_set, unequal_map, unequal_set) {
     CHECK(noexcept(std::declval<container_t &>().clear()));
+    CHECK(noexcept(std::declval<container_t &>().erase(std::declval<typename container_t::iterator>())));
+    CHECK(noexcept(std::declval<container_t &>().erase(std::declval<typename container_t::const_iterator>())));
     CHECK(noexcept(std::declval<container_t const &>().size()));
     CHECK(noexcept(std::declval<container_t const &>().empty()));
     CHECK(noexcept(std::declval<container_t &>().begin()));

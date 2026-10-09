@@ -1,4 +1,5 @@
 #include "fixtures/test_types.hpp"
+#include "fixtures/utils.hpp"
 
 #include <dice/sparse-map/sparse_hash.hpp>
 #include <dice/sparse-map/sparse_map.hpp>
@@ -152,8 +153,8 @@ namespace {
     };
 
     /**
-     * A value whose move constructor can throw. So the groups copy it when they insert or erase, and allocate a new
-     * array of elements for it.
+     * A value whose move constructor can throw. So the groups copy it into a new array of elements when they insert
+     * it into a bucket without a slot, and an erase leaves a hole.
      */
     struct copied {
         std::size_t value = 0;
@@ -182,10 +183,10 @@ namespace {
      * A map with the default `sh::allocation_failure::terminating` that allocates through `failing_allocator`. Its
      * groups store the elements as `detail_sparse_hash::map_slot`.
      */
-    template<typename T>
+    template<typename T, typename Hash = detail_sparse_hash::default_hash<std::size_t>>
     using failing_map = sparse_map<std::size_t,
                                    T,
-                                   detail_sparse_hash::default_hash<std::size_t>,
+                                   Hash,
                                    std::equal_to<std::size_t>,
                                    failing_allocator<std::pair<std::size_t, T>, detail_sparse_hash::map_slot<std::size_t, T>>>;
 
@@ -310,7 +311,9 @@ TEST_CASE("a failed allocation of a group aborts in an insert" * doctest::skip(!
     }));
 }
 
-TEST_CASE("a failed allocation of a group aborts in an insert of an element whose move constructor can throw" * doctest::skip(!can_fork)) {
+// The group of a new table has no element and no hole, so the insertion copies nothing and allocates an array for one
+// element.
+TEST_CASE("a failed allocation of a group aborts in an insert of an element whose move constructor can throw into a group without holes" * doctest::skip(!can_fork)) {
     auto map = failing_map<copied>(64);
     CHECK(expect_abort([&] {
         auto const guard = fail_while_in_scope{failing::groups};
@@ -318,14 +321,15 @@ TEST_CASE("a failed allocation of a group aborts in an insert of an element whos
     }));
 }
 
-// With 64 buckets the table has one group. The first element of the group is not its last one, so the group copies the
-// other elements into a new array.
-TEST_CASE("a failed allocation of a group aborts in an erase of an element whose move constructor can throw" * doctest::skip(!can_fork)) {
-    auto map = failing_map<copied>(64);
+// With 64 buckets the table has one group, and `identity_hash` puts key `k` into bucket `k`. The erase of key 0 leaves
+// a hole. The insertion of key 5 into another bucket copies the elements into a new array without the hole.
+TEST_CASE("a failed allocation of a group aborts in an insert of an element whose move constructor can throw into a group with holes" * doctest::skip(!can_fork)) {
+    auto map = failing_map<copied, identity_hash<std::size_t>>(64);
     insert_keys(map, 3);
     REQUIRE(map.bucket_count() == 64);
+    REQUIRE(map.erase(0) == 1);
     CHECK(expect_abort([&] {
         auto const guard = fail_while_in_scope{failing::groups};
-        map.erase(map.begin());
+        map.try_emplace(5, 5);
     }));
 }

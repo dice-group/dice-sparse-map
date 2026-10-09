@@ -149,6 +149,42 @@ namespace dice::sparse_map::tests {
         std::string records_ = "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
     };
 
+    /**
+     * The hash of a `counter::obj` is its number, so key `k` lands in bucket `k` of a table with more than `k`
+     * buckets. It is not avalanching, but it is marked as avalanching, so that the containers accept it.
+     */
+    struct bucket_hash {
+        using is_avalanching = void;
+
+        std::size_t operator()(counter::obj const &key) const {
+            return key.get_for_hash();
+        }
+    };
+
+    /**
+     * `counter::obj` whose move constructor can throw, so that a container copies it where it would move a
+     * `counter::obj`. Its move operations copy. Hash it like a `counter::obj`, for example with
+     * `test_hash<counter::obj>`, and compare it with `std::equal_to<counter::obj>`.
+     */
+    struct copied_obj : counter::obj {
+        using counter::obj::obj;
+
+        copied_obj(copied_obj const &other) = default;
+
+        copied_obj(copied_obj &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
+            : counter::obj(static_cast<counter::obj const &>(other)) {
+        }
+
+        copied_obj &operator=(copied_obj const &other) = default;
+
+        copied_obj &operator=(copied_obj &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
+            counter::obj::operator=(static_cast<counter::obj const &>(other));
+            return *this;
+        }
+
+        ~copied_obj() = default;
+    };
+
 }  // namespace dice::sparse_map::tests
 
 template<>

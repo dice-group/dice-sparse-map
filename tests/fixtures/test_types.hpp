@@ -30,6 +30,31 @@
 namespace dice::sparse_map::tests {
 
     /**
+     * A value whose move constructor can throw, so that a container copies it where it would move another value, and
+     * an erase leaves a hole in its group. Usable in a constant expression and, without a pointer, in a datastore.
+     */
+    template<typename T>
+    struct copied_value {
+        T value{};
+
+        constexpr explicit copied_value(T v) noexcept
+            : value(v) {
+        }
+
+        constexpr copied_value(copied_value const &other) noexcept
+            : value(other.value) {
+        }
+
+        constexpr copied_value(copied_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
+            : value(other.value) {
+        }
+
+        constexpr copied_value &operator=(copied_value const &) = default;
+        constexpr copied_value &operator=(copied_value &&) = default;
+        constexpr ~copied_value() = default;
+    };
+
+    /**
      * Multiplies `a` and `b` to 128 bits and returns the xor of the two halves.
      */
     [[nodiscard]] constexpr std::uint64_t multiply_fold(std::uint64_t a, std::uint64_t b) noexcept {

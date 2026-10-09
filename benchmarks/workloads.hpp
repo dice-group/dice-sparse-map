@@ -198,6 +198,47 @@ namespace dice::sparse_map::bench {
     static_assert(sizeof(big_value) == 64);
     static_assert(std::is_trivially_copyable_v<big_value>);
 
+    /**
+     * A mapped type with a `std::size_t` payload whose move constructor can throw.
+     *
+     * A user type gets this when its move constructor is not marked `noexcept`. A container cannot undo a move that
+     * throws halfway, so it copies such a value where it would move another one: `sparse_map` when it inserts into a
+     * group and when it rehashes, `std::vector` (and so `ankerl::unordered_dense`) when it grows. The copy and the
+     * move cost what the copy of a `size_t` costs, so the difference to the `size_t` rows is what the container does
+     * with such a type.
+     *
+     * Implicit in both directions, like `big_value`, so that the workloads and their checksums are the ones of the
+     * `size_t` maps. Standard layout, so that it can live in a metall datastore.
+     */
+    struct throwing_move_value {
+        throwing_move_value() = default;
+        // NOLINTNEXTLINE(google-explicit-constructor,hicpp-explicit-conversions)
+        throwing_move_value(std::size_t v)
+            : value(v) {
+        }
+        throwing_move_value(throwing_move_value const &) = default;
+        // NOLINTNEXTLINE(performance-noexcept-move-constructor)
+        throwing_move_value(throwing_move_value &&other) noexcept(false)
+            : value(other.value) {
+        }
+        throwing_move_value &operator=(throwing_move_value const &) = default;
+        // NOLINTNEXTLINE(performance-noexcept-move-constructor)
+        throwing_move_value &operator=(throwing_move_value &&other) noexcept(false) {
+            value = other.value;
+            return *this;
+        }
+        ~throwing_move_value() = default;
+
+        // NOLINTNEXTLINE(google-explicit-constructor,hicpp-explicit-conversions)
+        operator std::size_t() const {
+            return value;
+        }
+
+        std::size_t value{};
+    };
+    static_assert(!std::is_nothrow_move_constructible_v<throwing_move_value>);
+    static_assert(std::is_standard_layout_v<throwing_move_value>);
+
     struct insert_erase_result {
         std::size_t erased;
         std::size_t size;
@@ -435,6 +476,24 @@ namespace dice::sparse_map::bench {
             }
         }
         return checksum + map.size();
+    }
+
+    /**
+     * Erases one element after the other with `map.erase(map.begin())` until the map is empty, the pattern of a
+     * worklist. Returns the sum of the mapped values. Not from upstream.
+     *
+     * The elements at the front of the iteration order go first, so the buckets at the front empty first. A table
+     * whose `begin()` searches its buckets for the first element searches a longer way in every step.
+     */
+    template<typename Map>
+    std::size_t drain(Map &map) {
+        std::size_t sum = 0;
+        while (!map.empty()) {
+            auto const it = map.begin();
+            sum += it->second;
+            map.erase(it);
+        }
+        return sum;
     }
 
     /**
