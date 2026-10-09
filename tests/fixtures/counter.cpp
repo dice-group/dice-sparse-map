@@ -24,35 +24,26 @@ namespace dice::sparse_map::tests {
             std::fflush(stderr);
             std::abort();
         }
-    }  // namespace
+    } // namespace
 
-    std::size_t counter::static_ctor = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-    std::size_t counter::static_dtor = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    std::size_t counter::static_ctor = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    std::size_t counter::static_dtor = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     bool counter::obj::is_alive() const {
         return this == alive_;
     }
 
-    counter::obj::obj()
-        : data_(0),
-          counts_(nullptr),
-          alive_(this) {
+    counter::obj::obj() : data_(0), counts_(nullptr), alive_(this) {
         ++num_alive();
         ++static_ctor;
     }
 
-    counter::obj::obj(std::size_t const &data, counter &counts)
-        : data_(data),
-          counts_(&counts),
-          alive_(this) {
+    counter::obj::obj(std::size_t const &data, counter &counts) : data_(data), counts_(&counts), alive_(this) {
         ++num_alive();
         ++counts_->data_.ctor;
     }
 
-    counter::obj::obj(obj const &o)
-        : data_(o.data_),
-          counts_(o.counts_),
-          alive_(this) {
+    counter::obj::obj(obj const &o) : data_(o.data_), counts_(o.counts_), alive_(this) {
         if (!o.is_alive()) {
             fail("copy constructor from a dead object");
         }
@@ -64,10 +55,7 @@ namespace dice::sparse_map::tests {
         }
     }
 
-    counter::obj::obj(obj &&o) noexcept
-        : data_(o.data_),
-          counts_(o.counts_),
-          alive_(this) {
+    counter::obj::obj(obj &&o) noexcept : data_(o.data_), counts_(o.counts_), alive_(this) {
         if (!o.is_alive()) {
             fail("move constructor from a dead object");
         }
@@ -186,16 +174,19 @@ namespace dice::sparse_map::tests {
             std::fprintf(stderr, "ERROR at ~counter(): %zu objects still alive\n", num_alive());
             std::abort();
         }
-        if (data_.dtor + static_dtor != data_.ctor + static_ctor + data_.copy_ctor + data_.default_ctor + data_.move_ctor) {
-            std::fprintf(stderr,
-                         "ERROR at ~counter(): %zu dtor + %zu static dtor != %zu ctor + %zu static default ctor + %zu copy ctor + %zu default ctor + %zu move ctor\n",
-                         data_.dtor,
-                         static_dtor,
-                         data_.ctor,
-                         static_ctor,
-                         data_.copy_ctor,
-                         data_.default_ctor,
-                         data_.move_ctor);
+        if (data_.dtor + static_dtor
+            != data_.ctor + static_ctor + data_.copy_ctor + data_.default_ctor + data_.move_ctor) {
+            std::fprintf(
+                stderr,
+                "ERROR at ~counter(): %zu dtor + %zu static dtor != %zu ctor + %zu static default ctor + %zu copy ctor + %zu default ctor + %zu move ctor\n",
+                data_.dtor,
+                static_dtor,
+                data_.ctor,
+                static_ctor,
+                data_.copy_ctor,
+                data_.default_ctor,
+                data_.move_ctor
+            );
             std::abort();
         }
     }
@@ -205,32 +196,44 @@ namespace dice::sparse_map::tests {
     }
 
     std::size_t counter::total() const {
-        return data_.ctor + static_ctor + data_.copy_ctor + (data_.dtor + static_dtor) + data_.equals
-               + data_.less + data_.assign + data_.swaps + data_.get + data_.const_get + data_.hash
-               + data_.move_ctor + data_.move_assign;
+        return data_.ctor
+            + static_ctor
+            + data_.copy_ctor
+            + (data_.dtor + static_dtor)
+            + data_.equals
+            + data_.less
+            + data_.assign
+            + data_.swaps
+            + data_.get
+            + data_.const_get
+            + data_.hash
+            + data_.move_ctor
+            + data_.move_assign;
     }
 
     void counter::operator()(std::string_view title) {
-        records_ += std::format("{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}|{:9}| {}\n",
-                                data_.ctor,
-                                static_ctor,
-                                data_.copy_ctor,
-                                data_.dtor + static_dtor,
-                                data_.assign,
-                                data_.swaps,
-                                data_.get,
-                                data_.const_get,
-                                data_.hash,
-                                data_.equals,
-                                data_.less,
-                                data_.move_ctor,
-                                data_.move_assign,
-                                total(),
-                                title);
+        records_ += std::format(
+            "{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}{:9}|{:9}| {}\n",
+            data_.ctor,
+            static_ctor,
+            data_.copy_ctor,
+            data_.dtor + static_dtor,
+            data_.assign,
+            data_.swaps,
+            data_.get,
+            data_.const_get,
+            data_.hash,
+            data_.equals,
+            data_.less,
+            data_.move_ctor,
+            data_.move_assign,
+            total(),
+            title
+        );
     }
 
     std::ostream &operator<<(std::ostream &os, counter const &c) {
         return os << c.records_;
     }
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests

@@ -184,7 +184,7 @@ TEST_CASE_MAP("assign_to_moved", int, int) {
     c[3] = 4;
 
     // assign to a moved from map
-    a = c;  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    a = c; // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     REQUIRE(a.size() == 1U);
     REQUIRE(a.at(3) == 4);
     REQUIRE(a == c);
@@ -199,7 +199,7 @@ TEST_CASE_MAP("move_to_moved", int, int) {
     c[3] = 4;
 
     // move assign to a moved from map
-    a = std::move(c);  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    a = std::move(c); // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
 
     a[5] = 6;
     moved[6] = 7;
@@ -226,7 +226,7 @@ namespace {
         return m;
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("copy_and_assign_maps_1", int, int) {
     auto a = create_map<map_t>(15);
@@ -368,7 +368,13 @@ TEST_CASE_MAP("swap", int, int) {
 // Exchanging what two maps own needs no allocation, through the member and through the swap() that generic code
 // finds with `using std::swap`.
 TEST_CASE("swap_does_not_allocate") {
-    using map_t = dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>>;
+    using map_t = dice::sparse_map::sparse_map<
+        int,
+        int,
+        test_hash<int>,
+        std::equal_to<int>,
+        counting_allocator<std::pair<int, int>>
+    >;
 
     auto a = map_t();
     auto b = map_t();

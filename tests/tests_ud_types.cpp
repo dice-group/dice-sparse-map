@@ -31,9 +31,7 @@ namespace {
     struct no_copy {
         no_copy() noexcept = default;
 
-        explicit no_copy(std::size_t d) noexcept
-            : data_(d) {
-        }
+        explicit no_copy(std::size_t d) noexcept : data_(d) {}
 
         ~no_copy() = default;
         no_copy(no_copy const &) = delete;
@@ -49,7 +47,7 @@ namespace {
         std::size_t data_{};
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("not_copyable", std::size_t, no_copy) {
     map_t m;
@@ -76,9 +74,7 @@ namespace {
     struct no_move {
         no_move() noexcept = default;
 
-        explicit no_move(std::size_t d) noexcept
-            : data_(d) {
-        }
+        explicit no_move(std::size_t d) noexcept : data_(d) {}
 
         ~no_move() = default;
         no_move(no_move const &) = default;
@@ -94,7 +90,7 @@ namespace {
         std::size_t data_{};
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("not_moveable", std::size_t, no_move) {
     auto m = map_t();
@@ -141,7 +137,7 @@ TEST_CASE_MAP("unique_ptr", std::size_t, std::unique_ptr<int>) {
     REQUIRE(m3.end() == m3.find(123));
     REQUIRE(m3.end() != m3.find(32));
 
-    empty = map_t{};  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    empty = map_t{}; // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     map_t m4(std::move(empty));
     REQUIRE(m4.count(123) == 0);
     REQUIRE(m4.end() == m4.begin());
@@ -154,8 +150,8 @@ TEST_CASE_MAP("unique_ptr", std::size_t, std::unique_ptr<int>) {
 TEST_CASE_MAP("unique_ptr_fill", std::size_t, std::unique_ptr<int>) {
     map_t m;
     for (int i = 0; i < 1000; ++i) {
-        m.emplace(static_cast<std::size_t>(i), new int(i));  // NOLINT(cppcoreguidelines-owning-memory)
-        m.emplace(static_cast<std::size_t>(i), new int(i));  // NOLINT(cppcoreguidelines-owning-memory)
+        m.emplace(static_cast<std::size_t>(i), new int(i)); // NOLINT(cppcoreguidelines-owning-memory)
+        m.emplace(static_cast<std::size_t>(i), new int(i)); // NOLINT(cppcoreguidelines-owning-memory)
     }
     REQUIRE(m.size() == 1000U);
     REQUIRE(*m.at(999) == 999);
@@ -188,7 +184,7 @@ namespace {
         scene<Map> current_scene;
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("create_app_state_with_a_map_member", void *, texture *) {
     app_state<map_t> const state{};
@@ -217,7 +213,7 @@ namespace {
         }
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("diamond_problem", int, int, hash_with_equal, hash_with_equal) {
     auto map = map_t();
@@ -277,23 +273,30 @@ namespace {
 
                 // move
                 REQUIRE(checksum::mapmap(maps_moved) == checksum::mapmap(maps));
-                REQUIRE(maps_copied.size() == 0);  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+                REQUIRE(maps_copied.size() == 0); // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
                 maps_copied = std::move(maps_moved);
                 counts("moved back");
 
                 // move back
                 REQUIRE(checksum::mapmap(maps_copied) == checksum::mapmap(maps));
-                REQUIRE(maps_moved.size() == 0);  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+                REQUIRE(maps_moved.size() == 0); // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
                 counts("done");
             }
             counts("all destructed");
-            REQUIRE(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
+            REQUIRE(
+                counts.dtor() + counter::static_dtor
+                == counts.ctor()
+                    + counter::static_ctor
+                    + counts.copy_ctor()
+                    + counts.default_ctor()
+                    + counts.move_ctor()
+            );
         }
     }
 
     using inner_map = dice::sparse_map::sparse_map<counter::obj, counter::obj, test_hash<counter::obj>>;
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("mapmap_map", counter::obj, inner_map) {
     check_maps_of_maps<map_t>();
@@ -313,7 +316,7 @@ namespace {
         }
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("vectormap", counter::obj, counter::obj) {
     auto counts = counter();
@@ -349,7 +352,10 @@ TEST_CASE_MAP("vectormap", counter::obj, counter::obj) {
         REQUIRE(maps.size() == 30U);
     }
     counts("dtor");
-    REQUIRE(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor());
+    REQUIRE(
+        counts.dtor() + counter::static_dtor
+        == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.default_ctor() + counts.move_ctor()
+    );
 }
 
 // set
@@ -466,7 +472,7 @@ namespace {
     template<typename T>
     concept HasMappedType = requires { typename T::mapped_type; };
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("set_or_map_types_map", int, double) {
     static_assert(std::is_same_v<double, typename map_t::mapped_type>);
@@ -482,7 +488,7 @@ TEST_CASE_SET("set_or_map_types_set", int) {
 namespace {
 
     struct id {
-        std::uint64_t value{};  // NOLINT
+        std::uint64_t value{}; // NOLINT
 
         bool operator==(id const &other) const {
             return value == other.value;
@@ -510,8 +516,8 @@ namespace {
     };
 
     struct point {
-        int x{};  // NOLINT
-        int y{};  // NOLINT
+        int x{}; // NOLINT
+        int y{}; // NOLINT
 
         bool operator==(point const &other) const {
             return x == other.x && y == other.y;
@@ -531,7 +537,7 @@ namespace {
         }
     };
 
-}  // namespace
+} // namespace
 
 template<>
 struct std::hash<id> {

@@ -39,7 +39,9 @@ namespace {
         uint32_size_allocator() noexcept = default;
 
         template<typename U>
-        uint32_size_allocator(uint32_size_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        uint32_size_allocator(
+            uint32_size_allocator<U> const & /*other*/
+        ) noexcept { // NOLINT(google-explicit-constructor)
         }
 
         T *allocate(size_type n) {
@@ -55,8 +57,19 @@ namespace {
         }
     };
 
-    using map_t = sparse_map<std::uint32_t, std::uint32_t, tests::test_hash<std::uint32_t>, std::equal_to<std::uint32_t>, uint32_size_allocator<std::pair<std::uint32_t, std::uint32_t>>>;
-    using set_t = sparse_set<std::uint32_t, tests::test_hash<std::uint32_t>, std::equal_to<std::uint32_t>, uint32_size_allocator<std::uint32_t>>;
+    using map_t = sparse_map<
+        std::uint32_t,
+        std::uint32_t,
+        tests::test_hash<std::uint32_t>,
+        std::equal_to<std::uint32_t>,
+        uint32_size_allocator<std::pair<std::uint32_t, std::uint32_t>>
+    >;
+    using set_t = sparse_set<
+        std::uint32_t,
+        tests::test_hash<std::uint32_t>,
+        std::equal_to<std::uint32_t>,
+        uint32_size_allocator<std::uint32_t>
+    >;
 
     /// the element with key `key`, for the map with the mapped value `key`
     template<typename Container>
@@ -89,7 +102,7 @@ namespace {
     };
 
     constexpr std::uint32_t nb_keys = 1000;
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("map", map_t);
 TYPE_TO_STRING_AS("set", set_t);
@@ -117,15 +130,35 @@ TEST_CASE_TEMPLATE("a container whose allocator has a 32-bit size_type holds ele
     CHECK(container.size() == nb_keys);
 }
 
-TEST_CASE_TEMPLATE("a container whose allocator has a 32-bit difference_type uses it for its iterators", container_t, map_t, set_t) {
-    CHECK(std::is_same_v<typename container_t::difference_type, typename std::iterator_traits<typename container_t::iterator>::difference_type>);
-    CHECK(std::is_same_v<typename container_t::difference_type, typename std::iterator_traits<typename container_t::const_iterator>::difference_type>);
+TEST_CASE_TEMPLATE(
+    "a container whose allocator has a 32-bit difference_type uses it for its iterators",
+    container_t,
+    map_t,
+    set_t
+) {
+    CHECK(
+        std::is_same_v<
+            typename container_t::difference_type,
+            typename std::iterator_traits<typename container_t::iterator>::difference_type
+        >
+    );
+    CHECK(
+        std::is_same_v<
+            typename container_t::difference_type,
+            typename std::iterator_traits<typename container_t::const_iterator>::difference_type
+        >
+    );
 }
 
 // `reserve(n)` computes the bucket count for `n` elements as a `std::size_t`. For 2^31 elements at the default maximum
 // load factor of 0.5 that is 2^32, which a 32-bit `size_type` cannot hold. `reserve` throws instead of reserving fewer
 // buckets.
-TEST_CASE_TEMPLATE("reserve of more elements than a 32-bit size_type can count buckets for throws", container_t, map_t, set_t) {
+TEST_CASE_TEMPLATE(
+    "reserve of more elements than a 32-bit size_type can count buckets for throws",
+    container_t,
+    map_t,
+    set_t
+) {
     auto container = container_t{};
     tests::insert_one(container, 1);
     auto const bucket_count = container.bucket_count();
@@ -139,7 +172,12 @@ TEST_CASE_TEMPLATE("reserve of more elements than a 32-bit size_type can count b
 // `insert_range` of a sized range reserves room for `std::ranges::size(range)` more elements. That is a hint: the
 // elements can have equal keys, so the range can be longer than `max_size()` and still fit. The range here has one
 // element and says that it has 2^31, more than `max_size()`. `insert_range` must not throw `std::length_error`.
-TEST_CASE_TEMPLATE("insert_range of a sized range longer than max_size() inserts its elements", container_t, map_t, set_t) {
+TEST_CASE_TEMPLATE(
+    "insert_range of a sized range longer than max_size() inserts its elements",
+    container_t,
+    map_t,
+    set_t
+) {
     auto const range = one_element_claiming_2_31<typename container_t::value_type>{value_of<container_t>(7)};
     static_assert(std::ranges::sized_range<decltype(range)>);
 
@@ -176,7 +214,9 @@ namespace {
         uint16_size_allocator() noexcept = default;
 
         template<typename U>
-        uint16_size_allocator(uint16_size_allocator<U, limited_by_size> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        uint16_size_allocator(
+            uint16_size_allocator<U, limited_by_size> const & /*other*/
+        ) noexcept { // NOLINT(google-explicit-constructor)
         }
 
         T *allocate(size_type n) {
@@ -188,8 +228,7 @@ namespace {
         }
 
         [[nodiscard]] size_type max_size() const noexcept
-            requires (!limited_by_size)
-        {
+        requires (!limited_by_size) {
             return std::numeric_limits<size_type>::max();
         }
 
@@ -199,7 +238,12 @@ namespace {
     };
 
     template<bool limited_by_size>
-    using small_set = sparse_set<std::uint16_t, tests::test_hash<std::uint16_t>, std::equal_to<std::uint16_t>, uint16_size_allocator<std::uint16_t, limited_by_size>>;
+    using small_set = sparse_set<
+        std::uint16_t,
+        tests::test_hash<std::uint16_t>,
+        std::equal_to<std::uint16_t>,
+        uint16_size_allocator<std::uint16_t, limited_by_size>
+    >;
 
     /// the largest power of two of a 16-bit `size_type`
     constexpr std::size_t largest_bucket_count = std::size_t{1} << 15U;
@@ -211,7 +255,7 @@ namespace {
             set.insert(static_cast<std::uint16_t>(key));
         }
     }
-}  // namespace
+} // namespace
 
 // The allocator provides 65535 bytes per allocation. That is enough for 2047 groups of 64 buckets, so the bucket count
 // is limited by `size_type` alone.

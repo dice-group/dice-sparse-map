@@ -20,7 +20,9 @@ TEST_CASE_MAP("multiple_different_APIs" * doctest::test_suite("stochastic"), cou
 
     map_t map;
     REQUIRE(map.size() == static_cast<std::size_t>(0));
-    std::pair<typename map_t::iterator, bool> it_outer = map.insert(typename map_t::value_type{{32145, counts}, {123, counts}});
+    std::pair<typename map_t::iterator, bool> it_outer = map.insert(
+        typename map_t::value_type{{32145, counts}, {123, counts}}
+    );
     REQUIRE(it_outer.second);
     REQUIRE(it_outer.first->first.get() == 32145);
     REQUIRE(it_outer.first->second.get() == 123);
@@ -29,7 +31,9 @@ TEST_CASE_MAP("multiple_different_APIs" * doctest::test_suite("stochastic"), cou
     std::size_t const times = 10000;
     for (std::size_t i = 0; i < times; ++i) {
         INFO(i);
-        std::pair<typename map_t::iterator, bool> it_inner = map.insert(typename map_t::value_type({i * 4U, counts}, {i, counts}));
+        std::pair<typename map_t::iterator, bool> it_inner = map.insert(
+            typename map_t::value_type({i * 4U, counts}, {i, counts})
+        );
 
         REQUIRE(it_inner.second);
         REQUIRE(it_inner.first->first.get() == i * 4);

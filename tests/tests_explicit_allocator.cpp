@@ -32,14 +32,10 @@ namespace {
 
         explicit_allocator() noexcept = default;
 
-        explicit explicit_allocator(int new_id) noexcept
-            : id(new_id) {
-        }
+        explicit explicit_allocator(int new_id) noexcept : id(new_id) {}
 
         template<typename U>
-        explicit explicit_allocator(explicit_allocator<U> const &other) noexcept
-            : id(other.id) {
-        }
+        explicit explicit_allocator(explicit_allocator<U> const &other) noexcept : id(other.id) {}
 
         T *allocate(std::size_t n) {
             return std::allocator<T>{}.allocate(n);
@@ -54,7 +50,8 @@ namespace {
         }
     };
 
-    using map_t = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, explicit_allocator<std::pair<int, int>>>;
+    using map_t =
+        sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, explicit_allocator<std::pair<int, int>>>;
     using set_t = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, explicit_allocator<int>>;
 
     /// the elements 0 to 9 as `value_type`
@@ -70,12 +67,17 @@ namespace {
         }
         return result;
     }
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("map", map_t);
 TYPE_TO_STRING_AS("set", set_t);
 
-TEST_CASE_TEMPLATE("a container works with an allocator whose converting constructor is explicit", container_t, map_t, set_t) {
+TEST_CASE_TEMPLATE(
+    "a container works with an allocator whose converting constructor is explicit",
+    container_t,
+    map_t,
+    set_t
+) {
     using allocator_type = typename container_t::allocator_type;
     auto const alloc_1 = allocator_type{1};
     auto const alloc_2 = allocator_type{2};

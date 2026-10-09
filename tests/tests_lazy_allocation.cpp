@@ -24,20 +24,29 @@ namespace {
     using dice::sparse_map::tests::num_allocations;
 
     template<sh::sparsity Sparsity>
-    using counted_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>, Sparsity>;
+    using counted_map = sparse_map<
+        int,
+        int,
+        tests::test_hash<int>,
+        std::equal_to<int>,
+        counting_allocator<std::pair<int, int>>,
+        Sparsity
+    >;
 
     template<sh::sparsity Sparsity>
     using counted_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<int>, Sparsity>;
 
     /// the sparsity levels, with `test_hash` and an allocator that counts
-    using counted_containers = std::tuple<counted_map<sh::sparsity::high>,
-                                          counted_map<sh::sparsity::medium>,
-                                          counted_map<sh::sparsity::low>,
-                                          counted_set<sh::sparsity::high>,
-                                          counted_set<sh::sparsity::medium>,
-                                          counted_set<sh::sparsity::low>>;
+    using counted_containers = std::tuple<
+        counted_map<sh::sparsity::high>,
+        counted_map<sh::sparsity::medium>,
+        counted_map<sh::sparsity::low>,
+        counted_set<sh::sparsity::high>,
+        counted_set<sh::sparsity::medium>,
+        counted_set<sh::sparsity::low>
+    >;
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("map<high>", counted_map<sh::sparsity::high>);
 TYPE_TO_STRING_AS("map<medium>", counted_map<sh::sparsity::medium>);
@@ -57,7 +66,11 @@ TEST_CASE_TEMPLATE_DEFINE("a default constructed container allocates nothing", c
 }
 TEST_CASE_TEMPLATE_APPLY(default_construction, counted_containers);
 
-TEST_CASE_TEMPLATE_DEFINE("a container constructed with a bucket count of 0 allocates nothing", container_t, zero_bucket_count) {
+TEST_CASE_TEMPLATE_DEFINE(
+    "a container constructed with a bucket count of 0 allocates nothing",
+    container_t,
+    zero_bucket_count
+) {
     auto const before = num_allocations;
     {
         auto const container = container_t(0);
@@ -136,8 +149,8 @@ TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", c
     auto const target = std::move(source);
     CHECK(num_allocations == before);
     CHECK(target.size() == 100);
-    CHECK(source.bucket_count() == 0);  // NOLINT(bugprone-use-after-move)
-    CHECK(source.empty());              // NOLINT(bugprone-use-after-move)
+    CHECK(source.bucket_count() == 0); // NOLINT(bugprone-use-after-move)
+    CHECK(source.empty()); // NOLINT(bugprone-use-after-move)
     CHECK(source.find(1) == source.end());
 
     tests::insert_one(source, 1);
@@ -146,7 +159,11 @@ TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", c
 TEST_CASE_TEMPLATE_APPLY(moved_from, counted_containers);
 
 // `reserve(n)` once per batch of insertions is a common pattern. It must not rebuild the table when the table has room.
-TEST_CASE_TEMPLATE_DEFINE("reserve and rehash allocate nothing when the bucket count stays", container_t, reserve_with_room) {
+TEST_CASE_TEMPLATE_DEFINE(
+    "reserve and rehash allocate nothing when the bucket count stays",
+    container_t,
+    reserve_with_room
+) {
     auto container = container_t{};
     container.reserve(100);
     for (int i = 0; i < 50; ++i) {

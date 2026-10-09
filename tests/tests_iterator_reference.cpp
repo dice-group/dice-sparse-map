@@ -20,7 +20,7 @@ namespace {
     template<typename Map>
     concept HasValueAccessor = requires (typename Map::iterator it) { it.value(); };
 
-}  // namespace
+} // namespace
 
 TEST_SUITE("iterator_reference") {
     using map_t = sparse_map<std::string, int>;
@@ -34,7 +34,9 @@ TEST_SUITE("iterator_reference") {
     static_assert(std::ranges::forward_range<map_t const>);
     static_assert(std::ranges::forward_range<set_t>);
     static_assert(std::is_same_v<std::iter_reference_t<map_t::iterator>, std::pair<std::string const &, int &>>);
-    static_assert(std::is_same_v<std::iter_reference_t<map_t::const_iterator>, std::pair<std::string const &, int const &>>);
+    static_assert(
+        std::is_same_v<std::iter_reference_t<map_t::const_iterator>, std::pair<std::string const &, int const &>>
+    );
     static_assert(std::is_same_v<std::iter_value_t<map_t::iterator>, std::pair<std::string, int>>);
     static_assert(std::is_same_v<std::iter_reference_t<set_t::iterator>, std::string const &>);
     static_assert(!HasValueAccessor<map_t>);

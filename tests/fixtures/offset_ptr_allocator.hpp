@@ -28,7 +28,9 @@ namespace dice::sparse_map::tests {
         offset_ptr_allocator() noexcept = default;
 
         template<typename U>
-        offset_ptr_allocator(offset_ptr_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        offset_ptr_allocator(
+            offset_ptr_allocator<U> const & /*other*/
+        ) noexcept { // NOLINT(google-explicit-constructor)
         }
 
         pointer allocate(size_type n) {
@@ -44,6 +46,6 @@ namespace dice::sparse_map::tests {
         }
     };
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_OFFSET_PTR_ALLOCATOR_HPP

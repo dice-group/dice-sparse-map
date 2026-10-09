@@ -90,19 +90,17 @@ namespace dice::sparse_map::bench {
     template<sh::sparsity sparsity, template<typename> typename Alloc = std::allocator>
     struct sparse_family {
         template<typename Key, typename T>
-        using map = ::dice::sparse_map::sparse_map<Key,
-                                                   T,
-                                                   table_hash<Key>,
-                                                   std::equal_to<Key>,
-                                                   Alloc<std::pair<Key, T>>,
-                                                   sparsity>;
+        using map = ::dice::sparse_map::sparse_map<
+            Key,
+            T,
+            table_hash<Key>,
+            std::equal_to<Key>,
+            Alloc<std::pair<Key, T>>,
+            sparsity
+        >;
 
         template<typename Key>
-        using set = ::dice::sparse_map::sparse_set<Key,
-                                                   table_hash<Key>,
-                                                   std::equal_to<Key>,
-                                                   Alloc<Key>,
-                                                   sparsity>;
+        using set = ::dice::sparse_map::sparse_set<Key, table_hash<Key>, std::equal_to<Key>, Alloc<Key>, sparsity>;
     };
 
     template<template<typename> typename Alloc = std::allocator>
@@ -137,6 +135,6 @@ namespace dice::sparse_map::bench {
         }
     };
 
-}  // namespace dice::sparse_map::bench
+} // namespace dice::sparse_map::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_COMMON_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_COMMON_HPP

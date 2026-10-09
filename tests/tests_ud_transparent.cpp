@@ -82,18 +82,38 @@ namespace {
      * Checks the number of hash calls with a `char const *`, a `std::string_view` and a `std::string`.
      */
     template<typename C>
-    void check(int line, C const &container, std::size_t num_charstar, std::size_t num_stringview, std::size_t num_string) {
+    void check(
+        int line,
+        C const &container,
+        std::size_t num_charstar,
+        std::size_t num_stringview,
+        std::size_t num_string
+    ) {
         auto sh = container.hash_function();
         auto counts = sh.counts();
-        INFO("check line " << line << ": expect (" << num_charstar << ", " << num_stringview << ", " << num_string << ") got ("
-                           << counts[0] << ", " << counts[1] << ", " << counts[2]
-                           << ") for (num_charstar, num_stringview, num_string)");
+        INFO(
+            "check line "
+            << line
+            << ": expect ("
+            << num_charstar
+            << ", "
+            << num_stringview
+            << ", "
+            << num_string
+            << ") got ("
+            << counts[0]
+            << ", "
+            << counts[1]
+            << ", "
+            << counts[2]
+            << ") for (num_charstar, num_stringview, num_string)"
+        );
         REQUIRE(counts[0] == num_charstar);
         REQUIRE(counts[1] == num_stringview);
         REQUIRE(counts[2] == num_string);
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("transparent_find", std::string, std::size_t, string_hash, std::equal_to<>) {
     auto map = map_t(16);
@@ -309,7 +329,7 @@ TEST_CASE_MAP("transparent_insert_or_assign_iterator_not", std::string, std::siz
     REQUIRE(map.size() == 1U);
 
     r = map.insert_or_assign(map.find("asdf"), "asdf", 7U);
-    check(__LINE__, map, 0, 0, 3);  // the hash of the find()
+    check(__LINE__, map, 0, 0, 3); // the hash of the find()
     REQUIRE(r == map.find("asdf"));
     REQUIRE(r->second == 7U);
     REQUIRE(map.size() == 1U);
@@ -436,7 +456,7 @@ namespace {
         }
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("transparent_find_simple", std::string, std::size_t, string_hash_simple, std::equal_to<>) {
     auto map = map_t();
@@ -486,7 +506,7 @@ namespace {
         string_hash hash_;
     };
 
-}  // namespace
+} // namespace
 
 // The heterogeneous overloads need `is_transparent` on the hash function and on the key equality, as in the standard
 // library. Here only the key equality has it, so the lookup converts its argument to a `std::string`.

@@ -12,10 +12,10 @@ namespace dice::sparse_map::bench {
      * without the overhead of the memory allocator behind it.
      */
     struct allocation_stats {
-        std::size_t current = 0;           ///< bytes allocated and not freed yet
-        std::size_t peak = 0;              ///< the largest value `current` had
-        std::size_t live_allocations = 0;  ///< allocations not freed yet
-        std::size_t allocations = 0;       ///< all calls of `allocate`
+        std::size_t current = 0; ///< bytes allocated and not freed yet
+        std::size_t peak = 0; ///< the largest value `current` had
+        std::size_t live_allocations = 0; ///< allocations not freed yet
+        std::size_t allocations = 0; ///< all calls of `allocate`
 
         /**
          * Starts a new measurement. Only valid when nothing is allocated.
@@ -37,14 +37,12 @@ namespace dice::sparse_map::bench {
 
         allocation_stats *stats;
 
-        explicit tracking_allocator(allocation_stats *stats) noexcept
-            : stats(stats) {
-        }
+        explicit tracking_allocator(allocation_stats *stats) noexcept : stats(stats) {}
 
         template<typename U>
-        tracking_allocator(tracking_allocator<U> const &other) noexcept  // NOLINT(google-explicit-constructor)
-            : stats(other.stats) {
-        }
+        tracking_allocator(tracking_allocator<U> const &other) noexcept // NOLINT(google-explicit-constructor)
+            :
+            stats(other.stats) {}
 
         [[nodiscard]] T *allocate(std::size_t n) {
             T *p = std::allocator<T>{}.allocate(n);
@@ -67,6 +65,6 @@ namespace dice::sparse_map::bench {
         return lhs.stats == rhs.stats;
     }
 
-}  // namespace dice::sparse_map::bench
+} // namespace dice::sparse_map::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_TRACKING_ALLOCATOR_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_TRACKING_ALLOCATOR_HPP

@@ -36,7 +36,7 @@ namespace {
     struct throwing_hash {
         using is_avalanching = void;
 
-        inline static bool armed = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        inline static bool armed = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
         throwing_hash() = default;
         throwing_hash(throwing_hash const &) = default;
@@ -89,7 +89,8 @@ namespace {
     using throwing_hash_set = sparse_set<int, throwing_hash>;
 
     /// containers with an allocator that is not always equal and does not propagate, like `std::pmr::polymorphic_allocator`
-    using unequal_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, pmr_like_allocator<std::pair<int, int>>>;
+    using unequal_map =
+        sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, pmr_like_allocator<std::pair<int, int>>>;
     using unequal_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, pmr_like_allocator<int>>;
 
     // the premises of the expectations below
@@ -121,22 +122,24 @@ namespace {
     template<typename Container>
     constexpr std::array<bool, 16> noexcept_specification() {
         using c = Container;
-        return {std::is_nothrow_default_constructible_v<c>,
-                std::is_nothrow_copy_constructible_v<c>,
-                std::is_nothrow_move_constructible_v<c>,
-                std::is_nothrow_copy_assignable_v<c>,
-                std::is_nothrow_move_assignable_v<c>,
-                noexcept(std::declval<c &>().swap(std::declval<c &>())),
-                noexcept(std::declval<c &>().clear()),
-                noexcept(std::declval<c const &>().size()),
-                noexcept(std::declval<c const &>().empty()),
-                noexcept(std::declval<c &>().begin()),
-                noexcept(std::declval<c &>().end()),
-                noexcept(std::declval<c &>().find(1)),
-                noexcept(std::declval<c &>().insert(std::declval<typename c::value_type const &>())),
-                noexcept(std::declval<c &>().erase(1)),
-                noexcept(std::declval<c &>().reserve(1)),
-                noexcept(std::declval<c &>().rehash(1))};
+        return {
+            std::is_nothrow_default_constructible_v<c>,
+            std::is_nothrow_copy_constructible_v<c>,
+            std::is_nothrow_move_constructible_v<c>,
+            std::is_nothrow_copy_assignable_v<c>,
+            std::is_nothrow_move_assignable_v<c>,
+            noexcept(std::declval<c &>().swap(std::declval<c &>())),
+            noexcept(std::declval<c &>().clear()),
+            noexcept(std::declval<c const &>().size()),
+            noexcept(std::declval<c const &>().empty()),
+            noexcept(std::declval<c &>().begin()),
+            noexcept(std::declval<c &>().end()),
+            noexcept(std::declval<c &>().find(1)),
+            noexcept(std::declval<c &>().insert(std::declval<typename c::value_type const &>())),
+            noexcept(std::declval<c &>().erase(1)),
+            noexcept(std::declval<c &>().reserve(1)),
+            noexcept(std::declval<c &>().rehash(1))
+        };
     }
 
     template<typename Container>
@@ -150,7 +153,7 @@ namespace {
         }
     }
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("sparse_map<int, int>", plain_map);
 TYPE_TO_STRING_AS("sparse_set<int>", plain_set);
@@ -161,11 +164,23 @@ TYPE_TO_STRING_AS("sparse_set<int, ..., pmr_like_allocator>", unequal_set);
 
 // `std::unordered_map` does not require this, but the standard libraries give it, and a
 // `std::vector` of maps moves its elements on growth only if it holds.
-TEST_CASE_TEMPLATE("the move constructor is noexcept when nothing it moves can throw", container_t, plain_map, plain_set, unequal_map, unequal_set) {
+TEST_CASE_TEMPLATE(
+    "the move constructor is noexcept when nothing it moves can throw",
+    container_t,
+    plain_map,
+    plain_set,
+    unequal_map,
+    unequal_set
+) {
     CHECK(std::is_nothrow_move_constructible_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("the move constructor is not noexcept when the hash can throw on a move", container_t, throwing_hash_map, throwing_hash_set) {
+TEST_CASE_TEMPLATE(
+    "the move constructor is not noexcept when the hash can throw on a move",
+    container_t,
+    throwing_hash_map,
+    throwing_hash_set
+) {
     CHECK_FALSE(std::is_nothrow_move_constructible_v<container_t>);
 
     // a move of the hash that throws reaches the caller, it does not terminate the program
@@ -175,36 +190,70 @@ TEST_CASE_TEMPLATE("the move constructor is not noexcept when the hash can throw
         auto const guard = arm_throwing_hash{};
         CHECK_THROWS_AS(container_t{std::move(source)}, std::runtime_error);
     }
-    CHECK(source.size() == 100);  // NOLINT(bugprone-use-after-move)
-    CHECK(source.contains(42));   // NOLINT(bugprone-use-after-move)
+    CHECK(source.size() == 100); // NOLINT(bugprone-use-after-move)
+    CHECK(source.contains(42)); // NOLINT(bugprone-use-after-move)
 }
 
-TEST_CASE_TEMPLATE("move assignment is noexcept when the allocator is always equal and the functors cannot throw", container_t, plain_map, plain_set) {
+TEST_CASE_TEMPLATE(
+    "move assignment is noexcept when the allocator is always equal and the functors cannot throw",
+    container_t,
+    plain_map,
+    plain_set
+) {
     CHECK(std::is_nothrow_move_assignable_v<container_t>);
 }
 
 // move assignment also move assigns the hash, which can throw
-TEST_CASE_TEMPLATE("move assignment is not noexcept when the hash can throw on a move assignment", container_t, throwing_hash_map, throwing_hash_set) {
+TEST_CASE_TEMPLATE(
+    "move assignment is not noexcept when the hash can throw on a move assignment",
+    container_t,
+    throwing_hash_map,
+    throwing_hash_set
+) {
     CHECK_FALSE(std::is_nothrow_move_assignable_v<container_t>);
 }
 
 // with unequal allocators that do not propagate, move assignment moves the elements one by one into
 // new memory, which allocates
-TEST_CASE_TEMPLATE("move assignment is not noexcept when the allocator is not always equal", container_t, unequal_map, unequal_set) {
+TEST_CASE_TEMPLATE(
+    "move assignment is not noexcept when the allocator is not always equal",
+    container_t,
+    unequal_map,
+    unequal_set
+) {
     CHECK_FALSE(std::is_nothrow_move_assignable_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("swap is noexcept when the allocator is always equal and the functors cannot throw", container_t, plain_map, plain_set) {
+TEST_CASE_TEMPLATE(
+    "swap is noexcept when the allocator is always equal and the functors cannot throw",
+    container_t,
+    plain_map,
+    plain_set
+) {
     CHECK(noexcept(std::declval<container_t &>().swap(std::declval<container_t &>())));
     CHECK(std::is_nothrow_swappable_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("swap is not noexcept when the hash can throw on a swap", container_t, throwing_hash_map, throwing_hash_set) {
+TEST_CASE_TEMPLATE(
+    "swap is not noexcept when the hash can throw on a swap",
+    container_t,
+    throwing_hash_map,
+    throwing_hash_set
+) {
     CHECK_FALSE(noexcept(std::declval<container_t &>().swap(std::declval<container_t &>())));
     CHECK_FALSE(std::is_nothrow_swappable_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("clear, size, empty, begin, end and the erase of an iterator are noexcept", container_t, plain_map, plain_set, throwing_hash_map, throwing_hash_set, unequal_map, unequal_set) {
+TEST_CASE_TEMPLATE(
+    "clear, size, empty, begin, end and the erase of an iterator are noexcept",
+    container_t,
+    plain_map,
+    plain_set,
+    throwing_hash_map,
+    throwing_hash_set,
+    unequal_map,
+    unequal_set
+) {
     CHECK(noexcept(std::declval<container_t &>().clear()));
     CHECK(noexcept(std::declval<container_t &>().erase(std::declval<typename container_t::iterator>())));
     CHECK(noexcept(std::declval<container_t &>().erase(std::declval<typename container_t::const_iterator>())));
@@ -236,7 +285,16 @@ TEST_CASE_TEMPLATE("find is not noexcept when the hash can throw", container_t, 
 
 // With `sh::allocation_failure::terminating` a failed allocation ends the process, with `throwing` it throws. The
 // `noexcept` specifications are the same.
-TEST_CASE_TEMPLATE("the noexcept specifications do not depend on allocation_failure", container_t, plain_map, plain_set, throwing_hash_map, throwing_hash_set, unequal_map, unequal_set) {
+TEST_CASE_TEMPLATE(
+    "the noexcept specifications do not depend on allocation_failure",
+    container_t,
+    plain_map,
+    plain_set,
+    throwing_hash_map,
+    throwing_hash_set,
+    unequal_map,
+    unequal_set
+) {
     using throwing_t = typename with_throwing_allocation_failure<container_t>::type;
     CHECK(noexcept_specification<container_t>() == noexcept_specification<throwing_t>());
 }

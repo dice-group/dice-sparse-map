@@ -89,11 +89,11 @@ namespace {
     /// the allocations of `failing_allocator` that throw `std::bad_alloc`
     enum class failing {
         nothing,
-        groups,       ///< the arrays of the elements of the groups, allocations of `Value`
-        bucket_array  ///< the bucket array, the array of the groups, all other allocations
+        groups, ///< the arrays of the elements of the groups, allocations of `Value`
+        bucket_array, ///< the bucket array, the array of the groups, all other allocations
     };
 
-    failing fail = failing::nothing;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    failing fail = failing::nothing; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /// makes the allocations `kind` of `failing_allocator` throw while it is in scope
     struct fail_while_in_scope {
@@ -126,14 +126,12 @@ namespace {
 
         failing_allocator() noexcept = default;
 
-        explicit failing_allocator(int id) noexcept
-            : id(id) {
-        }
+        explicit failing_allocator(int id) noexcept : id(id) {}
 
         template<typename U>
-        failing_allocator(failing_allocator<U, Value> const &other) noexcept  // NOLINT(google-explicit-constructor)
-            : id(other.id) {
-        }
+        failing_allocator(failing_allocator<U, Value> const &other) noexcept // NOLINT(google-explicit-constructor)
+            :
+            id(other.id) {}
 
         T *allocate(std::size_t n) {
             bool const is_group = std::is_same_v<T, Value>;
@@ -159,19 +157,17 @@ namespace {
     struct copied {
         std::size_t value = 0;
 
-        explicit copied(std::size_t value) noexcept
-            : value(value) {
-        }
+        explicit copied(std::size_t value) noexcept : value(value) {}
 
         copied(copied const &other) = default;
 
-        copied(copied &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
-        }
+        copied(copied &&other) noexcept(false) // NOLINT(performance-noexcept-move-constructor)
+            :
+            value(other.value) {}
 
         copied &operator=(copied const &other) = default;
 
-        copied &operator=(copied &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
+        copied &operator=(copied &&other) noexcept(false) { // NOLINT(performance-noexcept-move-constructor)
             value = other.value;
             return *this;
         }
@@ -184,11 +180,13 @@ namespace {
      * groups store the elements as `detail_sparse_hash::map_slot`.
      */
     template<typename T, typename Hash = detail_sparse_hash::default_hash<std::size_t>>
-    using failing_map = sparse_map<std::size_t,
-                                   T,
-                                   Hash,
-                                   std::equal_to<std::size_t>,
-                                   failing_allocator<std::pair<std::size_t, T>, detail_sparse_hash::map_slot<std::size_t, T>>>;
+    using failing_map = sparse_map<
+        std::size_t,
+        T,
+        Hash,
+        std::equal_to<std::size_t>,
+        failing_allocator<std::pair<std::size_t, T>, detail_sparse_hash::map_slot<std::size_t, T>>
+    >;
 
     static_assert(std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, std::size_t>>);
     static_assert(!std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, copied>>);
@@ -201,8 +199,7 @@ namespace {
             throw std::length_error{"size limit"};
         }
 
-        void deallocate(std::size_t * /*p*/, std::size_t /*n*/) noexcept {
-        }
+        void deallocate(std::size_t * /*p*/, std::size_t /*n*/) noexcept {}
     };
 
     /// inserts the keys 0 to `n - 1`
@@ -213,27 +210,41 @@ namespace {
         }
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("the default of AllocationFailure is terminating") {
-    CHECK(std::is_same_v<sparse_map<int, int>,
-                         sparse_map<int,
-                                    int,
-                                    detail_sparse_hash::default_hash<int>,
-                                    std::equal_to<int>,
-                                    std::allocator<std::pair<int, int>>,
-                                    sh::sparsity::medium,
-                                    sh::allocation_failure::terminating>>);
-    CHECK(std::is_same_v<sparse_set<int>,
-                         sparse_set<int,
-                                    detail_sparse_hash::default_hash<int>,
-                                    std::equal_to<int>,
-                                    std::allocator<int>,
-                                    sh::sparsity::medium,
-                                    sh::allocation_failure::terminating>>);
+    CHECK(
+        std::is_same_v<
+            sparse_map<int, int>,
+            sparse_map<
+                int,
+                int,
+                detail_sparse_hash::default_hash<int>,
+                std::equal_to<int>,
+                std::allocator<std::pair<int, int>>,
+                sh::sparsity::medium,
+                sh::allocation_failure::terminating
+            >
+        >
+    );
+    CHECK(
+        std::is_same_v<
+            sparse_set<int>,
+            sparse_set<
+                int,
+                detail_sparse_hash::default_hash<int>,
+                std::equal_to<int>,
+                std::allocator<int>,
+                sh::sparsity::medium,
+                sh::allocation_failure::terminating
+            >
+        >
+    );
 }
 
-TEST_CASE("a failed allocation of the bucket array aborts in the constructor and in a rehash" * doctest::skip(!can_fork)) {
+TEST_CASE(
+    "a failed allocation of the bucket array aborts in the constructor and in a rehash" * doctest::skip(!can_fork)
+) {
     CHECK(expect_abort([] {
         auto const guard = fail_while_in_scope{failing::bucket_array};
         auto const map = failing_map<std::size_t>(64);
@@ -256,7 +267,10 @@ TEST_CASE("a failed allocation of the bucket array aborts in a copy" * doctest::
     }));
 }
 
-TEST_CASE("a failed allocation of the bucket array aborts in a move assignment to another allocator" * doctest::skip(!can_fork)) {
+TEST_CASE(
+    "a failed allocation of the bucket array aborts in a move assignment to another allocator"
+    * doctest::skip(!can_fork)
+) {
     using map_t = failing_map<std::size_t>;
     auto source = map_t{map_t::allocator_type{1}};
     auto target = map_t{map_t::allocator_type{2}};
@@ -270,12 +284,22 @@ TEST_CASE("a failed allocation of the bucket array aborts in a move assignment t
 // `std::length_error` is a size limit and not a failed allocation, so `allocate` lets it through with `terminating` too.
 TEST_CASE("allocate lets std::length_error through with terminating") {
     auto alloc = length_error_allocator{};
-    CHECK_THROWS_AS(static_cast<void>(detail_sparse_hash::allocate<sh::allocation_failure::terminating>(alloc, 1)), std::length_error);
+    CHECK_THROWS_AS(
+        static_cast<void>(detail_sparse_hash::allocate<sh::allocation_failure::terminating>(alloc, 1)),
+        std::length_error
+    );
 }
 
-TEST_CASE("a failed allocation of a group aborts when the group is constructed with a capacity" * doctest::skip(!can_fork)) {
+TEST_CASE(
+    "a failed allocation of a group aborts when the group is constructed with a capacity" * doctest::skip(!can_fork)
+) {
     using allocator_t = failing_allocator<std::size_t, std::size_t>;
-    using array_t = detail_sparse_hash::sparse_array<std::size_t, allocator_t, sh::sparsity::medium, sh::allocation_failure::terminating>;
+    using array_t = detail_sparse_hash::sparse_array<
+        std::size_t,
+        allocator_t,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating
+    >;
     CHECK(expect_abort([] {
         auto const guard = fail_while_in_scope{failing::groups};
         auto const array = array_t(4, allocator_t{});
@@ -291,7 +315,9 @@ TEST_CASE("a failed allocation of a group aborts in a copy" * doctest::skip(!can
     }));
 }
 
-TEST_CASE("a failed allocation of a group aborts in a move assignment to another allocator" * doctest::skip(!can_fork)) {
+TEST_CASE(
+    "a failed allocation of a group aborts in a move assignment to another allocator" * doctest::skip(!can_fork)
+) {
     using map_t = failing_map<std::size_t>;
     auto source = map_t{map_t::allocator_type{1}};
     auto target = map_t{map_t::allocator_type{2}};
@@ -313,7 +339,10 @@ TEST_CASE("a failed allocation of a group aborts in an insert" * doctest::skip(!
 
 // The group of a new table has no element and no hole, so the insertion copies nothing and allocates an array for one
 // element.
-TEST_CASE("a failed allocation of a group aborts in an insert of an element whose move constructor can throw into a group without holes" * doctest::skip(!can_fork)) {
+TEST_CASE(
+    "a failed allocation of a group aborts in an insert of an element whose move constructor can throw into a group without holes"
+    * doctest::skip(!can_fork)
+) {
     auto map = failing_map<copied>(64);
     CHECK(expect_abort([&] {
         auto const guard = fail_while_in_scope{failing::groups};
@@ -323,7 +352,10 @@ TEST_CASE("a failed allocation of a group aborts in an insert of an element whos
 
 // With 64 buckets the table has one group, and `identity_hash` puts key `k` into bucket `k`. The erase of key 0 leaves
 // a hole. The insertion of key 5 into another bucket copies the elements into a new array without the hole.
-TEST_CASE("a failed allocation of a group aborts in an insert of an element whose move constructor can throw into a group with holes" * doctest::skip(!can_fork)) {
+TEST_CASE(
+    "a failed allocation of a group aborts in an insert of an element whose move constructor can throw into a group with holes"
+    * doctest::skip(!can_fork)
+) {
     auto map = failing_map<copied, identity_hash<std::size_t>>(64);
     insert_keys(map, 3);
     REQUIRE(map.bucket_count() == 64);

@@ -29,12 +29,19 @@ namespace details {
         std::equal_to<T>,
         Alloc,
         dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::allocation_failure::terminating>;
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
 
     template<typename T>
     typename T::set_type default_construct_set() {
         using value_type = typename T::value_type;
-        return typename T::set_type(T::set_type::default_init_bucket_count, dice::sparse_map::tests::test_hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::default_max_load_factor);
+        return typename T::set_type(
+            T::set_type::default_init_bucket_count,
+            dice::sparse_map::tests::test_hash<value_type>(),
+            std::equal_to<value_type>(),
+            typename T::allocator_type(),
+            T::set_type::default_max_load_factor
+        );
     }
 
     /** checks if all values of the set are in the initializer_list and then if the lengths are equal.
@@ -43,12 +50,10 @@ namespace details {
      */
     template<typename Set>
     bool is_equal(Set const &set, std::initializer_list<typename Set::value_type> l) {
-        return std::all_of(l.begin(), l.end(), [&set](typename Set::value_type i) {
-                   return set.contains(i);
-               })
-               && set.size() == l.size();
+        return std::all_of(l.begin(), l.end(), [&set](typename Set::value_type i) { return set.contains(i); })
+            && set.size() == l.size();
     }
-}  // namespace details
+} // namespace details
 
 template<typename T>
 void construction() {
@@ -93,7 +98,6 @@ void iterator_access_multi(std::initializer_list<typename T::value_type> l) {
     REQUIRE(std::equal(l_sorted.begin(), l_sorted.end(), set_sorted.begin()));
 }
 
-
 template<typename T>
 void const_iterator_access_multi(std::initializer_list<typename T::value_type> l) {
     auto set = details::default_construct_set<T>();
@@ -123,8 +127,7 @@ void erase(std::initializer_list<typename T::value_type> l, typename T::value_ty
     set.insert(l.begin(), l.end());
     // force non-const iterator
     auto iter = set.begin();
-    for (; *iter != extra_value; ++iter) {
-    }
+    for (; *iter != extra_value; ++iter) {}
     set.erase(iter);
     // erase did not work as expected
     REQUIRE(details::is_equal(set, l));
@@ -137,13 +140,11 @@ void erase_with_const_iter(std::initializer_list<typename T::value_type> l, type
     set.insert(l.begin(), l.end());
     // force const iterator
     auto iter = set.cbegin();
-    for (; *iter != extra_value; ++iter) {
-    }
+    for (; *iter != extra_value; ++iter) {}
     set.erase(iter);
     // erase did not work as expected
     REQUIRE(details::is_equal(set, l));
 }
-
 
 template<typename T>
 struct std_alloc {
@@ -159,9 +160,7 @@ struct custom_alloc {
     using set_type = details::sparse_set<value_type, allocator_type>;
 };
 
-
 TEST_SUITE("fancy_pointers/sparse_hash_set_tests") {
-
     TEST_CASE("std_alloc_compiles") {
         construction<std_alloc<int>>();
     }
@@ -225,12 +224,16 @@ TEST_SUITE("fancy_pointers/sparse_hash_set_tests") {
     }
 
     TEST_CASE("full_set") {
-        dice::sparse_map::sparse_set<int, dice::sparse_map::tests::test_hash<int>, std::equal_to<int>, offset_ptr_allocator<int>> set;
+        dice::sparse_map::sparse_set<
+            int,
+            dice::sparse_map::tests::test_hash<int>,
+            std::equal_to<int>,
+            offset_ptr_allocator<int>
+        >
+            set;
         std::vector<int> data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
         set.insert(data.begin(), data.end());
-        auto check = [&set](int d) {
-            return set.contains(d);
-        };
+        auto check = [&set](int d) { return set.contains(d); };
         // size did not match
         REQUIRE(data.size() == set.size());
         // Set did not contain all values

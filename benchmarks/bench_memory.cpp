@@ -32,17 +32,30 @@ namespace {
     };
 
     void print_header(std::string_view types) {
-        std::cout << std::format("\nmemory per element, {}\n\n", types)
-                  << std::format("| {:<18} | {:>8} | {:>10} | {:>15} | {:>11} | {:>12} | {:>11} | {:>11} |\n",
-                                 "container",
-                                 "N",
-                                 "bytes/elem",
-                                 "peak bytes/elem",
-                                 "live allocs",
-                                 "bucket_count",
-                                 "load_factor",
-                                 "sizeof(map)")
-                  << std::format("|{:-<20}|{:->9}:|{:->11}:|{:->16}:|{:->12}:|{:->13}:|{:->12}:|{:->12}:|\n", "", "", "", "", "", "", "", "");
+        std::cout
+            << std::format("\nmemory per element, {}\n\n", types)
+            << std::format(
+                   "| {:<18} | {:>8} | {:>10} | {:>15} | {:>11} | {:>12} | {:>11} | {:>11} |\n",
+                   "container",
+                   "N",
+                   "bytes/elem",
+                   "peak bytes/elem",
+                   "live allocs",
+                   "bucket_count",
+                   "load_factor",
+                   "sizeof(map)"
+               )
+            << std::format(
+                   "|{:-<20}|{:->9}:|{:->11}:|{:->16}:|{:->12}:|{:->13}:|{:->12}:|{:->12}:|\n",
+                   "",
+                   "",
+                   "",
+                   "",
+                   "",
+                   "",
+                   "",
+                   ""
+               );
     }
 
     /**
@@ -62,15 +75,17 @@ namespace {
             auto const per_element = [n](std::size_t bytes) {
                 return static_cast<double>(bytes) / static_cast<double>(n);
             };
-            std::cout << std::format("| {:<18} | {:>8} | {:>10.2f} | {:>15.2f} | {:>11} | {:>12} | {:>11.3f} | {:>11} |\n",
-                                     container,
-                                     n,
-                                     per_element(stats.current),
-                                     per_element(stats.peak),
-                                     stats.live_allocations,
-                                     map.bucket_count(),
-                                     map.load_factor(),
-                                     sizeof(Map));
+            std::cout << std::format(
+                "| {:<18} | {:>8} | {:>10.2f} | {:>15.2f} | {:>11} | {:>12} | {:>11.3f} | {:>11} |\n",
+                container,
+                n,
+                per_element(stats.current),
+                per_element(stats.peak),
+                stats.live_allocations,
+                map.bucket_count(),
+                map.load_factor(),
+                sizeof(Map)
+            );
         }
         CHECK(stats.current == 0);
         CHECK(stats.live_allocations == 0);
@@ -79,22 +94,28 @@ namespace {
     template<typename Key>
     void measure_all(std::size_t n) {
         measure<sparse_family<sh::sparsity::high, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map high", n);
-        measure<sparse_family<sh::sparsity::medium, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map medium", n);
+        measure<sparse_family<sh::sparsity::medium, tracking_allocator>::map<Key, std::uint64_t>>(
+            "sparse_map medium",
+            n
+        );
         measure<sparse_family<sh::sparsity::low, tracking_allocator>::map<Key, std::uint64_t>>("sparse_map low", n);
         measure<unordered_dense_family<tracking_allocator>::map<Key, std::uint64_t>>("unordered_dense", n);
         measure<std_family<tracking_allocator>::map<Key, std::uint64_t>>("std::unordered_map", n);
     }
 
     void print_erase_header(std::string_view types) {
-        std::cout << std::format("\nmemory per live element after erasing every second element, {}\n\n", types)
-                  << std::format("| {:<18} | {:>8} | {:>16} | {:>17} | {:>17} | {:>18} |\n",
-                                 "container",
-                                 "N",
-                                 "built bytes/elem",
-                                 "built live allocs",
-                                 "erased bytes/elem",
-                                 "erased live allocs")
-                  << std::format("|{:-<20}|{:->9}:|{:->17}:|{:->18}:|{:->18}:|{:->19}:|\n", "", "", "", "", "", "");
+        std::cout
+            << std::format("\nmemory per live element after erasing every second element, {}\n\n", types)
+            << std::format(
+                   "| {:<18} | {:>8} | {:>16} | {:>17} | {:>17} | {:>18} |\n",
+                   "container",
+                   "N",
+                   "built bytes/elem",
+                   "built live allocs",
+                   "erased bytes/elem",
+                   "erased live allocs"
+               )
+            << std::format("|{:-<20}|{:->9}:|{:->17}:|{:->18}:|{:->18}:|{:->19}:|\n", "", "", "", "", "", "");
     }
 
     /**
@@ -118,13 +139,15 @@ namespace {
                 map.erase(key_for<Map>(i));
             }
             REQUIRE(map.size() == n / 2);
-            std::cout << std::format("| {:<18} | {:>8} | {:>16.2f} | {:>17} | {:>17.2f} | {:>18} |\n",
-                                     container,
-                                     n,
-                                     static_cast<double>(built_bytes) / static_cast<double>(n),
-                                     built_allocations,
-                                     static_cast<double>(stats.current) / static_cast<double>(map.size()),
-                                     stats.live_allocations);
+            std::cout << std::format(
+                "| {:<18} | {:>8} | {:>16.2f} | {:>17} | {:>17.2f} | {:>18} |\n",
+                container,
+                n,
+                static_cast<double>(built_bytes) / static_cast<double>(n),
+                built_allocations,
+                static_cast<double>(stats.current) / static_cast<double>(map.size()),
+                stats.live_allocations
+            );
         }
         CHECK(stats.current == 0);
         CHECK(stats.live_allocations == 0);
@@ -132,12 +155,15 @@ namespace {
 
     template<typename T>
     void measure_erase_half_all(std::size_t n) {
-        measure_erase_half<sparse_family<sh::sparsity::medium, tracking_allocator>::map<std::uint64_t, T>>("sparse_map medium", n);
+        measure_erase_half<sparse_family<sh::sparsity::medium, tracking_allocator>::map<std::uint64_t, T>>(
+            "sparse_map medium",
+            n
+        );
         measure_erase_half<unordered_dense_family<tracking_allocator>::map<std::uint64_t, T>>("unordered_dense", n);
         measure_erase_half<std_family<tracking_allocator>::map<std::uint64_t, T>>("std::unordered_map", n);
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("memory") {
     tame_allocator();

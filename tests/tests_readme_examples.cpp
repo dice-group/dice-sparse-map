@@ -27,7 +27,7 @@ namespace {
         }
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE("readme example") {
     dice::sparse_map::sparse_map<std::string, int> map = {{"a", 1}, {"b", 2}};
@@ -64,9 +64,7 @@ TEST_CASE("example") {
     std::size_t const precalculated_hash = map.hash_function()("a");
     CHECK(map.find("a", precalculated_hash) != map.end());
 
-    erase_if(map, [](auto const &element) {
-        return element.second > 6;
-    });
+    erase_if(map, [](auto const &element) { return element.second > 6; });
     CHECK(map.size() == 3);
 
     dice::sparse_map::sparse_set<int> set;

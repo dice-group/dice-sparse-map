@@ -70,6 +70,6 @@ namespace dice::sparse_map::tests::checksum {
         return combine(combined_hash, num_elements);
     }
 
-}  // namespace dice::sparse_map::tests::checksum
+} // namespace dice::sparse_map::tests::checksum
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_CHECKSUM_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_CHECKSUM_HPP

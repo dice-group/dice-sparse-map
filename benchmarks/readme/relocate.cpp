@@ -66,9 +66,15 @@ namespace {
         std::size_t size_;
 
     public:
-        address_blocker(void *address, std::size_t size) noexcept
-            : size_(size) {
-            void *const mapped = ::mmap(address, size_, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
+        address_blocker(void *address, std::size_t size) noexcept : size_(size) {
+            void *const mapped = ::mmap(
+                address,
+                size_,
+                PROT_NONE,
+                MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE,
+                -1,
+                0
+            );
             if (mapped == address) {
                 block_ = mapped;
             } else if (mapped != MAP_FAILED) {
@@ -107,9 +113,17 @@ namespace {
             filled->try_emplace(key, value_of(key));
         }
         static_cast<void>(manager.construct<map_t>("empty")(typename map_t::allocator_type(manager.get_allocator())));
-        std::ofstream{dir / (std::string{Desc::name} + ".address")} << reinterpret_cast<std::uintptr_t>(manager.get_address()) << ' '
-                                                                    << manager.get_size() << '\n';
-        std::printf("created %-14s at %p, program at %p\n", Desc::name, manager.get_address(), static_cast<void *>(&program_marker));
+        std::ofstream{dir / (std::string{Desc::name} + ".address")}
+            << reinterpret_cast<std::uintptr_t>(manager.get_address())
+            << ' '
+            << manager.get_size()
+            << '\n';
+        std::printf(
+            "created %-14s at %p, program at %p\n",
+            Desc::name,
+            manager.get_address(),
+            static_cast<void *>(&program_marker)
+        );
     }
 
     /**
@@ -133,7 +147,13 @@ namespace {
         if (!manager.check_sanity()) {
             return "datastore does not open";
         }
-        std::printf("  opened %-14s at %p (was %p), program at %p\n", Desc::name, manager.get_address(), reinterpret_cast<void *>(old_address), static_cast<void *>(&program_marker));
+        std::printf(
+            "  opened %-14s at %p (was %p), program at %p\n",
+            Desc::name,
+            manager.get_address(),
+            reinterpret_cast<void *>(old_address),
+            static_cast<void *>(&program_marker)
+        );
         if (reinterpret_cast<std::uintptr_t>(manager.get_address()) == old_address) {
             return "datastore mapped at the same address";
         }
@@ -236,7 +256,7 @@ namespace {
 
     using metall_maps = maps<sparse_medium, sparse_high, sparse_low, unordered_dense, boost_flat, std_unordered_map>;
 
-}  // namespace
+} // namespace
 
 int main(int argc, char **argv) {
     if (argc < 3) {

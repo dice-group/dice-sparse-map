@@ -56,8 +56,7 @@ struct custom_allocator {
     custom_allocator() = default;
 
     template<typename U>
-    custom_allocator(custom_allocator<U> const &) {
-    }
+    custom_allocator(custom_allocator<U> const &) {}
 
     pointer address(reference x) const noexcept {
         return &x;
@@ -119,12 +118,18 @@ bool operator!=(custom_allocator<T> const &, custom_allocator<U> const &) {
 // }
 
 TEST_SUITE("test_custom_allocator") {
-
     TEST_CASE("test_custom_allocator_1") {
         //    nb_global_new = 0;
         nb_custom_allocs = 0;
 
-        dice::sparse_map::sparse_map<int, int, dice::sparse_map::tests::test_hash<int>, std::equal_to<int>, custom_allocator<std::pair<int, int>>> map;
+        dice::sparse_map::sparse_map<
+            int,
+            int,
+            dice::sparse_map::tests::test_hash<int>,
+            std::equal_to<int>,
+            custom_allocator<std::pair<int, int>>
+        >
+            map;
 
         int const nb_elements = 1000;
         for (int i = 0; i < nb_elements; i++) {

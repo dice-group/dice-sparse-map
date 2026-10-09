@@ -45,7 +45,6 @@
 using namespace dice::sparse_map::tests;
 
 TEST_SUITE("test_sparse_map") {
-
     using test_types = std::tuple<
         dice::sparse_map::sparse_map<std::int64_t, std::int64_t>,
         dice::sparse_map::sparse_map<std::string, std::string>,
@@ -57,13 +56,49 @@ TEST_SUITE("test_sparse_map") {
         dice::sparse_map::sparse_map<self_reference_member_test, self_reference_member_test, mod_hash<9>>,
 
         // Other sparsity levels for move-only and copy-only types
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::sparsity::high>,
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::sparsity::low>,
-        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<
+            move_only_test,
+            move_only_test,
+            mod_hash<9>,
+            std::equal_to<move_only_test>,
+            std::allocator<std::pair<move_only_test, move_only_test>>,
+            dice::sparse_map::sh::sparsity::high
+        >,
+        dice::sparse_map::sparse_map<
+            move_only_test,
+            move_only_test,
+            mod_hash<9>,
+            std::equal_to<move_only_test>,
+            std::allocator<std::pair<move_only_test, move_only_test>>,
+            dice::sparse_map::sh::sparsity::low
+        >,
+        dice::sparse_map::sparse_map<
+            copy_only_test,
+            copy_only_test,
+            mod_hash<9>,
+            std::equal_to<copy_only_test>,
+            std::allocator<std::pair<copy_only_test, copy_only_test>>,
+            dice::sparse_map::sh::sparsity::high
+        >,
 
         // Others sparsity
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::sparsity::high>,
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::sparsity::low>>;
+        dice::sparse_map::sparse_map<
+            std::string,
+            std::string,
+            mod_hash<9>,
+            std::equal_to<std::string>,
+            std::allocator<std::pair<std::string, std::string>>,
+            dice::sparse_map::sh::sparsity::high
+        >,
+        dice::sparse_map::sparse_map<
+            std::string,
+            std::string,
+            mod_hash<9>,
+            std::equal_to<std::string>,
+            std::allocator<std::pair<std::string, std::string>>,
+            dice::sparse_map::sh::sparsity::low
+        >
+    >;
 
     /**
      * layout
@@ -99,8 +134,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK_EQ(map.size(), nb_values);
 
         for (std::size_t i = 0; i < nb_values; i++) {
-            std::tie(it, inserted) = map.insert(
-                {utils::get_key<key_t>(i), utils::get_value<value_t>(i + 1)});
+            std::tie(it, inserted) = map.insert({utils::get_key<key_t>(i), utils::get_value<value_t>(i + 1)});
 
             CHECK_EQ(it->first, utils::get_key<key_t>(i));
             CHECK_EQ(it->second, utils::get_value<value_t>(i));
@@ -126,8 +160,7 @@ TEST_SUITE("test_sparse_map") {
         }
 
         dice::sparse_map::sparse_map<int, int> map = {{-1, 1}, {-2, 2}};
-        map.insert(std::next(values_to_insert.begin(), 10),
-                   values_to_insert.end() - 5);
+        map.insert(std::next(values_to_insert.begin(), 10), values_to_insert.end() - 5);
 
         CHECK_EQ(map.size(), 987);
 
@@ -169,13 +202,22 @@ TEST_SUITE("test_sparse_map") {
         dice::sparse_map::sparse_map<int, int> map{{1, 0}, {2, 1}, {3, 2}};
 
         // Wrong hint
-        CHECK(map.emplace_hint(map.find(2), std::piecewise_construct, std::forward_as_tuple(3), std::forward_as_tuple(4)) == map.find(3));
+        CHECK(
+            map.emplace_hint(map.find(2), std::piecewise_construct, std::forward_as_tuple(3), std::forward_as_tuple(4))
+            == map.find(3)
+        );
 
         // Good hint
-        CHECK(map.emplace_hint(map.find(2), std::piecewise_construct, std::forward_as_tuple(2), std::forward_as_tuple(4)) == map.find(2));
+        CHECK(
+            map.emplace_hint(map.find(2), std::piecewise_construct, std::forward_as_tuple(2), std::forward_as_tuple(4))
+            == map.find(2)
+        );
 
         // end() hint
-        CHECK(map.emplace_hint(map.find(10), std::piecewise_construct, std::forward_as_tuple(2), std::forward_as_tuple(4)) == map.find(2));
+        CHECK(
+            map.emplace_hint(map.find(10), std::piecewise_construct, std::forward_as_tuple(2), std::forward_as_tuple(4))
+            == map.find(2)
+        );
 
         CHECK_EQ(map.size(), 3);
 
@@ -183,13 +225,15 @@ TEST_SUITE("test_sparse_map") {
         CHECK_EQ(
             map.emplace_hint(map.find(10), std::piecewise_construct, std::forward_as_tuple(4), std::forward_as_tuple(3))
                 ->first,
-            4);
+            4
+        );
 
         // Wrong hint, new value
         CHECK_EQ(
             map.emplace_hint(map.find(2), std::piecewise_construct, std::forward_as_tuple(5), std::forward_as_tuple(4))
                 ->first,
-            5);
+            5
+        );
 
         CHECK_EQ(map.size(), 5);
     }
@@ -202,12 +246,18 @@ TEST_SUITE("test_sparse_map") {
         dice::sparse_map::sparse_map<std::int64_t, move_only_test>::iterator it;
         bool inserted;
 
-        std::tie(it, inserted) = map.emplace(std::piecewise_construct, std::forward_as_tuple(10), std::forward_as_tuple(1));
+        std::tie(
+            it,
+            inserted
+        ) = map.emplace(std::piecewise_construct, std::forward_as_tuple(10), std::forward_as_tuple(1));
         CHECK_EQ(it->first, 10);
         CHECK_EQ(it->second, move_only_test(1));
         CHECK(inserted);
 
-        std::tie(it, inserted) = map.emplace(std::piecewise_construct, std::forward_as_tuple(10), std::forward_as_tuple(3));
+        std::tie(
+            it,
+            inserted
+        ) = map.emplace(std::piecewise_construct, std::forward_as_tuple(10), std::forward_as_tuple(3));
         CHECK_EQ(it->first, 10);
         CHECK_EQ(it->second, move_only_test(1));
         CHECK(!inserted);
@@ -460,8 +510,7 @@ TEST_SUITE("test_sparse_map") {
         // insert x values, test erase with same iterator as each parameter, check if
         // returned mutable iterator is valid.
         std::size_t const nb_values = 100;
-        auto map = utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
-            nb_values);
+        auto map = utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(nb_values);
 
         dice::sparse_map::sparse_map<std::int64_t, std::int64_t>::const_iterator it_const = map.cbegin();
         std::advance(it_const, 10);
@@ -481,8 +530,7 @@ TEST_SUITE("test_sparse_map") {
     TEST_CASE("test_rehash_empty") {
         // test rehash(0), test find/erase/insert on map.
         std::size_t const nb_values = 100;
-        auto map = utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
-            nb_values);
+        auto map = utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(nb_values);
 
         std::size_t const bucket_count = map.bucket_count();
         CHECK(bucket_count >= nb_values);
@@ -505,42 +553,17 @@ TEST_SUITE("test_sparse_map") {
      * operator== and operator!=
      */
     TEST_CASE_TEMPLATE_DEFINE("test_compare", HMap, test_compare_id) {
-        dice::sparse_map::sparse_map<std::string, std::int64_t> const map1 = {
-            {"a", 1},
-            {"e", 5},
-            {"d", 4},
-            {"c", 3},
-            {"b", 2}};
-        dice::sparse_map::sparse_map<std::string, std::int64_t> const map1_copy = {
-            {"e", 5},
-            {"c", 3},
-            {"b", 2},
-            {"a", 1},
-            {"d", 4}};
-        dice::sparse_map::sparse_map<std::string, std::int64_t> const map2 = {
-            {"e", 5},
-            {"c", 3},
-            {"b", 2},
-            {"a", 1},
-            {"d", 4},
-            {"f", 6}};
-        dice::sparse_map::sparse_map<std::string, std::int64_t> const map3 = {
-            {"e", 5},
-            {"c", 3},
-            {"b", 2},
-            {"a", 1}};
-        dice::sparse_map::sparse_map<std::string, std::int64_t> const map4 = {
-            {"a", 1},
-            {"e", 5},
-            {"d", 4},
-            {"c", 3},
-            {"b", 26}};
-        dice::sparse_map::sparse_map<std::string, std::int64_t> const map5 = {
-            {"a", 1},
-            {"e", 5},
-            {"d", 4},
-            {"c", 3},
-            {"z", 2}};
+        dice::sparse_map::sparse_map<std::string, std::int64_t> const map1 =
+            {{"a", 1}, {"e", 5}, {"d", 4}, {"c", 3}, {"b", 2}};
+        dice::sparse_map::sparse_map<std::string, std::int64_t> const map1_copy =
+            {{"e", 5}, {"c", 3}, {"b", 2}, {"a", 1}, {"d", 4}};
+        dice::sparse_map::sparse_map<std::string, std::int64_t> const map2 =
+            {{"e", 5}, {"c", 3}, {"b", 2}, {"a", 1}, {"d", 4}, {"f", 6}};
+        dice::sparse_map::sparse_map<std::string, std::int64_t> const map3 = {{"e", 5}, {"c", 3}, {"b", 2}, {"a", 1}};
+        dice::sparse_map::sparse_map<std::string, std::int64_t> const map4 =
+            {{"a", 1}, {"e", 5}, {"d", 4}, {"c", 3}, {"b", 26}};
+        dice::sparse_map::sparse_map<std::string, std::int64_t> const map5 =
+            {{"a", 1}, {"e", 5}, {"d", 4}, {"c", 3}, {"z", 2}};
 
         CHECK(map1 == map1_copy);
         CHECK(map1_copy == map1);
@@ -603,8 +626,7 @@ TEST_SUITE("test_sparse_map") {
     TEST_CASE("test_modify_value_through_iterator") {
         // insert x values, modify value of even keys, check values
         std::size_t const nb_values = 100;
-        auto map = utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(
-            nb_values);
+        auto map = utils::get_filled_hash_map<dice::sparse_map::sparse_map<std::int64_t, std::int64_t>>(nb_values);
 
         for (auto it = map.begin(); it != map.end(); it++) {
             if (it->first % 2 == 0) {
@@ -626,15 +648,27 @@ TEST_SUITE("test_sparse_map") {
      */
     TEST_CASE("test_extreme_bucket_count_value_construction") {
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>>(
-                std::numeric_limits<std::size_t>::max())),
-            std::length_error);
+            (dice::sparse_map::sparse_map<
+                int,
+                int,
+                test_hash<int>,
+                std::equal_to<int>,
+                std::allocator<std::pair<int, int>>
+            >(std::numeric_limits<std::size_t>::max())),
+            std::length_error
+        );
 
         auto const max_bucket_count = dice::sparse_map::sparse_map<int, int>().max_bucket_count();
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>>(
-                max_bucket_count + 1)),
-            std::length_error);
+            (dice::sparse_map::sparse_map<
+                int,
+                int,
+                test_hash<int>,
+                std::equal_to<int>,
+                std::allocator<std::pair<int, int>>
+            >(max_bucket_count + 1)),
+            std::length_error
+        );
     }
 
     /**
@@ -703,8 +737,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK(map == (HMap()));
 
         for (std::size_t i = nb_values; i < nb_values * 2; i++) {
-            map_move.insert(
-                {utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
+            map_move.insert({utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
         }
 
         CHECK_EQ(map_move.size(), nb_values * 2);
@@ -736,8 +769,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK(map == (HMap()));
 
         for (std::size_t i = nb_values; i < nb_values * 2; i++) {
-            map_move.insert(
-                {utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
+            map_move.insert({utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
         }
 
         CHECK_EQ(map_move.size(), nb_values * 2);
@@ -796,8 +828,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK(map.find("a") == map.end());
 
         for (std::size_t i = 0; i < nb_values; i++) {
-            map.insert(
-                {utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
+            map.insert({utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
         }
 
         CHECK_EQ(map.size(), nb_values);
@@ -819,8 +850,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK(map.find("a") == map.end());
 
         for (std::size_t i = 0; i < nb_values; i++) {
-            map.insert(
-                {utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
+            map.insert({utils::get_key<std::string>(i), utils::get_value<move_only_test>(i)});
         }
 
         CHECK_EQ(map.size(), nb_values);
@@ -1075,8 +1105,7 @@ TEST_SUITE("test_sparse_map") {
             using is_transparent = void;
 
             std::size_t operator()(std::unique_ptr<int> const &p) const {
-                return test_hash<std::uintptr_t>()(
-                    reinterpret_cast<std::uintptr_t>(p.get()));
+                return test_hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(p.get()));
             }
 
             std::size_t operator()(std::uintptr_t p) const {
@@ -1091,8 +1120,7 @@ TEST_SUITE("test_sparse_map") {
         struct equal_to_ptr {
             using is_transparent = std::true_type;
 
-            bool operator()(std::unique_ptr<int> const &p1,
-                            std::unique_ptr<int> const &p2) const {
+            bool operator()(std::unique_ptr<int> const &p1, std::unique_ptr<int> const &p2) const {
                 return p1 == p2;
             }
 
@@ -1104,13 +1132,11 @@ TEST_SUITE("test_sparse_map") {
                 return p1 == reinterpret_cast<std::uintptr_t>(p2.get());
             }
 
-            bool operator()(std::unique_ptr<int> const &p1,
-                            int const *const &p2) const {
+            bool operator()(std::unique_ptr<int> const &p1, int const *const &p2) const {
                 return p1.get() == p2;
             }
 
-            bool operator()(int const *const &p1,
-                            std::unique_ptr<int> const &p2) const {
+            bool operator()(int const *const &p1, std::unique_ptr<int> const &p2) const {
                 return p1 == p2.get();
             }
         };
@@ -1194,13 +1220,8 @@ TEST_SUITE("test_sparse_map") {
      * Test precalculated hash
      */
     TEST_CASE("test_precalculated_hash") {
-        dice::sparse_map::sparse_map<int, int, identity_hash<int>> map = {
-            {1, -1},
-            {2, -2},
-            {3, -3},
-            {4, -4},
-            {5, -5},
-            {6, -6}};
+        dice::sparse_map::sparse_map<int, int, identity_hash<int>> map =
+            {{1, -1}, {2, -2}, {3, -3}, {4, -4}, {5, -5}, {6, -6}};
         dice::sparse_map::sparse_map<int, int, identity_hash<int>> const map_const = map;
 
         /**
@@ -1210,8 +1231,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK_EQ(map.find(3, map.hash_function()(3))->second, -3);
 
         REQUIRE(map_const.find(3, map_const.hash_function()(3)) != map_const.end());
-        CHECK_EQ(map_const.find(3, map_const.hash_function()(3))->second,
-                 -3);
+        CHECK_EQ(map_const.find(3, map_const.hash_function()(3))->second, -3);
 
         /**
          * at
@@ -1239,9 +1259,7 @@ TEST_SUITE("test_sparse_map") {
         CHECK_EQ(it_range.first->second, -3);
 
         auto it_range_const = map_const.equal_range(3, map_const.hash_function()(3));
-        REQUIRE_EQ(
-            std::distance(it_range_const.first, it_range_const.second),
-            1);
+        REQUIRE_EQ(std::distance(it_range_const.first, it_range_const.second), 1);
         CHECK_EQ(it_range_const.first->second, -3);
 
         /**
@@ -1290,7 +1308,7 @@ TEST_SUITE("test_sparse_map") {
         auto map = dice::sparse_map::sparse_map<int, std::string, identity_hash<int>>{};
         auto const original = std::string(100, 'x');
         map.try_emplace(1, original);
-        REQUIRE(map.bucket_count() == 2);  // the threshold is 1, so the next insertion grows the table
+        REQUIRE(map.bucket_count() == 2); // the threshold is 1, so the next insertion grows the table
 
         map.try_emplace(5, map.at(1));
 
@@ -1316,9 +1334,9 @@ TEST_SUITE("test_sparse_map") {
     TEST_CASE("operator[] with a key that refers to an element of the same group") {
         auto map = dice::sparse_map::sparse_map<std::string, std::string, first_letter_hash>{};
         map.reserve(16);
-        map["c"] = "b";  // the mapped value of key "c" is the key of the next element
+        map["c"] = "b"; // the mapped value of key "c" is the key of the next element
 
-        map[map.at("c")] = "x";  // key "b" is placed before key "c"
+        map[map.at("c")] = "x"; // key "b" is placed before key "c"
 
         CHECK(map.at("b") == "x");
         CHECK(map.at("c") == "b");
@@ -1341,9 +1359,9 @@ TEST_SUITE("test_sparse_map") {
         auto const more = std::vector<std::pair<int, int>>{{1000, 1}, {1001, 2}};
         auto bucket_counts = std::vector<std::size_t>{};
         auto const recorded = more | std::views::transform([&](std::pair<int, int> const &value) {
-                                  bucket_counts.push_back(map.bucket_count());
-                                  return value;
-                              });
+            bucket_counts.push_back(map.bucket_count());
+            return value;
+        });
         map.insert(recorded.begin(), recorded.end());
         CHECK(map.size() == 102);
         CHECK(map.load_factor() <= map.max_load_factor());

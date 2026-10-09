@@ -40,13 +40,26 @@
 using namespace dice::sparse_map::tests;
 
 TEST_SUITE("test_sparse_set") {
-
-    using test_types = std::tuple<dice::sparse_map::sparse_set<std::int64_t>,
-                                  dice::sparse_map::sparse_set<std::string>,
-                                  dice::sparse_map::sparse_set<self_reference_member_test, test_hash<self_reference_member_test>>,
-                                  dice::sparse_map::sparse_set<move_only_test, test_hash<move_only_test>>,
-                                  dice::sparse_map::sparse_set<move_only_test, test_hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::sparse_map::sh::sparsity::high>,
-                                  dice::sparse_map::sparse_set<move_only_test, test_hash<move_only_test>, std::equal_to<move_only_test>, std::allocator<move_only_test>, dice::sparse_map::sh::sparsity::low>>;
+    using test_types = std::tuple<
+        dice::sparse_map::sparse_set<std::int64_t>,
+        dice::sparse_map::sparse_set<std::string>,
+        dice::sparse_map::sparse_set<self_reference_member_test, test_hash<self_reference_member_test>>,
+        dice::sparse_map::sparse_set<move_only_test, test_hash<move_only_test>>,
+        dice::sparse_map::sparse_set<
+            move_only_test,
+            test_hash<move_only_test>,
+            std::equal_to<move_only_test>,
+            std::allocator<move_only_test>,
+            dice::sparse_map::sh::sparsity::high
+        >,
+        dice::sparse_map::sparse_set<
+            move_only_test,
+            test_hash<move_only_test>,
+            std::equal_to<move_only_test>,
+            std::allocator<move_only_test>,
+            dice::sparse_map::sh::sparsity::low
+        >
+    >;
 
     TEST_CASE_TEMPLATE_DEFINE("test_standard_layout", HSet, test_standard_layout_id) {
         static_assert(std::is_standard_layout_v<HSet>);
