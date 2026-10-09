@@ -6,7 +6,7 @@
 Reads <timeline dir>/raw.txt and the CSVs of the recordings. Per map it picks the recording with
 the median total runtime (of the rounds with every event recorded) and draws it as a step line:
 x is the time since the map was constructed, y the bytes allocated from the heap, in MB (10^6
-bytes). Writes <out dir>/bench-readme-timeline.svg and <out dir>/bench_readme_timeline.csv (the
+bytes). Writes <out dir>/bench-readme-timeline.svg and <timeline dir>/bench_readme_timeline.csv (the
 plotted runs, columns map, round, seconds, bytes), and prints a table per map: peak MB, MB at the
 end of the inserts, the runtime of the three modes (median and spread over the rounds) and the cost
 of the recording per event.
@@ -213,7 +213,7 @@ def main():
             "peak_agree": len({f["peak_bytes"] for _, f in full}) == 1,
         })
 
-    with open(os.path.join(args.out_dir, "bench_readme_timeline.csv"), "w", newline="") as f:
+    with open(os.path.join(args.timeline_dir, "bench_readme_timeline.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["map", "round", "seconds", "bytes"])
         for m, points in plotted.items():
