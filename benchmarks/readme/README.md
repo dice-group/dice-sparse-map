@@ -42,8 +42,8 @@ example `cmake --build build-readme --target dsm_readme_api_metall_u64_absl_flat
 
 ```sh
 benchmarks/readme/run.sh -b build-readme/benchmarks/readme/bin -o results/raw.txt -r "1 2 3"
-benchmarks/readme/collect.py results/raw.txt --csv doc/bench_readme.csv
-benchmarks/readme/plot.py doc/bench_readme.csv doc --not-relocatable=std
+benchmarks/readme/collect.py results/raw.txt --csv results/bench_readme.csv
+benchmarks/readme/plot.py results/bench_readme.csv doc --not-relocatable=std
 ```
 
 `run.sh` runs every binary once per panel and round, with the rounds outermost, and appends one line
@@ -61,7 +61,7 @@ the cells of a new raw file to an existing CSV:
 
 ```sh
 benchmarks/readme/run.sh -b build-readme/benchmarks/readme/bin -o results/disk.txt -w disk -m metall
-benchmarks/readme/collect.py results/disk.txt --csv doc/bench_readme.csv --merge
+benchmarks/readme/collect.py results/disk.txt --csv results/bench_readme.csv --merge
 ```
 
 A single binary:
@@ -99,10 +99,10 @@ with every event recorded (writes `<map>-r<round>.csv`), the recording binary wi
 1000th event recorded (`DSM_README_TIMELINE_EVERY=1000`, the cost of the time stamps and the
 buffer), and the `_plain` binary without the replaced `malloc` (the runtime without any counting).
 It appends one line per process to `raw.txt`. `plot_timeline.py` draws per map the recording with
-the median total runtime, writes `bench-readme-timeline.svg` and `bench_readme_timeline.csv` (the
-plotted points), and prints a table: peak MB, MB at the end of the inserts, the runtime in the
-three modes with the spread over the rounds, the cost per event, and the order of the maps by
-runtime in each mode. MB are 10^6 bytes.
+the median total runtime, writes `bench-readme-timeline.svg` into the output directory and
+`bench_readme_timeline.csv` (the plotted points) into the timeline directory, and prints a table:
+peak MB, MB at the end of the inserts, the runtime in the three modes with the spread over the
+rounds, the cost per event, and the order of the maps by runtime in each mode. MB are 10^6 bytes.
 
 A single run:
 

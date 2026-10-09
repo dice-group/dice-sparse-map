@@ -9,8 +9,7 @@ The [last section](#allocated-memory-over-time) has one more plot, in MB and sec
 that each map allocates over time while 10 million entries are inserted.
 
 Everything is relative to `dice::sparse_map::sparse_map<Key, std::size_t>` with the default sparsity medium:
-1.00 is level with it, 2.00 is twice the cost. Raw numbers are in
-[bench_readme.csv](bench_readme.csv). The programs are in
+1.00 is level with it, 2.00 is twice the cost. The programs are in
 [benchmarks/readme](../benchmarks/readme/README.md).
 
 ## With `std::allocator`
@@ -121,8 +120,7 @@ of 2.85. One insert with its share of the destructor takes 107 ns instead of 53.
 (`boost`) to 2.1 times as long in the flat maps. A lookup takes 1.8 to 1.9 times as long in `sparse_map`,
 `unordered_dense` and `boost`, and 1.7 times as long in `absl`. The bytes requested do not change. The peak resident
 set of the flat maps is smaller at 10 million, because their arrays are larger than the 64 MiB `M_MMAP_THRESHOLD` of
-the harness and `free` gives them back to the kernel at once. All numbers are in
-[bench_readme_10m.csv](bench_readme_10m.csv).
+the harness and `free` gives them back to the kernel at once.
 
 ## How the numbers were taken
 
@@ -210,15 +208,15 @@ for round in 1 2 3; do
         <image> bash /work/benchmarks/readme/run.sh -b /work/build-readme/benchmarks/readme/bin \
         -o /work/raw.txt -r $round
 done
-benchmarks/readme/collect.py raw.txt --csv doc/bench_readme.csv
-benchmarks/readme/plot.py doc/bench_readme.csv doc --not-relocatable=std
+benchmarks/readme/collect.py raw.txt --csv bench_readme.csv
+benchmarks/readme/plot.py bench_readme.csv doc --not-relocatable=std
 ```
 
 ## What the numbers do not say
 
 - `find` is throughput, not latency. The keys come from a random generator, so several lookups are in flight at the same time. In a chain of lookups where each key depends on the result of the one before, the ranking can be different.
 - One million to two million entries. On this CPU all cores share 36 MB of L3, and a million `uint64_t` entries take 22 MB in `sparse_map` and 49 to 59 MB in the flat maps. At other sizes the ratios can be different (see [At 10 million entries](#at-10-million-entries)), and many small maps are a different workload again (the `small_maps` benchmark in [benchmarks/](../benchmarks/README.md)).
-- Peak memory is resident pages, which depends on the allocator and on the thresholds the harness sets for glibc. The bytes requested are in the CSV under `memory`. With metall, the plots show the peak disk usage of the datastore instead. It does not count the heap: metall's own bookkeeping and the characters of the `std::string` keys. The peak resident set, which counts both, is in the CSV under `rss`.
+- Peak memory is resident pages, which depends on the allocator and on the thresholds the harness sets for glibc. The bytes requested are in the CSV of `collect.py` under `memory`. With metall, the plots show the peak disk usage of the datastore instead. It does not count the heap: metall's own bookkeeping and the characters of the `std::string` keys. The peak resident set, which counts both, is in the CSV under `rss`.
 - With metall, a timed panel includes page faults on a file mapping and the work of the kernel to write dirty pages to the disk. That depends on the disk, the file system and the settings of the kernel. Every size starts with an empty datastore.
 - With `std::string` keys every map uses another hash. Part of a difference between two maps with string keys is the hash, not the table.
 - Every map is in its default configuration. No map got `reserve`, a better hash or a different load factor, which would change the numbers of some maps a lot.
@@ -234,8 +232,7 @@ gets 10 million `uint64_t -> uint64_t` pairs inserted one by one (nothing reserv
 destroyed. A line is the sum of the blocks that the map has allocated from the heap, each block
 counted at its malloc size, after every allocation and every free. The x axis is the time since
 the map was constructed. All maps use `std::allocator`, and the plot has
-`ankerl::unordered_dense::segmented_map` in addition to the maps of the panels. The plotted points
-are in [bench_readme_timeline.csv](bench_readme_timeline.csv). MB are 10^6 bytes.
+`ankerl::unordered_dense::segmented_map` in addition to the maps of the panels. MB are 10^6 bytes.
 
 | map | peak | after the inserts | runtime of the plotted run | runtime without counting |
 |---|---:|---:|---:|---:|
