@@ -1,0 +1,17 @@
+# Upgrading from 0.3
+
+[README](../README.md) · [Usage](usage.md) · [Design](design.md) · [Benchmarks](benchmarks.md) · **Upgrading from 0.3**
+
+What changes for code that uses dice-sparse-map 0.3.
+
+- The names and the headers are the same: `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set` from `<dice/sparse-map/sparse_map.hpp>` and `<dice/sparse-map/sparse_set.hpp>`, the other names in `dice::sparse_map::sh`, and `dice::sparse_map::pobr_version` from `<dice/sparse-map/version.hpp>`. The conan package and the CMake target are `dice-sparse-map` and `dice-sparse-map::dice-sparse-map` as before. The package requires [dice-hash](https://github.com/dice-group/dice-hash), a new dependency. The headers `sparse_growth_policy.hpp` and `boost_offset_pointer.hpp` are gone. Fancy pointers need no extra header.
+- The library needs C++23 (0.3 needed C++20).
+- The hash function must be avalanching, a `static_assert` checks it (see [hash functions](usage.md#hash-functions)). `std::hash` is not. The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` instead of `std::hash<Key>`. `DiceHash` is avalanching with the policies `wyhash`, `xxh3` and `rapidhash`, for every key type that it hashes. A `dice::hash::dice_hash_overload` for your own key type must keep the avalanche of the policy. Mark your own avalanching hash function with `using is_avalanching = void;`, or specialize `dice::sparse_map::sh::hash_is_avalanching` for it.
+- The template parameters `GrowthPolicy` and `ExceptionSafety` are gone, with `sh::power_of_two_growth_policy`, `sh::prime_growth_policy`, `sh::mod_growth_policy`, `sh::exception_safety`, `sparse_pg_map`, `sparse_pg_set` and `sh::probing`. The bucket count is always 0 or a power of two, and the exception guarantee follows from the type of the elements (see [exception safety](usage.md#exception-safety)). Code that names more than the first five template parameters of a map (four of a set) does not compile. `Sparsity` follows `Allocator` directly.
+- The new last template parameter `AllocationFailure` is `sh::allocation_failure::terminating` by default: a failed allocation ends the process with `std::abort()` instead of throwing `std::bad_alloc`. Pass `sh::allocation_failure::throwing` to keep the exception. See [allocation failure](usage.md#allocation-failure).
+- `iterator::value()` and `iterator::key()` are gone. Use `it->second` and `it->first`.
+- `*it` of a map iterator is a `std::pair` of references, not an lvalue. `auto &x = *it` and `for (auto &x : map)` do not compile. Use `auto &&` or `auto const &`.
+- The `iterator_category` of a map iterator is `std::input_iterator_tag`, because `*it` is a proxy. The iterators model `std::forward_iterator` (`iterator_concept`).
+- The persisted format is different and the elements are placed differently, so containers that were persisted with 0.3 cannot be opened (`pobr_version` is 3). See [the persisted format](design.md#the-persisted-format).
+- `serialize` and `deserialize` are gone.
+- Heterogeneous overloads need `is_transparent` in the hash function as well as in the key equality, as for `std::unordered_map`. 0.3 needed it only in the key equality. Without it, the argument is converted to `Key`, and an argument that does not convert implicitly (for example `std::string_view` for a `std::string` key) does not compile. Add `using is_transparent = void;` to the hash function.

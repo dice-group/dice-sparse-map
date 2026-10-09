@@ -6,6 +6,10 @@ test cases, and each test case runs one benchmark with [nanobench](https://githu
 [ankerl::unordered_dense](https://github.com/martinus/unordered_dense) (MIT license).
 `workloads.hpp` keeps the reasons upstream gives for the shape of each workload.
 
+The plots in the README come from a separate set of programs in [readme/](readme/README.md), with
+their own CMake option `BUILD_README_BENCHMARKS`. The results are in
+[doc/benchmarks.md](../doc/benchmarks.md).
+
 ## Build
 
 The benchmarks are built when the project is the top level project and `BUILD_BENCHMARKS` is on.
@@ -73,7 +77,7 @@ of `find_all`, whose sum changes from run to run, and `hash_strings`, which meas
 | `find_random <container>` | `bench_find_random.cpp` | Random finds with 0%, 25%, 50%, 75% and 100% success in a `size_t -> size_t` map that grows to 200000 entries, 100 million finds per success rate. Timed with `std::chrono::steady_clock`, one run per success rate. |
 | `memory` | `bench_memory.cpp` | Memory per element of maps with 1000, 100000 and 1000000 elements, `uint64_t -> uint64_t` and `std::string -> uint64_t`. A tracking allocator counts what the container requests: bytes per element after the build, peak bytes per element during the build, live allocations (`live allocs`), bucket count, load factor and `sizeof` of the map. The heap memory of `std::string` keys and the overhead of malloc are not counted. |
 | `memory after erasing half` | `bench_memory.cpp` | Maps with 1000, 100000 and 1000000 elements, `uint64_t -> size_t` and `uint64_t -> throwing_move_value`, for `sparse_map medium`, `unordered_dense` and `std::unordered_map`. Bytes per element and live allocations after the build, and bytes per live element and live allocations after the elements with an even number were erased. Counted by the tracking allocator, as in `memory`. |
-| `small_maps` | `bench_small_maps.cpp` | 100000 maps with 1 to 16 `uint64_t -> uint64_t` entries each (fixed seed), the pattern of the edge maps of a hypertrie in tentris. Times the build, the lookups that hit and that miss (maps in a random order), the iteration over all maps and the destruction, with the median over 11 rounds. Also the heap bytes and allocations per map from a tracking allocator, and `sizeof` of the map. |
+| `small_maps` | `bench_small_maps.cpp` | 100000 maps with 1 to 16 `uint64_t -> uint64_t` entries each (fixed seed), as in a tree whose nodes each hold one small map. Times the build, the lookups that hit and that miss (maps in a random order), the iteration over all maps and the destruction, with the median over 11 rounds. Also the heap bytes and allocations per map from a tracking allocator, and `sizeof` of the map. |
 
 `<container>` is one of `sparse_map high`, `sparse_map medium`, `sparse_map low`, `unordered_dense` and
 `std::unordered_map` (for sets: `sparse_set ...`, `unordered_dense` and `std::unordered_set`).

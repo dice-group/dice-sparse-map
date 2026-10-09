@@ -9,27 +9,32 @@ from conan.tools.files import rmdir, copy, load
 class Recipe(ConanFile):
     url = "https://github.com/dice-group/dice-sparse-map"
     topics = "c++23", "hash-map", "data-structures", "header-only", "hash-table"
-    license = "MIT"
+    license = "MIT AND MIT AND MIT"
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
     generators = "CMakeDeps", "CMakeToolchain"
     options = {
         "with_test_deps": [True, False],
+        "with_readme_benchmark_deps": [True, False],
     }
     default_options = {
         "with_test_deps": False,
+        "with_readme_benchmark_deps": False,
         "boost/*:header_only": True,
     }
 
     def requirements(self):
-        self.requires("dice-hash/0.5.2@dice-group/fix-remove-error-value", transitive_headers=True)
+        self.requires("dice-hash/0.6.0", transitive_headers=True)
         if self.options.with_test_deps:
             self.test_requires("boost/1.91.0")
             self.test_requires("dice-template-library/2.9.0")
             self.test_requires("doctest/2.4.12")
             self.test_requires("nanobench/4.3.11")
-            self.test_requires("metall/0.35")
+            self.test_requires("metall/0.36-pre2@tentris/develop")
             self.test_requires("unordered_dense/5.2.0")
+        if self.options.with_readme_benchmark_deps:
+            # only for the README benchmark (benchmarks/readme)
+            self.test_requires("abseil/20250814.2")
 
     def set_name(self):
         if not hasattr(self, 'name') or self.version is None:

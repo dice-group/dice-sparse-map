@@ -89,7 +89,8 @@ namespace dice::sparse_map {
      *
      * `Sparsity` trades insertion speed for memory. A group grows its storage by 2 (`sh::sparsity::high`),
      * 4 (`sh::sparsity::medium`, default) or 8 (`sh::sparsity::low`) elements at a time. High sparsity means
-     * less memory and slower insertions. The lookup speed does not depend on it.
+     * less memory and slower insertions. The lookup speed does not depend on it. For elements whose move constructor
+     * can throw, a group holds memory of the exact size, and `Sparsity` has no effect.
      *
      * `AllocationFailure` says what happens when an allocation of the table fails, that is when the allocator
      * throws. With the default `dice::sparse_map::sh::allocation_failure::terminating` the process ends with
