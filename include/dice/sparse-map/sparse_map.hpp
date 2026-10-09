@@ -88,6 +88,11 @@ namespace dice::sparse_map {
      * holds its elements in memory of the exact size. The clean-up rehash, which also removes the marks of erased
      * elements, bounds the number of holes.
      *
+     * `begin()` is constant time: the map keeps the index of its first group of 64 buckets that holds an element.
+     * An erase that empties this group looks for the next group with an element, one group after the other. So the
+     * erase costs one step for every empty group in between, and erasing all elements in the order of iteration, as
+     * in `while (!map.empty()) { map.erase(map.begin()); }`, costs one step per group in total.
+     *
      * `Sparsity` trades insertion speed for memory. A group grows its storage by 2 (`sh::sparsity::high`),
      * 4 (`sh::sparsity::medium`, default) or 8 (`sh::sparsity::low`) elements at a time. High sparsity means
      * less memory and slower insertions. The lookup speed does not depend on it.
