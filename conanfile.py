@@ -9,7 +9,7 @@ from conan.tools.files import rmdir, copy, load
 class Recipe(ConanFile):
     url = "https://github.com/dice-group/dice-sparse-map"
     topics = "c++23", "hash-map", "data-structures", "header-only", "hash-table"
-    license = "MIT"
+    license = "MIT AND MIT AND MIT"
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "include/*", "CMakeLists.txt", "cmake/*", "LICENSE*"
     generators = "CMakeDeps", "CMakeToolchain"
