@@ -61,8 +61,12 @@ namespace dice::sparse_map {
      *    `std::input_iterator_tag`, because `*it` is a proxy, not `value_type &`.
      *  - There is no bucket interface beyond `bucket_count`, and no node handles.
      *  - `emplace` constructs the element first and inserts it if its key is not in the map.
-     *  - Heterogeneous lookup, insertion and erasure are enabled by `KeyEqual::is_transparent` alone.
      *  - Lookups can take a precalculated hash, see the overloads with a `precalculated_hash` parameter.
+     *
+     * The heterogeneous overloads take a key of another type than `Key`, for example a `std::string_view` for a
+     * `std::string` key. As in the standard library, they exist only if `Hash::is_transparent` and
+     * `KeyEqual::is_transparent` both exist, and the hash function and the key equality must accept the other type.
+     * Otherwise the argument is converted to `Key` first.
      *
      * The exception guarantee follows from the type of the elements. If the insertion of one element throws, the map
      * holds the same elements as before, except in one case: a rehash can leave the map empty. An insertion, `merge`,
@@ -90,15 +94,22 @@ namespace dice::sparse_map {
      * expression needs another hash function.
      *
      * `Key` and `T` must be nothrow move constructible and/or copy constructible. The behaviour is undefined if
-     * the destructor of `Key` or `T` throws.
+     * the destructor of `Key` or `T` throws. If `Key` and `T` are nothrow move constructible, the map moves its
+     * elements with `std::allocator_traits<Allocator>::construct` and expects that this does not throw either. With a
+     * scoped or a polymorphic allocator, that is the allocator-extended move constructor of `Key` and `T`, which does
+     * not throw when the allocators are equal. `std::vector` makes the same assumption.
      *
-     * Iterator invalidation:
-     *  - `clear`, `operator=`, `reserve`, `rehash`, `merge`: always invalidate the iterators.
-     *  - `insert_range`, and `insert` of a range or a list: may invalidate the iterators also if no element is
-     *    inserted, because they reserve room for the whole range first.
+     * Invalidation of iterators, references and pointers to elements: a group stores its elements densely and moves
+     * them when an element is inserted or erased. So, unlike with `std::unordered_map`, references and pointers to
+     * elements are invalidated like the iterators. For example, `map[a] = map[b]` reads a moved or freed element if
+     * `a` is not in the map.
+     *  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate the iterators, references and pointers.
+     *  - `merge`: always invalidates the iterators, references and pointers of both maps.
+     *  - `insert_range`, and `insert` of a range or a list: may invalidate the iterators, references and pointers
+     *    also if no element is inserted, because they reserve room for the whole range first.
      *  - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate the
-     *    iterators if an element is inserted.
-     *  - `erase`: always invalidates the iterators. Use the returned iterator.
+     *    iterators, references and pointers if an element is inserted.
+     *  - `erase`: always invalidates the iterators, references and pointers. Use the returned iterator.
      */
     template<typename Key,
              typename T,
@@ -120,8 +131,8 @@ namespace dice::sparse_map {
         template<typename, typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
         friend struct sparse_map;
 
-        /// heterogeneous lookup, insertion and erasure are enabled by `KeyEqual::is_transparent`
-        static constexpr bool is_transparent = detail_sparse_hash::IsTransparent<KeyEqual>;
+        /// the heterogeneous overloads exist if `Hash::is_transparent` and `KeyEqual::is_transparent` exist
+        static constexpr bool is_transparent = detail_sparse_hash::IsTransparent<Hash> && detail_sparse_hash::IsTransparent<KeyEqual>;
 
     public:
         using key_type = Key;
@@ -385,8 +396,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Heterogeneous `insert_or_assign` (C++26). Only if `KeyEqual::is_transparent` exists. `key_type` is
-         * constructed from `k` only if an element is inserted.
+         * Heterogeneous `insert_or_assign` (C++26). Only if `Hash::is_transparent` and `KeyEqual::is_transparent`
+         * exist. `key_type` is constructed from `k` only if an element is inserted.
          */
         template<typename K, typename M>
         requires (heterogeneous_key<K> && std::is_constructible_v<key_type, K &&>)
@@ -411,8 +422,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Constructs a `value_type` from `args`, and inserts it if its key is not in the map yet. Like
-         * `insert(value_type(std::forward<Args>(args)...))`.
+         * Constructs a `value_type` from `args` with the allocator of the map, and inserts it if its key is not in the
+         * map yet. A scoped or a polymorphic allocator passes itself on to the key and the mapped value.
          */
         template<typename... Args>
         constexpr std::pair<iterator, bool> emplace(Args &&...args) {
@@ -420,7 +431,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Like `insert(hint, value_type(std::forward<Args>(args)...))`.
+         * Constructs a `value_type` from `args` with the allocator of the map, and inserts it like
+         * `insert(hint, value)`.
          */
         template<typename... Args>
         constexpr iterator emplace_hint(const_iterator hint, Args &&...args) {
@@ -438,8 +450,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Heterogeneous `try_emplace` (C++26). Only if `KeyEqual::is_transparent` exists. `key_type` is
-         * constructed from `k` only if an element is inserted.
+         * Heterogeneous `try_emplace` (C++26). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist.
+         * `key_type` is constructed from `k` only if an element is inserted.
          */
         template<typename K, typename... Args>
         requires (heterogeneous_key<K> && std::is_constructible_v<key_type, K &&>)
@@ -488,8 +500,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Heterogeneous `erase` (C++23). Only if `KeyEqual::is_transparent` exists. `K` must be hashable and
-         * comparable to `Key`.
+         * Heterogeneous `erase` (C++23). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist. `K`
+         * must be hashable and comparable to `Key`.
          */
         template<typename K>
         requires heterogeneous_key<K>
@@ -559,8 +571,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Heterogeneous `at`. Only if `KeyEqual::is_transparent` exists. `K` must be hashable and comparable to
-         * `Key`.
+         * Heterogeneous `at`. Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist. `K` must be
+         * hashable and comparable to `Key`.
          */
         template<typename K>
         requires is_transparent
@@ -595,8 +607,8 @@ namespace dice::sparse_map {
         }
 
         /**
-         * Heterogeneous `operator[]` (C++26). Only if `KeyEqual::is_transparent` exists. `key_type` is
-         * constructed from `key` only if an element is inserted.
+         * Heterogeneous `operator[]` (C++26). Only if `Hash::is_transparent` and `KeyEqual::is_transparent` exist.
+         * `key_type` is constructed from `key` only if an element is inserted.
          */
         template<typename K>
         requires (heterogeneous_key<K> && std::is_constructible_v<key_type, K &&>)

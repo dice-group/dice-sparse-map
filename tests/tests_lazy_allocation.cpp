@@ -1,5 +1,6 @@
 #include "fixtures/allocators.hpp"
 #include "fixtures/test_types.hpp"
+#include "fixtures/utils.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -35,15 +36,6 @@ namespace {
                                           counted_set<sh::sparsity::high>,
                                           counted_set<sh::sparsity::medium>,
                                           counted_set<sh::sparsity::low>>;
-
-    template<typename Container>
-    void insert_one(Container &container, int key) {
-        if constexpr (requires { typename Container::mapped_type; }) {
-            container.try_emplace(key, key);
-        } else {
-            container.insert(key);
-        }
-    }
 
 }  // namespace
 
@@ -109,7 +101,7 @@ TEST_CASE_TEMPLATE_APPLY(empty_queries, counted_containers);
 TEST_CASE_TEMPLATE_DEFINE("the first insert allocates the buckets", container_t, first_insert) {
     auto container = container_t{};
     auto const before = num_allocations;
-    insert_one(container, 1);
+    tests::insert_one(container, 1);
     CHECK(num_allocations > before);
     CHECK(container.bucket_count() > 0);
     CHECK(container.contains(1));
@@ -137,7 +129,7 @@ TEST_CASE_TEMPLATE_APPLY(empty_copy, counted_containers);
 TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", container_t, moved_from) {
     auto source = container_t{};
     for (int i = 0; i < 100; ++i) {
-        insert_one(source, i);
+        tests::insert_one(source, i);
     }
     auto const before = num_allocations;
 
@@ -148,7 +140,26 @@ TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", c
     CHECK(source.empty());              // NOLINT(bugprone-use-after-move)
     CHECK(source.find(1) == source.end());
 
-    insert_one(source, 1);
+    tests::insert_one(source, 1);
     CHECK(source.contains(1));
 }
 TEST_CASE_TEMPLATE_APPLY(moved_from, counted_containers);
+
+// `reserve(n)` once per batch of insertions is a common pattern. It must not rebuild the table when the table has room.
+TEST_CASE_TEMPLATE_DEFINE("reserve and rehash allocate nothing when the bucket count stays", container_t, reserve_with_room) {
+    auto container = container_t{};
+    container.reserve(100);
+    for (int i = 0; i < 50; ++i) {
+        tests::insert_one(container, i);
+    }
+    auto const bucket_count = container.bucket_count();
+    auto const before = num_allocations;
+
+    container.reserve(100);
+    container.reserve(80);
+    container.rehash(bucket_count);
+    CHECK(num_allocations == before);
+    CHECK(container.bucket_count() == bucket_count);
+    CHECK(container.size() == 50);
+}
+TEST_CASE_TEMPLATE_APPLY(reserve_with_room, counted_containers);

@@ -18,8 +18,8 @@ using namespace std::literals;
 
 // sparse_map has heterogeneous overloads of find, count, contains, equal_range, at, erase, try_emplace,
 // insert_or_assign and operator[], and sparse_set of find, count, contains, equal_range, erase and insert. They take
-// part in overload resolution when the key equality has a member type `is_transparent`. emplace takes the arguments of
-// the element, so it converts its argument to a `std::string` first.
+// part in overload resolution when the hash function and the key equality both have a member type `is_transparent`.
+// emplace takes the arguments of the element, so it converts its argument to a `std::string` first.
 //
 // Every container here starts with 16 buckets, so no insert grows the table. An insert that grows the table hashes
 // its key once more after the rehash, and that would blur the hash counts.
@@ -463,6 +463,74 @@ TEST_CASE_MAP("transparent_find_simple", std::string, std::size_t, string_hash_s
     REQUIRE(it == map.end());
     it = map.find("hello"s);
     REQUIRE(it != map.end());
+}
+
+namespace {
+
+    /**
+     * `string_hash` without `is_transparent`. It counts its calls in the same way and hashes like it.
+     */
+    struct opaque_string_hash {
+        using is_avalanching = void;
+
+        template<typename S>
+        [[nodiscard]] std::size_t operator()(S const &str) const noexcept {
+            return hash_(str);
+        }
+
+        [[nodiscard]] std::array<std::size_t, 3> counts() const noexcept {
+            return hash_.counts();
+        }
+
+    private:
+        string_hash hash_;
+    };
+
+}  // namespace
+
+// The heterogeneous overloads need `is_transparent` on the hash function and on the key equality, as in the standard
+// library. Here only the key equality has it, so the lookup converts its argument to a `std::string`.
+TEST_CASE_MAP("transparent_find_hash_not", std::string, std::size_t, opaque_string_hash, string_eq) {
+    auto map = map_t(16);
+    map.try_emplace("asdf", 123);
+    check(__LINE__, map, 0, 0, 1);
+
+    REQUIRE(map.find("asdf") != map.end());
+    check(__LINE__, map, 0, 0, 2);
+
+    REQUIRE(map.at("asdf") == 123);
+    check(__LINE__, map, 0, 0, 3);
+
+    REQUIRE(map.erase("asdf") == 1);
+    check(__LINE__, map, 0, 0, 4);
+}
+
+// `std::equal_to<>` is transparent, `test_hash<int>` is not. A `double` is converted to the key type `int` before the
+// lookup, as in `std::unordered_map`, so 1.5 finds the element with the key 1. Without the conversion, 1.5 gets the hash
+// of 1 and compares unequal to 1: a lookup misses, and an insertion adds a second element with the key 1. The
+// containers reserve room first, so that no insertion rehashes.
+TEST_CASE("transparent_key_equal_with_a_hash_that_is_not_converts_the_key") {
+    double const key = 1.5;
+
+    auto map = dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<>>{};
+    map.reserve(16);
+    map[1] = 10;
+    CHECK(map.find(key) != map.end());
+    CHECK(map.contains(key));
+    CHECK(map.count(key) == 1);
+    CHECK(map.equal_range(key).first != map.end());
+    map[key] = 20;
+    CHECK(map.size() == 1);
+    CHECK(map.at(1) == 20);
+    CHECK(map.erase(key) == 1);
+    CHECK(map.empty());
+
+    auto set = dice::sparse_map::sparse_set<int, test_hash<int>, std::equal_to<>>{};
+    set.reserve(16);
+    set.insert(1);
+    CHECK(set.contains(key));
+    CHECK_FALSE(set.insert(key).second);
+    CHECK(set.size() == 1);
 }
 
 // emplace() on a set with a hundred elements, with an argument of a type that is not the key type. sparse_set has no
