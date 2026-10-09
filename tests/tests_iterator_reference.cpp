@@ -20,7 +20,7 @@ namespace {
     template<typename Map>
     concept HasValueAccessor = requires (typename Map::iterator it) { it.value(); };
 
-}  // namespace
+} // namespace
 
 TEST_SUITE("iterator_reference") {
     using map_t = sparse_map<std::string, int>;

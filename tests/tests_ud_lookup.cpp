@@ -177,7 +177,7 @@ namespace {
         REQUIRE(const_range.second == std::as_const(map).end());
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("equal_range_const_overload_with_more_than_one_element", int, int) {
     auto map = map_t();
@@ -212,7 +212,7 @@ namespace {
 
     using transparent_map = dice::sparse_map::sparse_map<std::string, int, transparent_hash, std::equal_to<>>;
 
-}  // namespace
+} // namespace
 
 TEST_CASE("equal_range_transparent") {
     auto map = transparent_map();

@@ -30,9 +30,7 @@ namespace {
 
     /// splitmix64, a small random generator that gives the same numbers on every platform
     struct random_source {
-        explicit random_source(std::uint64_t seed) noexcept
-            : state_(seed) {
-        }
+        explicit random_source(std::uint64_t seed) noexcept : state_(seed) {}
 
         std::uint64_t next() noexcept {
             state_ += 0x9e3779b97f4a7c15ULL;
@@ -193,16 +191,18 @@ namespace {
      * for the operations that need two containers.
      */
     template<typename Container, typename Reference, typename Insert>
-    bool run_common_op(std::string_view op,
-                       random_source &random,
-                       std::size_t key,
-                       std::size_t key_range,
-                       counter &counts,
-                       Container &container,
-                       Reference &reference,
-                       Container &side,
-                       Reference &side_reference,
-                       Insert const &insert_into) {
+    bool run_common_op(
+        std::string_view op,
+        random_source &random,
+        std::size_t key,
+        std::size_t key_range,
+        counter &counts,
+        Container &container,
+        Reference &reference,
+        Container &side,
+        Reference &side_reference,
+        Insert const &insert_into
+    ) {
         if (op == "erase_key") {
             REQUIRE(container.erase(counter::obj{key, counts}) == reference.erase(key));
         } else if (op == "erase_iterator") {
@@ -279,13 +279,13 @@ namespace {
             if (random.below(2) == 0) {
                 side = std::move(container);
                 side_reference = std::move(reference);
-                container.clear();  // NOLINT(bugprone-use-after-move)
-                reference.clear();  // NOLINT(bugprone-use-after-move)
+                container.clear(); // NOLINT(bugprone-use-after-move)
+                reference.clear(); // NOLINT(bugprone-use-after-move)
             } else {
                 container = std::move(side);
                 reference = std::move(side_reference);
-                side.clear();            // NOLINT(bugprone-use-after-move)
-                side_reference.clear();  // NOLINT(bugprone-use-after-move)
+                side.clear(); // NOLINT(bugprone-use-after-move)
+                side_reference.clear(); // NOLINT(bugprone-use-after-move)
             }
         } else if (op == "swap") {
             if (random.below(2) == 0) {
@@ -319,9 +319,7 @@ namespace {
             auto random = random_source{seed};
             std::size_t key_range = key_ranges.front();
 
-            auto const obj = [&counts](std::size_t data) {
-                return counter::obj{data, counts};
-            };
+            auto const obj = [&counts](std::size_t data) { return counter::obj{data, counts}; };
             auto const insert_into = [&obj](Map &target, reference_map &target_reference, std::size_t key, std::size_t value) {
                 target.insert_or_assign(obj(key), obj(value));
                 target_reference.insert_or_assign(key, value);
@@ -472,7 +470,7 @@ namespace {
         CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor());
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("a map agrees with std::unordered_map, with std::hash", counter::obj, counter::obj) {
     for (auto const seed : seeds) {

@@ -32,14 +32,10 @@ namespace {
 
         explicit_allocator() noexcept = default;
 
-        explicit explicit_allocator(int new_id) noexcept
-            : id(new_id) {
-        }
+        explicit explicit_allocator(int new_id) noexcept : id(new_id) {}
 
         template<typename U>
-        explicit explicit_allocator(explicit_allocator<U> const &other) noexcept
-            : id(other.id) {
-        }
+        explicit explicit_allocator(explicit_allocator<U> const &other) noexcept : id(other.id) {}
 
         T *allocate(std::size_t n) {
             return std::allocator<T>{}.allocate(n);
@@ -70,7 +66,7 @@ namespace {
         }
         return result;
     }
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("map", map_t);
 TYPE_TO_STRING_AS("set", set_t);

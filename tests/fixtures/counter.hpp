@@ -141,12 +141,13 @@ namespace dice::sparse_map::tests {
         friend std::ostream &operator<<(std::ostream &os, counter const &c);
 
         /// constructions of objects without a counter: default constructed, or copied or moved from such an object
-        static std::size_t static_ctor;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-        static std::size_t static_dtor;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        static std::size_t static_ctor; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        static std::size_t static_dtor; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     private:
         data_t data_{};
-        std::string records_ = "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
+        std::string records_ =
+            "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
     };
 
     /**
@@ -161,7 +162,7 @@ namespace dice::sparse_map::tests {
         }
     };
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
 template<>
 struct std::hash<dice::sparse_map::tests::counter::obj> {
@@ -170,4 +171,4 @@ struct std::hash<dice::sparse_map::tests::counter::obj> {
     }
 };
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTER_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTER_HPP

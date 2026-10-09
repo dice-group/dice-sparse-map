@@ -130,6 +130,6 @@ namespace dice::sparse_map::bench::readme::max_rss {
         return loaded > floor ? loaded - floor : 0.0;
     }
 
-}  // namespace dice::sparse_map::bench::readme::max_rss
+} // namespace dice::sparse_map::bench::readme::max_rss
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_README_MAX_RSS_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_README_MAX_RSS_HPP

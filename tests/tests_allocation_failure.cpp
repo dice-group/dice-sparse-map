@@ -88,11 +88,11 @@ namespace {
     /// the allocations of `failing_allocator` that throw `std::bad_alloc`
     enum class failing {
         nothing,
-        groups,       ///< the arrays of the elements of the groups, allocations of `Value`
-        bucket_array  ///< the bucket array, the array of the groups, all other allocations
+        groups, ///< the arrays of the elements of the groups, allocations of `Value`
+        bucket_array, ///< the bucket array, the array of the groups, all other allocations
     };
 
-    failing fail = failing::nothing;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    failing fail = failing::nothing; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /// makes the allocations `kind` of `failing_allocator` throw while it is in scope
     struct fail_while_in_scope {
@@ -125,14 +125,12 @@ namespace {
 
         failing_allocator() noexcept = default;
 
-        explicit failing_allocator(int id) noexcept
-            : id(id) {
-        }
+        explicit failing_allocator(int id) noexcept : id(id) {}
 
         template<typename U>
-        failing_allocator(failing_allocator<U, Value> const &other) noexcept  // NOLINT(google-explicit-constructor)
-            : id(other.id) {
-        }
+        failing_allocator(failing_allocator<U, Value> const &other) noexcept // NOLINT(google-explicit-constructor)
+            :
+            id(other.id) {}
 
         T *allocate(std::size_t n) {
             bool const is_group = std::is_same_v<T, Value>;
@@ -156,11 +154,13 @@ namespace {
      * groups store the elements as `detail_sparse_hash::map_slot`.
      */
     template<typename T>
-    using failing_map = sparse_map<std::size_t,
-                                   T,
-                                   detail_sparse_hash::default_hash<std::size_t>,
-                                   std::equal_to<std::size_t>,
-                                   failing_allocator<std::pair<std::size_t, T>, detail_sparse_hash::map_slot<std::size_t, T>>>;
+    using failing_map = sparse_map<
+        std::size_t,
+        T,
+        detail_sparse_hash::default_hash<std::size_t>,
+        std::equal_to<std::size_t>,
+        failing_allocator<std::pair<std::size_t, T>, detail_sparse_hash::map_slot<std::size_t, T>>
+    >;
 
     static_assert(std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, std::size_t>>);
 
@@ -172,8 +172,7 @@ namespace {
             throw std::length_error{"size limit"};
         }
 
-        void deallocate(std::size_t * /*p*/, std::size_t /*n*/) noexcept {
-        }
+        void deallocate(std::size_t * /*p*/, std::size_t /*n*/) noexcept {}
     };
 
     /// inserts the keys 0 to `n - 1`
@@ -184,24 +183,36 @@ namespace {
         }
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("the default of AllocationFailure is terminating") {
-    CHECK(std::is_same_v<sparse_map<int, int>,
-                         sparse_map<int,
-                                    int,
-                                    detail_sparse_hash::default_hash<int>,
-                                    std::equal_to<int>,
-                                    std::allocator<std::pair<int, int>>,
-                                    sh::sparsity::medium,
-                                    sh::allocation_failure::terminating>>);
-    CHECK(std::is_same_v<sparse_set<int>,
-                         sparse_set<int,
-                                    detail_sparse_hash::default_hash<int>,
-                                    std::equal_to<int>,
-                                    std::allocator<int>,
-                                    sh::sparsity::medium,
-                                    sh::allocation_failure::terminating>>);
+    CHECK(
+        std::is_same_v<
+            sparse_map<int, int>,
+            sparse_map<
+                int,
+                int,
+                detail_sparse_hash::default_hash<int>,
+                std::equal_to<int>,
+                std::allocator<std::pair<int, int>>,
+                sh::sparsity::medium,
+                sh::allocation_failure::terminating
+            >
+        >
+    );
+    CHECK(
+        std::is_same_v<
+            sparse_set<int>,
+            sparse_set<
+                int,
+                detail_sparse_hash::default_hash<int>,
+                std::equal_to<int>,
+                std::allocator<int>,
+                sh::sparsity::medium,
+                sh::allocation_failure::terminating
+            >
+        >
+    );
 }
 
 TEST_CASE("a failed allocation of the bucket array aborts in the constructor and in a rehash" * doctest::skip(!can_fork)) {
@@ -281,4 +292,3 @@ TEST_CASE("a failed allocation of a group aborts in an insert" * doctest::skip(!
         map.try_emplace(1, 1);
     }));
 }
-

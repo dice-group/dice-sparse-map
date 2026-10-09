@@ -61,6 +61,6 @@ namespace dice::sparse_map::tests {
         std::size_t empty_requests_ = 0;
     };
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTING_RESOURCE_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_COUNTING_RESOURCE_HPP

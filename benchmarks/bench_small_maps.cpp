@@ -43,8 +43,8 @@ namespace {
     struct small_maps_input {
         std::vector<std::size_t> offsets;
         std::vector<std::uint64_t> keys;
-        std::vector<std::size_t> lookup_order;  ///< the maps in a random order
-        std::uint64_t value_sum = 0;            ///< the sum of all values
+        std::vector<std::size_t> lookup_order; ///< the maps in a random order
+        std::uint64_t value_sum = 0; ///< the sum of all values
 
         explicit small_maps_input(std::size_t num_maps) {
             ankerl::nanobench::Rng rng(4242);
@@ -84,20 +84,36 @@ namespace {
     }
 
     void print_header(std::size_t num_maps, std::size_t num_elements) {
-        std::cout << std::format("\nsmall maps: {} maps with 1 to 16 elements, {} elements in total, uint64_t -> uint64_t\n\n",
-                                 num_maps,
-                                 num_elements)
-                  << std::format("| {:<18} | {:>12} | {:>11} | {:>12} | {:>12} | {:>14} | {:>10} | {:>12} | {:>11} |\n",
-                                 "container",
-                                 "build ns/map",
-                                 "hit ns/find",
-                                 "miss ns/find",
-                                 "iter ns/elem",
-                                 "destroy ns/map",
-                                 "heap B/map",
-                                 "allocs/map",
-                                 "sizeof(map)")
-                  << std::format("|{:-<20}|{:->13}:|{:->12}:|{:->13}:|{:->13}:|{:->15}:|{:->11}:|{:->13}:|{:->12}:|\n", "", "", "", "", "", "", "", "", "");
+        std::cout
+            << std::format(
+                   "\nsmall maps: {} maps with 1 to 16 elements, {} elements in total, uint64_t -> uint64_t\n\n",
+                   num_maps,
+                   num_elements
+               )
+            << std::format(
+                   "| {:<18} | {:>12} | {:>11} | {:>12} | {:>12} | {:>14} | {:>10} | {:>12} | {:>11} |\n",
+                   "container",
+                   "build ns/map",
+                   "hit ns/find",
+                   "miss ns/find",
+                   "iter ns/elem",
+                   "destroy ns/map",
+                   "heap B/map",
+                   "allocs/map",
+                   "sizeof(map)"
+               )
+            << std::format(
+                   "|{:-<20}|{:->13}:|{:->12}:|{:->13}:|{:->13}:|{:->15}:|{:->11}:|{:->13}:|{:->12}:|\n",
+                   "",
+                   "",
+                   "",
+                   "",
+                   "",
+                   "",
+                   "",
+                   "",
+                   ""
+               );
     }
 
     /**
@@ -185,19 +201,21 @@ namespace {
             destroy_times.push_back(destroyed - iterated);
         }
 
-        std::cout << std::format("| {:<18} | {:>12.1f} | {:>11.1f} | {:>12.1f} | {:>12.2f} | {:>14.1f} | {:>10.1f} | {:>12.2f} | {:>11} |\n",
-                                 container,
-                                 median_ns_per(build_times, num_maps),
-                                 median_ns_per(hit_times, num_elements),
-                                 median_ns_per(miss_times, num_elements),
-                                 median_ns_per(iterate_times, num_elements),
-                                 median_ns_per(destroy_times, num_maps),
-                                 static_cast<double>(heap_bytes) / static_cast<double>(num_maps),
-                                 static_cast<double>(live_allocations) / static_cast<double>(num_maps),
-                                 sizeof(map_t));
+        std::cout << std::format(
+            "| {:<18} | {:>12.1f} | {:>11.1f} | {:>12.1f} | {:>12.2f} | {:>14.1f} | {:>10.1f} | {:>12.2f} | {:>11} |\n",
+            container,
+            median_ns_per(build_times, num_maps),
+            median_ns_per(hit_times, num_elements),
+            median_ns_per(miss_times, num_elements),
+            median_ns_per(iterate_times, num_elements),
+            median_ns_per(destroy_times, num_maps),
+            static_cast<double>(heap_bytes) / static_cast<double>(num_maps),
+            static_cast<double>(live_allocations) / static_cast<double>(num_maps),
+            sizeof(map_t)
+        );
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("small_maps") {
     tame_allocator();

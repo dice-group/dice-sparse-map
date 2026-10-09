@@ -55,7 +55,7 @@ namespace {
         });
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("set sparse_set high") {
     set_workloads<sparse_high>("sparse_set high");

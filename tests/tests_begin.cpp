@@ -86,7 +86,7 @@ namespace {
         return map;
     }
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("std::size_t", std::size_t);
 
@@ -184,15 +184,15 @@ TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, st
         insert(source, 320);
         auto moved = std::move(source);
         check_begin(moved, 320);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
-        insert(source, 64);                 // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
+        insert(source, 64); // NOLINT(bugprone-use-after-move)
         check_begin(source, 64);
 
         auto target = map_with_32_groups<map_t>();
         insert(target, 0);
         target = std::move(moved);
         check_begin(target, 320);
-        check_begin(moved, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(moved, std::nullopt); // NOLINT(bugprone-use-after-move)
     }
 
     SUBCASE("swap") {
@@ -216,10 +216,7 @@ TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, st
         check_begin(source, 1920);
 
         insert(target, 700);
-        CHECK(erase_if(target, [](auto const &element) {
-                  return number(element.first) < 1000;
-              })
-              == 2);
+        CHECK(erase_if(target, [](auto const &element) { return number(element.first) < 1000; }) == 2);
         check_begin(target, 1920);
         target.erase(target.cbegin(), target.cend());
         check_begin(target, std::nullopt);
@@ -255,12 +252,12 @@ TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::s
         insert(source, 320);
         auto const same = map_t(std::move(source), allocator_t{1});
         check_begin(same, 320);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
 
-        insert(source, 640);  // NOLINT(bugprone-use-after-move)
+        insert(source, 640); // NOLINT(bugprone-use-after-move)
         auto const other = map_t(std::move(source), allocator_t{2});
         check_begin(other, 640);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
     }
 
     SUBCASE("move assignment") {
@@ -270,7 +267,7 @@ TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::s
         insert(target, 0);
         target = std::move(source);
         check_begin(target, 320);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
     }
 
     SUBCASE("move assignment whose hash function throws") {
@@ -282,7 +279,7 @@ TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::s
         CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
         fragile_bucket_hash::moves_throw = false;
         check_begin(target, std::nullopt);
-        check_begin(source, 320);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, 320); // NOLINT(bugprone-use-after-move)
         insert(target, 640);
         check_begin(target, 640);
     }
@@ -308,7 +305,7 @@ namespace {
      * with `--no-skip`, or set this to true.
      */
     constexpr bool run_timing_test = false;
-}  // namespace
+} // namespace
 
 /*
  * A timing test, because the cost of `begin()` cannot be seen through the interface otherwise. A table that searches
