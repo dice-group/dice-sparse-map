@@ -1306,36 +1306,33 @@ namespace dice::sparse_map {
             /*
              * Iterators
              */
-            [[nodiscard]] constexpr iterator begin() noexcept {
-                DICE_SPARSE_MAP_ASSERT(first_nonempty_group_is_plausible());
-                sparse_array *const bucket = buckets_begin() + first_nonempty_group_;
-                sparse_array *const last = buckets_end();
+            /**
+             * The iterator type that a member with a deduced `this` returns: `const_iterator` for a const table,
+             * `iterator` otherwise.
+             */
+            template<typename Self>
+            using iterator_for = std::conditional_t<std::is_const_v<Self>, const_iterator, iterator>;
 
-                return iterator(bucket, bucket != last ? bucket->begin() : nullptr);
-            }
+            template<typename Self>
+            [[nodiscard]] constexpr iterator_for<Self> begin(this Self &self) noexcept {
+                DICE_SPARSE_MAP_ASSERT(self.first_nonempty_group_is_plausible());
+                auto *const bucket = self.buckets_begin() + self.first_nonempty_group_;
+                auto *const last = self.buckets_end();
 
-            [[nodiscard]] constexpr const_iterator begin() const noexcept {
-                return cbegin();
+                return iterator_for<Self>(bucket, bucket != last ? bucket->begin() : nullptr);
             }
 
             [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
-                DICE_SPARSE_MAP_ASSERT(first_nonempty_group_is_plausible());
-                sparse_array const *const bucket = buckets_begin() + first_nonempty_group_;
-                sparse_array const *const last = buckets_end();
-
-                return const_iterator(bucket, bucket != last ? bucket->cbegin() : nullptr);
+                return begin();
             }
 
-            [[nodiscard]] constexpr iterator end() noexcept {
-                return iterator(buckets_end(), nullptr);
-            }
-
-            [[nodiscard]] constexpr const_iterator end() const noexcept {
-                return cend();
+            template<typename Self>
+            [[nodiscard]] constexpr iterator_for<Self> end(this Self &self) noexcept {
+                return iterator_for<Self>(self.buckets_end(), nullptr);
             }
 
             [[nodiscard]] constexpr const_iterator cend() const noexcept {
-                return const_iterator(buckets_end(), nullptr);
+                return end();
             }
 
             /*
