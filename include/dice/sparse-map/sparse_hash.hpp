@@ -1396,10 +1396,16 @@ namespace dice::sparse_map {
                 return insert(std::forward<V>(value)).first;
             }
 
+            /**
+             * Inserts every element of `[first, last)` whose key is not in the table yet.
+             *
+             * Reserves room for the whole sequence first if its element count is available in constant time.
+             * See `insert_range` for why a sequence that has to be walked for its count is not measured.
+             */
             template<typename InputIt>
             void insert(InputIt first, InputIt last) {
-                if constexpr (std::forward_iterator<InputIt>) {
-                    reserve_for_insertion(static_cast<std::size_t>(std::distance(first, last)));
+                if constexpr (std::sized_sentinel_for<InputIt, InputIt>) {
+                    reserve_for_insertion(static_cast<std::size_t>(std::ranges::distance(first, last)));
                 }
 
                 for (; first != last; ++first) {
@@ -1409,13 +1415,16 @@ namespace dice::sparse_map {
 
             /**
              * Inserts every element of `range` whose key is not in the table yet.
+             *
+             * Reserves room for the whole range first if its element count is available in constant time. A range
+             * that has to be walked for its count is not measured, for two reasons: walking it runs the code of a
+             * range adaptor a second time, and for a table with unique keys the count is only an upper bound on
+             * the number of insertions.
              */
             template<std::ranges::input_range R>
             void insert_range(R &&range) {
                 if constexpr (std::ranges::sized_range<R>) {
                     reserve_for_insertion(static_cast<std::size_t>(std::ranges::size(range)));
-                } else if constexpr (std::ranges::forward_range<R>) {
-                    reserve_for_insertion(static_cast<std::size_t>(std::ranges::distance(range)));
                 }
 
                 for (auto &&element : range) {

@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -71,6 +72,66 @@ TEST_SUITE("ranges") {
         CHECK(map.load_factor() <= map.max_load_factor());
         CHECK(bucket_counts == std::vector<std::size_t>(2, map.bucket_count()));
         CHECK(map.at(1001) == 2);
+    }
+
+    TEST_CASE("a bulk insert reads a range whose size is not known in constant time only once") {
+        // a filter_view is a forward_range but not a sized_range, so its element count is only available by
+        // walking it and running the predicate again
+        auto const input = std::vector<std::pair<int, int>>(100, std::pair{0, 0});
+        auto predicate_calls = std::size_t{0};
+        auto const predicate = [&predicate_calls](std::pair<int, int> const &) {
+            ++predicate_calls;
+            return true;
+        };
+
+        SUBCASE("insert_range") {
+            auto range = input | std::views::filter(predicate);
+            REQUIRE(std::ranges::forward_range<decltype(range)>);
+            REQUIRE_FALSE(std::ranges::sized_range<decltype(range)>);
+
+            auto map = sparse_map<int, int>{};
+            map.insert_range(range);
+            CHECK(predicate_calls == input.size());
+        }
+
+        SUBCASE("insert of an iterator pair") {
+            auto range = input | std::views::filter(predicate);
+            REQUIRE_FALSE(std::sized_sentinel_for<std::ranges::iterator_t<decltype(range)>,
+                                                  std::ranges::iterator_t<decltype(range)>>);
+
+            auto map = sparse_map<int, int>{};
+            map.insert(std::ranges::begin(range), std::ranges::end(range));
+            CHECK(predicate_calls == input.size());
+        }
+    }
+
+    TEST_CASE("a bulk insert of a sequence whose size is known in constant time reserves before the first element") {
+        auto const input = std::vector<std::pair<int, int>>{{1000, 1}, {1001, 2}, {1002, 3}};
+
+        SUBCASE("insert_range of a sized range") {
+            auto map = sparse_map<int, int>{};
+            auto bucket_counts = std::vector<std::size_t>{};
+            auto range = input | std::views::transform([&](std::pair<int, int> const &value) {
+                             bucket_counts.push_back(map.bucket_count());
+                             return value;
+                         });
+            REQUIRE(std::ranges::sized_range<decltype(range)>);
+
+            map.insert_range(range);
+            CHECK(bucket_counts == std::vector<std::size_t>(input.size(), map.bucket_count()));
+        }
+
+        SUBCASE("insert of a sized sentinel pair") {
+            REQUIRE(std::sized_sentinel_for<decltype(input.begin()), decltype(input.end())>);
+
+            auto map = sparse_map<int, int>{};
+            map.insert(input.begin(), input.end());
+            auto const bucket_count = map.bucket_count();
+
+            auto other = sparse_map<int, int>{};
+            other.reserve(input.size());
+            CHECK(bucket_count == other.bucket_count());
+        }
     }
 
     TEST_CASE("insert_range keeps the first element of each key") {

@@ -90,7 +90,8 @@ namespace dice::sparse_map {
      * Iterator invalidation:
      *  - `clear`, `operator=`, `reserve`, `rehash`, `merge`: always invalidate the iterators.
      *  - `insert_range`, and `insert` of a range or a list: may invalidate the iterators also if no element is
-     *    inserted, because they reserve room for the whole range first.
+     *    inserted, because they reserve room for the whole range first if its element count is available in
+     *    constant time.
      *  - `insert`, `emplace`, `emplace_hint`, `try_emplace`, `insert_or_assign`, `operator[]`: invalidate the
      *    iterators if an element is inserted.
      *  - `erase`: always invalidates the iterators. Use the returned iterator.
