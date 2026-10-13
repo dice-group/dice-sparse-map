@@ -43,16 +43,7 @@ namespace {
         typename Hash = test_hash<Key>,
         sh::allocation_failure AllocationFailure = sh::allocation_failure::terminating
     >
-    using map_with = sparse_map<
-        Key,
-        T,
-        Hash,
-        std::equal_to<Key>,
-        Allocator,
-        sh::sparsity::medium,
-        AllocationFailure,
-        inline_capacity
-    >;
+    using map_with = sparse_map<Key, T, Hash, std::equal_to<Key>, Allocator, sh::sparsity::medium, AllocationFailure, inline_capacity>;
 
     template<typename Key, std::size_t inline_capacity, typename Allocator = std::allocator<Key>>
     using set_with = sparse_set<
@@ -147,27 +138,15 @@ namespace {
 // the elements it rejects, and for elements that are incomplete where the container type is instantiated.
 TEST_CASE("which elements can be inline") {
     constexpr std::size_t pointer_alignment = alignof(void *);
-    static_assert(
-        detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, int>, pointer_alignment>::value
-    );
-    static_assert(detail_sparse_hash::inline_storable<
-        detail_sparse_hash::map_slot<std::string, std::uint64_t>,
-        pointer_alignment
-    >::value);
-    static_assert(detail_sparse_hash::inline_storable<
-        detail_sparse_hash::map_slot<int, pointer_aligned>,
-        pointer_alignment
-    >::value);
+    static_assert(detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, int>, pointer_alignment>::value);
+    static_assert(detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<std::string, std::uint64_t>, pointer_alignment>::value);
+    static_assert(detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, pointer_aligned>, pointer_alignment>::value);
     static_assert(detail_sparse_hash::inline_storable<std::uint64_t, pointer_alignment>::value);
     // a move constructor that can throw
-    static_assert(
-        !detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, throwing_move>, pointer_alignment>::value
-    );
+    static_assert(!detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, throwing_move>, pointer_alignment>::value);
     static_assert(!detail_sparse_hash::inline_storable<throwing_move, pointer_alignment>::value);
     // an alignment larger than the one of the state of the buckets
-    static_assert(
-        !detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, over_aligned>, pointer_alignment>::value
-    );
+    static_assert(!detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, over_aligned>, pointer_alignment>::value);
     static_assert(!detail_sparse_hash::inline_storable<over_aligned, pointer_alignment>::value);
     static_assert(detail_sparse_hash::inline_storable<over_aligned, alignof(over_aligned)>::value);
 
@@ -176,9 +155,7 @@ TEST_CASE("which elements can be inline") {
     CHECK(sparse_map<int, over_aligned>{}.empty());
 }
 
-TEST_CASE(
-    "the inline group takes the place of the state of the buckets, and more inline elements make the object larger"
-) {
+TEST_CASE("the inline group takes the place of the state of the buckets, and more inline elements make the object larger") {
     // 64 bit targets with std::allocator: the element count, the maximum load factor and the flag take 16 bytes, the
     // state of the buckets 56, the inline group 16 bytes of bitmaps and the elements
     if constexpr (sizeof(void *) == 8 && sizeof(std::size_t) == 8) {
@@ -195,9 +172,7 @@ TEST_CASE(
         static_assert(sizeof(set_with<std::uint64_t, 5>) == 72);
         static_assert(sizeof(set_with<std::uint64_t, 6>) == 80);
         constexpr std::size_t string_slot = sizeof(detail_sparse_hash::map_slot<std::string, std::uint64_t>);
-        static_assert(
-            sizeof(map_with<std::string, std::uint64_t, 4>) == 16 + std::max<std::size_t>(56, 16 + 4 * string_slot)
-        );
+        static_assert(sizeof(map_with<std::string, std::uint64_t, 4>) == 16 + std::max<std::size_t>(56, 16 + 4 * string_slot));
         CHECK(sizeof(map_with<std::uint64_t, std::uint64_t, 4>) == 96);
     }
 }
@@ -573,12 +548,7 @@ namespace {
 
     /// a map with the keys `first` to `first + n - 1`, each mapped to `key + 1000`, with the allocator `alloc`
     template<typename Map>
-    Map make_counted_with(
-        counter &counts,
-        std::size_t first,
-        std::size_t n,
-        typename Map::allocator_type const &alloc
-    ) {
+    Map make_counted_with(counter &counts, std::size_t first, std::size_t n, typename Map::allocator_type const &alloc) {
         Map map(alloc);
         for (std::size_t key = first; key < first + n; ++key) {
             map.try_emplace(counter::obj{key, counts}, counter::obj{key + 1000, counts});
@@ -769,9 +739,7 @@ namespace {
 
 // The move of the inline group into an allocated group allocates the bucket array and the values array before any
 // element moves, so an allocation that fails leaves the map unchanged.
-TEST_CASE(
-    "an insertion that moves the inline elements into an allocated group and fails to allocate leaves them unchanged"
-) {
+TEST_CASE("an insertion that moves the inline elements into an allocated group and fails to allocate leaves them unchanged") {
     auto counts = counter{};
     std::size_t unchanged = 0;
     bool completed = false;
@@ -809,9 +777,7 @@ TEST_CASE(
 
 // An inline insertion hashes the new key, the move into an allocated group hashes nothing. So a hash that throws
 // leaves the map unchanged.
-TEST_CASE(
-    "an insertion that moves the inline elements into an allocated group and whose hash throws leaves them unchanged"
-) {
+TEST_CASE("an insertion that moves the inline elements into an allocated group and whose hash throws leaves them unchanged") {
     auto counts = counter{};
     for (int budget = 0; budget < 3; ++budget) {
         CAPTURE(budget);

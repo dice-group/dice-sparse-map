@@ -145,11 +145,7 @@ TEST_CASE_TEMPLATE_DEFINE("the first insert allocates the buckets", container_t,
 TEST_CASE_TEMPLATE_APPLY(first_insert, counted_containers);
 
 // With an inline capacity, the first insertions that fit into the inline group allocate nothing.
-TEST_CASE_TEMPLATE_DEFINE(
-    "the first insert that does not fit inline allocates the buckets",
-    container_t,
-    first_insert_inline
-) {
+TEST_CASE_TEMPLATE_DEFINE("the first insert that does not fit inline allocates the buckets", container_t, first_insert_inline) {
     auto container = container_t{};
     auto const before = num_allocations;
     for (int key = 0; key < 4; ++key) {

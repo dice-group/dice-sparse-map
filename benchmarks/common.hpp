@@ -100,8 +100,7 @@ namespace dice::sparse_map::bench {
      * the one of a pointer.
      */
     template<typename Slot>
-    inline constexpr std::size_t
-        bench_inline_capacity_for = detail_sparse_hash::inline_storable<Slot, alignof(void *)>::value
+    inline constexpr std::size_t bench_inline_capacity_for = detail_sparse_hash::inline_storable<Slot, alignof(void *)>::value
         ? bench_inline_capacity
         : 0;
 

@@ -259,8 +259,7 @@ namespace dice::sparse_map::tests {
 
     /// `pocs_allocator` that records which allocator constructed each element
     template<typename T>
-    using recording_pocs_allocator =
-        recording_id_allocator<T, std::false_type, std::true_type, std::false_type, std::true_type>;
+    using recording_pocs_allocator = recording_id_allocator<T, std::false_type, std::true_type, std::false_type, std::true_type>;
 
     /**
      * Stateless allocator that counts allocations in a global counter.

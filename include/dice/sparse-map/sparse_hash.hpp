@@ -449,8 +449,7 @@ namespace dice::sparse_map {
          * does not depend on the element type. `T` must be complete.
          */
         template<typename T, std::size_t max_alignment>
-        struct inline_storable :
-            std::bool_constant<std::is_nothrow_move_constructible_v<T> && alignof(T) <= max_alignment> {};
+        struct inline_storable : std::bool_constant<std::is_nothrow_move_constructible_v<T> && alignof(T) <= max_alignment> {};
 
         /**
          * Element access of `sparse_hash` for a map. The elements are stored as `map_slot<Key, T>`.
@@ -816,9 +815,7 @@ namespace dice::sparse_map {
              * cannot throw: `nb_values` rounded up to a multiple of the growth step
              */
             [[nodiscard]] static constexpr size_type grown_capacity(size_type nb_values) noexcept {
-                return static_cast<size_type>(
-                    (nb_values + capacity_growth_step - 1) / capacity_growth_step * capacity_growth_step
-                );
+                return static_cast<size_type>((nb_values + capacity_growth_step - 1) / capacity_growth_step * capacity_growth_step);
             }
 
             /**
@@ -1447,8 +1444,7 @@ namespace dice::sparse_map {
 
                 constexpr sparse_iterator &operator++() noexcept {
                     DICE_SPARSE_MAP_ASSERT(
-                        slot_ != nullptr
-                        && ((has_inline_group && bucket_ == &inline_end_group) || slot_end_ == bucket_->end())
+                        slot_ != nullptr && ((has_inline_group && bucket_ == &inline_end_group) || slot_end_ == bucket_->end())
                     );
                     ++slot_;
 
@@ -1530,8 +1526,7 @@ namespace dice::sparse_map {
                     "constructible without a move constructor."
                 );
                 static_assert(
-                    sparse_array::nb_sparse_buckets(min_bucket_count) == 1
-                        && sparse_array::nb_sparse_buckets(2 * min_bucket_count) == 2,
+                    sparse_array::nb_sparse_buckets(min_bucket_count) == 1 && sparse_array::nb_sparse_buckets(2 * min_bucket_count) == 2,
                     "min_bucket_count must be the number of buckets of one group."
                 );
             }
@@ -1972,9 +1967,7 @@ namespace dice::sparse_map {
                 }
             }
 
-            constexpr void swap(
-                sparse_hash &other
-            ) noexcept(std::is_nothrow_swappable_v<Hash> && std::is_nothrow_swappable_v<KeyEqual>) {
+            constexpr void swap(sparse_hash &other) noexcept(std::is_nothrow_swappable_v<Hash> && std::is_nothrow_swappable_v<KeyEqual>) {
                 if constexpr (has_inline_group) {
                     // inline elements would be moved onto themselves
                     if (this == &other) {
@@ -2038,10 +2031,7 @@ namespace dice::sparse_map {
             }
 
             template<typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(
-                K const &key,
-                std::size_t hash
-            ) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(K const &key, std::size_t hash) const {
                 return contains(key, hash) ? size_type{1} : size_type{0};
             }
 
@@ -2054,11 +2044,7 @@ namespace dice::sparse_map {
             }
 
             template<typename Self, typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto find(
-                this Self &self,
-                K const &key,
-                std::size_t hash
-            ) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto find(this Self &self, K const &key, std::size_t hash) {
                 return self.find_hashed(key, hash);
             }
 
@@ -2068,11 +2054,7 @@ namespace dice::sparse_map {
             }
 
             template<typename Self, typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range(
-                this Self &self,
-                K const &key,
-                std::size_t hash
-            ) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range(this Self &self, K const &key, std::size_t hash) {
                 return self.equal_range_hashed(key, hash);
             }
 
@@ -2187,11 +2169,7 @@ namespace dice::sparse_map {
 
         private:
             template<typename Self, typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto find_hashed(
-                this Self &self,
-                K const &key,
-                std::size_t hash
-            ) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto find_hashed(this Self &self, K const &key, std::size_t hash) {
                 if constexpr (std::is_const_v<Self>) {
                     return self.find_impl(key, hash);
                 } else {
@@ -2200,11 +2178,7 @@ namespace dice::sparse_map {
             }
 
             template<typename Self, typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto &at_hashed(
-                this Self &self,
-                K const &key,
-                std::size_t hash
-            ) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto &at_hashed(this Self &self, K const &key, std::size_t hash) {
                 auto const it = self.find_hashed(key, hash);
                 if (it == self.end()) {
                     throw std::out_of_range("Couldn't find key.");
@@ -2214,11 +2188,7 @@ namespace dice::sparse_map {
             }
 
             template<typename Self, typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range_hashed(
-                this Self &self,
-                K const &key,
-                std::size_t hash
-            ) {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr auto equal_range_hashed(this Self &self, K const &key, std::size_t hash) {
                 auto const it = self.find_hashed(key, hash);
                 return std::pair{it, (it == self.end()) ? it : std::next(it)};
             }
@@ -2295,8 +2265,7 @@ namespace dice::sparse_map {
                 if (nb_elements_ == 0) {
                     return table().first_nonempty_group == table().nb_sparse_buckets;
                 }
-                return table().first_nonempty_group < table().nb_sparse_buckets
-                    && !buckets_begin()[table().first_nonempty_group].empty();
+                return table().first_nonempty_group < table().nb_sparse_buckets && !buckets_begin()[table().first_nonempty_group].empty();
             }
 
             /**
@@ -2417,9 +2386,7 @@ namespace dice::sparse_map {
                     return 0;
                 }
 
-                auto const rounded = static_cast<size_type>(
-                    std::bit_ceil(std::max<std::size_t>(bucket_count, min_bucket_count))
-                );
+                auto const rounded = static_cast<size_type>(std::bit_ceil(std::max<std::size_t>(bucket_count, min_bucket_count)));
                 if (rounded > max_count) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
@@ -2448,9 +2415,7 @@ namespace dice::sparse_map {
              */
             [[nodiscard]] constexpr size_type clear_deleted_threshold(size_type bucket_count) const noexcept {
                 float const max_load_factor_with_deleted_buckets = max_load_factor_ + 0.5f * (1.0f - max_load_factor_);
-                DICE_SPARSE_MAP_ASSERT(
-                    max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f
-                );
+                DICE_SPARSE_MAP_ASSERT(max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f);
                 return static_cast<size_type>(static_cast<float>(bucket_count) * max_load_factor_with_deleted_buckets);
             }
 
@@ -2576,10 +2541,7 @@ namespace dice::sparse_map {
                 }
 
                 bucket_allocator_type bucket_alloc(alloc_);
-                bucket_pointer const new_buckets = detail_sparse_hash::allocate<AllocationFailure>(
-                    bucket_alloc,
-                    nb_sparse_buckets
-                );
+                bucket_pointer const new_buckets = detail_sparse_hash::allocate<AllocationFailure>(bucket_alloc, nb_sparse_buckets);
                 sparse_array *const raw_buckets = std::to_address(new_buckets);
                 std::size_t nb_constructed = 0;
                 try {
@@ -2712,11 +2674,9 @@ namespace dice::sparse_map {
                 if constexpr (has_inline_group) {
                     DICE_SPARSE_MAP_ASSERT(is_inline_ && nb_elements_ == 0);
                     if (other.is_inline_) {
-                        construct_inline_elements_from(
-                            other.inline_slots(),
-                            other.nb_elements_,
-                            [](slot_type &slot) -> slot_type && { return std::move(slot); }
-                        );
+                        construct_inline_elements_from(other.inline_slots(), other.nb_elements_, [](slot_type &slot) -> slot_type && {
+                            return std::move(slot);
+                        });
                         storage_.group.bitmap = other.storage_.group.bitmap;
                         storage_.group.deleted_bitmap = other.storage_.group.deleted_bitmap;
                         inline_nb_displaced_ = other.inline_nb_displaced_;
@@ -3051,10 +3011,7 @@ namespace dice::sparse_map {
              */
             template<typename K>
             requires has_inline_group
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_impl(
-                K const &key,
-                std::size_t hash
-            ) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_impl(K const &key, std::size_t hash) const {
                 if (is_inline_) {
                     size_type const offset = inline_lookup(key, hash);
                     if (offset == nb_elements_) {
@@ -3071,10 +3028,7 @@ namespace dice::sparse_map {
              * that the compiler decides about `find_impl` with the whole lookup in it.
              */
             template<typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_in_table(
-                K const &key,
-                std::size_t hash
-            ) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find_in_table(K const &key, std::size_t hash) const {
                 sparse_array const *const raw_buckets = buckets_begin();
                 std::size_t const mask = bucket_count_mask();
                 std::size_t ibucket = hash & mask;
@@ -3216,10 +3170,7 @@ namespace dice::sparse_map {
                 if consteval {
                     return 0;
                 } else {
-                    return std::min<size_type>(
-                        static_cast<size_type>(inline_capacity),
-                        rehash_threshold(min_bucket_count)
-                    );
+                    return std::min<size_type>(static_cast<size_type>(inline_capacity), rehash_threshold(min_bucket_count));
                 }
             }
 
@@ -3264,20 +3215,14 @@ namespace dice::sparse_map {
              * @return the offset of the element in bucket `ibucket` of the inline group: the number of occupied buckets
              * before it
              */
-            [[nodiscard]] static constexpr size_type inline_offset(
-                inline_bitmap_type bitmap,
-                std::size_t ibucket
-            ) noexcept {
+            [[nodiscard]] static constexpr size_type inline_offset(inline_bitmap_type bitmap, std::size_t ibucket) noexcept {
                 return static_cast<size_type>(std::popcount(bitmap & ((inline_bitmap_type{1} << ibucket) - 1)));
             }
 
             /**
              * @return the bucket of the element at `offset` of the inline group
              */
-            [[nodiscard]] static constexpr std::size_t inline_bucket(
-                inline_bitmap_type bitmap,
-                size_type offset
-            ) noexcept {
+            [[nodiscard]] static constexpr std::size_t inline_bucket(inline_bitmap_type bitmap, size_type offset) noexcept {
                 for (size_type i = 0; i < offset; ++i) {
                     bitmap &= bitmap - 1; // clears the lowest set bit
                 }
@@ -3403,9 +3348,7 @@ namespace dice::sparse_map {
                 if constexpr (sparse_array::copies_bytes) {
                     // through storage on the stack, as bytes
                     alignas(slot_type) std::byte swapped_storage[inline_capacity * sizeof(slot_type)];
-                    slot_type *const swapped = *std::launder(
-                        reinterpret_cast<slot_type(*)[inline_capacity]>(swapped_storage)
-                    );
+                    slot_type *const swapped = *std::launder(reinterpret_cast<slot_type(*)[inline_capacity]>(swapped_storage));
                     sparse_array::copy_bytes(swapped, slots, static_cast<array_size_type>(nb_elements_));
                     sparse_array::copy_bytes(slots, other_slots, static_cast<array_size_type>(other.nb_elements_));
                     sparse_array::copy_bytes(other_slots, swapped, static_cast<array_size_type>(nb_elements_));
@@ -3452,10 +3395,7 @@ namespace dice::sparse_map {
              * @return the offset of the element with key `key`, or `nb_elements_` if there is none
              */
             template<typename K>
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type inline_lookup(
-                K const &key,
-                std::size_t hash
-            ) const {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type inline_lookup(K const &key, std::size_t hash) const {
                 if (nb_elements_ == 0) {
                     return 0;
                 }
@@ -3503,9 +3443,7 @@ namespace dice::sparse_map {
              * The inline element at `offset` and the end of the inline elements, or two nullptr (the end of an inline
              * table) if `offset` is `nb_elements_`.
              */
-            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr inline_position<slot_type> inline_position_of(
-                size_type offset
-            ) noexcept {
+            DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr inline_position<slot_type> inline_position_of(size_type offset) noexcept {
                 if (offset == nb_elements_) {
                     return {};
                 }
@@ -3575,11 +3513,7 @@ namespace dice::sparse_map {
              * In both cases the insertion starts over. `hash` is the hash of the key of the new element.
              */
             template<typename... Args>
-            constexpr std::pair<iterator, bool> insert_new_inline(
-                std::size_t hash,
-                std::size_t ibucket,
-                Args &&...args
-            ) {
+            constexpr std::pair<iterator, bool> insert_new_inline(std::size_t hash, std::size_t ibucket, Args &&...args) {
                 bool const moves_out = nb_elements_ >= inline_limit();
                 if (moves_out || nb_elements_ + inline_nb_deleted() >= inline_clean_up_threshold()) {
                     // `key` and the arguments may refer to inline elements that move, so the new element is
@@ -3623,10 +3557,7 @@ namespace dice::sparse_map {
              * an element can be outside its home bucket afterwards, otherwise the inline group has no deleted bucket
              * afterwards (see `inline_nb_displaced_`). Allocates nothing.
              */
-            DICE_SPARSE_MAP_ALWAYS_INLINE constexpr void erase_inline_at(
-                size_type offset,
-                std::size_t home_bucket
-            ) noexcept {
+            DICE_SPARSE_MAP_ALWAYS_INLINE constexpr void erase_inline_at(size_type offset, std::size_t home_bucket) noexcept {
                 DICE_SPARSE_MAP_ASSERT(is_inline_ && offset < nb_elements_);
                 DICE_SPARSE_MAP_ASSERT(inline_nb_displaced_ > 0 || storage_.group.deleted_bitmap == 0);
                 DICE_SPARSE_MAP_ASSERT(inline_nb_displaced_ <= nb_elements_);

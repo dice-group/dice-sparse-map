@@ -74,8 +74,7 @@ namespace {
     using namespace dice::sparse_map::bench;
     namespace sh = dice::sparse_map::sh;
 
-    inline constexpr std::array<std::size_t, 22>
-        curve_sizes{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20, 24, 32, 48, 64};
+    inline constexpr std::array<std::size_t, 22> curve_sizes{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20, 24, 32, 48, 64};
 
     /// churn cycles per map: more than the 48 - n cycles after which a map of n elements in 64 buckets cleans up
     inline constexpr std::size_t churn_cycles = 64;
@@ -108,12 +107,7 @@ namespace {
         }
     };
 
-    template<
-        typename Key,
-        typename T,
-        template<typename> typename Alloc = std::allocator,
-        typename Hash = table_hash<Key>
-    >
+    template<typename Key, typename T, template<typename> typename Alloc = std::allocator, typename Hash = table_hash<Key>>
     using curve_map = ::dice::sparse_map::sparse_map<
         Key,
         T,
@@ -203,8 +197,7 @@ namespace {
                 while (values.size() - begin < size) {
                     auto const v = rng() & ~never_inserted;
                     auto const first = values.begin() + static_cast<std::ptrdiff_t>(begin);
-                    if (std::find(first, values.end(), v) == values.end()
-                        && std::find(first, values.end(), v ^ 1) == values.end()) {
+                    if (std::find(first, values.end(), v) == values.end() && std::find(first, values.end(), v ^ 1) == values.end()) {
                         values.push_back(v);
                     }
                 }
@@ -245,8 +238,7 @@ namespace {
                 auto const begin = churn_values.size();
                 while (churn_values.size() - begin < churn_cycles) {
                     auto const v = rng() | never_inserted;
-                    if (std::find(churn_values.begin() + static_cast<std::ptrdiff_t>(begin), churn_values.end(), v)
-                        == churn_values.end()) {
+                    if (std::find(churn_values.begin() + static_cast<std::ptrdiff_t>(begin), churn_values.end(), v) == churn_values.end()) {
                         churn_values.push_back(v);
                     }
                 }
@@ -416,9 +408,7 @@ namespace {
      * The columns that only some containers have, NaN where a container does not have them.
      */
     struct curve_extras {
-        double churn_rehash_hashes = std::numeric_limits<
-            double
-        >::quiet_NaN(); ///< hash calls per churned map beyond two per cycle
+        double churn_rehash_hashes = std::numeric_limits<double>::quiet_NaN(); ///< hash calls per churned map beyond two per cycle
         double disk_bytes = std::numeric_limits<double>::quiet_NaN(); ///< datastore bytes per map (metall)
     };
 
@@ -729,11 +719,10 @@ namespace {
     }
 
     void print_csv_header() {
-        std::cout
-            << "CSV,container,n,sizeof,build_random,build_ascending,build_descending,from_range_random,"
-               "from_range_ascending,insert_range_random,insert_range_ascending,hit,miss,erase,iterate,destroy,churn,"
-               "heap_bytes,live_allocations,allocate_calls,heap_bytes_range,allocate_calls_range,churn_rehash_hashes,"
-               "disk_bytes\n";
+        std::cout << "CSV,container,n,sizeof,build_random,build_ascending,build_descending,from_range_random,"
+                     "from_range_ascending,insert_range_random,insert_range_ascending,hit,miss,erase,iterate,destroy,churn,"
+                     "heap_bytes,live_allocations,allocate_calls,heap_bytes_range,allocate_calls_range,churn_rehash_hashes,"
+                     "disk_bytes\n";
     }
 
     /**
@@ -786,11 +775,7 @@ namespace {
             std::cout << ",,,,,";
         }
         std::cout
-            << std::format(
-                   ",{},{}\n",
-                   optional_number(extras.churn_rehash_hashes, 2),
-                   optional_number(extras.disk_bytes, 2)
-               )
+            << std::format(",{},{}\n", optional_number(extras.churn_rehash_hashes, 2), optional_number(extras.disk_bytes, 2))
             << std::flush;
     }
 
@@ -806,9 +791,7 @@ namespace {
             rounds,
             std::allocator<Container>{},
             [](Container *ptr) -> Container & { return *std::construct_at(ptr); },
-            [](Container *ptr, std::span<value_type const> elements) -> Container & {
-                return construct_from_range(ptr, elements);
-            }
+            [](Container *ptr, std::span<value_type const> elements) -> Container & { return construct_from_range(ptr, elements); }
         );
         auto const c = count_curve<Counted>(in);
         curve_extras extras;
@@ -842,11 +825,11 @@ namespace {
                     unordered_dense_family<tracked>::map<std::uint64_t, std::uint64_t>,
                     void
                 >("unordered_dense map u64", in, Sizes::rounds);
-                run_std_curve<
-                    unordered_dense_family<>::set<std::uint64_t>,
-                    unordered_dense_family<tracked>::set<std::uint64_t>,
-                    void
-                >("unordered_dense set u64", in, Sizes::rounds);
+                run_std_curve<unordered_dense_family<>::set<std::uint64_t>, unordered_dense_family<tracked>::set<std::uint64_t>, void>(
+                    "unordered_dense set u64",
+                    in,
+                    Sizes::rounds
+                );
                 run_std_curve<
                     std_family<>::map<std::uint64_t, std::uint64_t>,
                     std_family<tracked>::map<std::uint64_t, std::uint64_t>,
@@ -870,11 +853,11 @@ namespace {
                     unordered_dense_family<tracked>::map<std::string, std::uint64_t>,
                     void
                 >("unordered_dense map string", in, Sizes::rounds);
-                run_std_curve<
-                    std_family<>::map<std::string, std::uint64_t>,
-                    std_family<tracked>::map<std::string, std::uint64_t>,
-                    void
-                >("std::unordered_map string", in, Sizes::rounds);
+                run_std_curve<std_family<>::map<std::string, std::uint64_t>, std_family<tracked>::map<std::string, std::uint64_t>, void>(
+                    "std::unordered_map string",
+                    in,
+                    Sizes::rounds
+                );
             }
         }
     }

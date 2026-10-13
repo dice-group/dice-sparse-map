@@ -236,9 +236,8 @@ namespace {
             auto const operation = grows ? 0 : 45 + rng.bounded(55);
             if (operation < 45) {
                 // a new key, or a key that may be there
-                std::uint64_t const key = rng.bounded(4) == 0 && next_key > 1
-                    ? 1 + rng.bounded(static_cast<std::uint32_t>(next_key - 1))
-                    : next_key++;
+                std::uint64_t const key = rng.bounded(4) == 0 && next_key > 1 ? 1 + rng.bounded(static_cast<std::uint32_t>(next_key - 1))
+                                                                              : next_key++;
                 all_equal = all_equal && small.insert(key) == table.insert(key);
             } else if (operation < 75 && !small.map.empty()) {
                 // erase an element by key, or a key that is not there

@@ -133,8 +133,7 @@ namespace dice::sparse_map::tests {
      * `offset_ptr_allocator` on 64 bit targets.
      */
     template<typename Slot>
-    inline constexpr std::size_t
-        inline_capacity_for = detail_sparse_hash::inline_storable<Slot, alignof(std::size_t)>::value ? 4 : 0;
+    inline constexpr std::size_t inline_capacity_for = detail_sparse_hash::inline_storable<Slot, alignof(std::size_t)>::value ? 4 : 0;
 
     /**
      * The inline capacity of a `sparse_map` or a `sparse_set` type.
@@ -152,9 +151,8 @@ namespace dice::sparse_map::tests {
         sh::allocation_failure AllocationFailure,
         std::size_t inline_capacity
     >
-    struct inline_capacity_of<
-        sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>
-    > : std::integral_constant<std::size_t, inline_capacity> {};
+    struct inline_capacity_of<sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>> :
+        std::integral_constant<std::size_t, inline_capacity> {};
 
     template<
         typename Key,
@@ -165,19 +163,13 @@ namespace dice::sparse_map::tests {
         sh::allocation_failure AllocationFailure,
         std::size_t inline_capacity
     >
-    struct inline_capacity_of<
-        sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>
-    > : std::integral_constant<std::size_t, inline_capacity> {};
+    struct inline_capacity_of<sparse_set<Key, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>> :
+        std::integral_constant<std::size_t, inline_capacity> {};
 
     template<typename Container>
     inline constexpr std::size_t inline_capacity_of_v = inline_capacity_of<Container>::value;
 
-    template<
-        typename Key,
-        typename T,
-        typename Hash = default_or_test_hash<Key>,
-        typename KeyEqual = std::equal_to<Key>
-    >
+    template<typename Key, typename T, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using map_inline = sparse_map<
         Key,
         T,

@@ -276,23 +276,15 @@ TEST_CASE("sizes with the inline capacity 4") {
     MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., 4>) = " << sizeof(inline_map_of<std::allocator>));
     MESSAGE("sizeof(sparse_set<std::uint64_t, ..., 4>) = " << sizeof(inline_set_of<std::allocator>));
     MESSAGE("sizeof(sparse_map<std::string, std::uint64_t, ..., 4>) = " << sizeof(string_map_t));
-    MESSAGE(
-        "sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall, ..., 4>) = "
-        << sizeof(inline_map_of<metall_allocator>)
-    );
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall, ..., 4>) = " << sizeof(inline_map_of<metall_allocator>));
     MESSAGE("sizeof(sparse_set<std::uint64_t, ..., metall, ..., 4>) = " << sizeof(inline_set_of<metall_allocator>));
-    MESSAGE(
-        "sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall>) = " << sizeof(map_of<metall_allocator, medium>)
-    );
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall>) = " << sizeof(map_of<metall_allocator, medium>));
     // the element count (8 bytes), the maximum load factor (4), the flag (1) and the count of the elements outside
     // their home bucket (1, with 2 bytes of padding), then the union of the state of the buckets (56 bytes) and the
     // inline group: two bitmaps of 8 bytes and 4 elements
     CHECK(sizeof(inline_map_of<std::allocator>) == 16 + 16 + 4 * sizeof(entry_t));
     CHECK(sizeof(inline_set_of<std::allocator>) == 16 + 56);
-    CHECK(
-        sizeof(string_map_t)
-        == 16 + 16 + 4 * sizeof(dice::sparse_map::detail_sparse_hash::map_slot<std::string, std::uint64_t>)
-    );
+    CHECK(sizeof(string_map_t) == 16 + 16 + 4 * sizeof(dice::sparse_map::detail_sparse_hash::map_slot<std::string, std::uint64_t>));
     // the allocator of metall holds a pointer of 8 bytes
     CHECK(sizeof(inline_map_of<metall_allocator>) == 8 + 16 + 16 + 4 * sizeof(entry_t));
     CHECK(sizeof(map_of<metall_allocator, medium>) == 80);
