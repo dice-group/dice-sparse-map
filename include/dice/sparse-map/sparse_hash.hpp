@@ -1288,9 +1288,7 @@ namespace dice::sparse_map {
                 destroy_buckets();
                 reset_to_empty();
 
-                if constexpr (propagate_on_move_assignment || allocator_is_always_equal) {
-                    take_over(other);
-                } else if (alloc_ == other.alloc_) {
+                if (propagate_on_move_assignment || allocator_is_always_equal || alloc_ == other.alloc_) {
                     take_over(other);
                 } else {
                     // The elements first: `other` keeps its functors, so that it still finds its elements if moving
