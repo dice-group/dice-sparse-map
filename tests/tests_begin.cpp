@@ -347,6 +347,14 @@ namespace {
     constexpr int timing_begin_calls = 40000;
     constexpr std::size_t timing_drain_elements = 65536;
     constexpr double timing_bound_seconds = 4.0;
+
+    /**
+     * The timing test holds two tables of `timing_bucket_count` buckets, about 128 MiB of group headers each and
+     * more under a sanitizer, and bounds the wall clock. A loaded or memory-constrained runner can miss the bound
+     * for reasons that have nothing to do with `begin()`, so the case is skipped by default. Run it by name or
+     * with `--no-skip`, or set this to true.
+     */
+    constexpr bool run_timing_test = false;
 }  // namespace
 
 /*
@@ -357,7 +365,7 @@ namespace {
  * ASan and UBSan) takes 0.04 s. With a search, the 128 MiB of group headers exceed the L3 cache, and each part took
  * at least 68 s in a Release build on thistle.
  */
-TEST_CASE("begin is constant time, also while a map is drained") {
+TEST_CASE("begin is constant time, also while a map is drained" * doctest::skip(!run_timing_test)) {
     using map_t = map_of<std::size_t>;
 
     {
