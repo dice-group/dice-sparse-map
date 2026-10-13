@@ -1028,6 +1028,12 @@ namespace dice::sparse_map {
             static constexpr bool propagate_on_swap = slot_allocator_traits::propagate_on_container_swap::value;
             static constexpr bool allocator_is_always_equal = slot_allocator_traits::is_always_equal::value;
 
+            /**
+             * True if a move assignment always takes the storage of the source, whatever the two allocators are.
+             * The move assignment is `noexcept` in that case, so it must not hold a `throw`.
+             */
+            static constexpr bool always_takes_over = propagate_on_move_assignment || allocator_is_always_equal;
+
         public:
             /**
              * Forward iterator over the elements.
@@ -1281,7 +1287,7 @@ namespace dice::sparse_map {
                 return *this;
             }
 
-            constexpr sparse_hash &operator=(sparse_hash &&other) noexcept((propagate_on_move_assignment || allocator_is_always_equal)
+            constexpr sparse_hash &operator=(sparse_hash &&other) noexcept(always_takes_over
                                                                            && std::is_nothrow_move_assignable_v<Hash>
                                                                            && std::is_nothrow_move_assignable_v<KeyEqual>) {
                 if (this == &other) {
@@ -1291,9 +1297,12 @@ namespace dice::sparse_map {
                 destroy_buckets();
                 reset_to_empty();
 
-                if (propagate_on_move_assignment || allocator_is_always_equal || alloc_ == other.alloc_) {
+                if (always_takes_over || alloc_ == other.alloc_) {
                     take_over(other);
-                } else {
+                } else if constexpr (!always_takes_over) {
+                    // `if constexpr`, because this branch rethrows and the move assignment is `noexcept` when the
+                    // table always takes over. A `throw` there would call `std::terminate`.
+                    //
                     // The elements first: `other` keeps its functors, so that it still finds its elements if moving
                     // them throws. On an exception *this stays empty. If a functor move throws after the elements
                     // were moved, `other` keeps them in a moved-from state, and with a moved-from hash function if
