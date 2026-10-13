@@ -1168,7 +1168,7 @@ namespace dice::sparse_map {
                 : alloc_(alloc),
                   hash_(hash),
                   key_equal_(equal) {
-                bucket_count_ = rounded_bucket_count(bucket_count);
+                bucket_count_ = rounded_bucket_count(bucket_count, max_bucket_count());
                 if (bucket_count_ > 0) {
                     allocate_buckets(sparse_array::nb_sparse_buckets(bucket_count_));
                 }
@@ -1743,15 +1743,12 @@ namespace dice::sparse_map {
              * bucket count stays the same and no bucket is marked as deleted.
              */
             constexpr void rehash(size_type count) {
-                count = std::max(count, bucket_count_for(size()));
-                if (nb_deleted_buckets_ == 0 && rounded_bucket_count(count) == bucket_count_) {
-                    return;
-                }
-                rehash_impl(count);
+                rehash_at_least(count, max_bucket_count());
             }
 
             constexpr void reserve(size_type count) {
-                rehash(bucket_count_for(count));
+                size_type const max_count = max_bucket_count();
+                rehash_at_least(bucket_count_for(count, max_count), max_count);
             }
 
             /*
@@ -1857,10 +1854,11 @@ namespace dice::sparse_map {
 
             /**
              * @return `bucket_count` rounded up to a power of two, or 0 for 0
-             * @throws std::length_error if the result is larger than `max_bucket_count()`
+             * @param max_count `max_bucket_count()`, passed in because it asks the allocator for its maximum size
+             * @throws std::length_error if the result is larger than `max_count`
              */
-            [[nodiscard]] constexpr size_type rounded_bucket_count(size_type bucket_count) const {
-                if (bucket_count > max_bucket_count()) {
+            [[nodiscard]] constexpr size_type rounded_bucket_count(size_type bucket_count, size_type max_count) const {
+                if (bucket_count > max_count) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
                 if (bucket_count == 0) {
@@ -1868,7 +1866,7 @@ namespace dice::sparse_map {
                 }
 
                 auto const rounded = static_cast<size_type>(std::bit_ceil(static_cast<std::size_t>(bucket_count)));
-                if (rounded > max_bucket_count()) {
+                if (rounded > max_count) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
                 return rounded;
@@ -1884,23 +1882,24 @@ namespace dice::sparse_map {
 
             /**
              * @return the smallest bucket count that holds `nb_elements` elements without a rehash, or 0 for 0
-             * @throws std::length_error if the result is larger than `max_bucket_count()`
+             * @param max_count `max_bucket_count()`, passed in because it asks the allocator for its maximum size
+             * @throws std::length_error if the result is larger than `max_count`
              */
-            [[nodiscard]] constexpr size_type bucket_count_for(size_type nb_elements) const {
+            [[nodiscard]] constexpr size_type bucket_count_for(size_type nb_elements, size_type max_count) const {
                 if (nb_elements == 0) {
                     return 0;
                 }
 
                 // checked before the conversion to `size_type`, which can be narrower than `std::size_t`
                 std::size_t const min_bucket_count = ceil_to_size(static_cast<double>(nb_elements) / static_cast<double>(max_load_factor_));
-                if (std::cmp_greater(min_bucket_count, max_bucket_count())) {
+                if (std::cmp_greater(min_bucket_count, max_count)) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
 
-                auto count = rounded_bucket_count(static_cast<size_type>(min_bucket_count));
+                auto count = rounded_bucket_count(static_cast<size_type>(min_bucket_count), max_count);
                 // the division rounds, so `count` can be one doubling too small
                 if (rehash_threshold(count) < nb_elements) {
-                    if (count > max_bucket_count() / 2) {
+                    if (count > max_count / 2) {
                         throw std::length_error("The hash table exceeds its maximum size.");
                     }
                     count *= 2;
@@ -1910,10 +1909,11 @@ namespace dice::sparse_map {
 
             /**
              * @return the bucket count after the next growth, twice the current one, at least 2
+             * @param max_count `max_bucket_count()`, passed in because it asks the allocator for its maximum size
              * @throws std::length_error if the table cannot grow
              */
-            [[nodiscard]] constexpr size_type next_bucket_count() const {
-                if (bucket_count_ > max_bucket_count() / 2) {
+            [[nodiscard]] constexpr size_type next_bucket_count(size_type max_count) const {
+                if (bucket_count_ > max_count / 2) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
                 return bucket_count_ == 0 ? 2 : bucket_count_ * 2;
@@ -2061,7 +2061,7 @@ namespace dice::sparse_map {
              */
             constexpr void make_room_for_one_insertion() {
                 while (size() >= load_threshold_rehash_) {
-                    rehash_impl(next_bucket_count());
+                    rehash_impl(next_bucket_count(max_bucket_count()));
                 }
                 if (size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
                     clear_deleted_buckets();
@@ -2146,7 +2146,7 @@ namespace dice::sparse_map {
                     // constructed before the rehash.
                     value_holder<slot_type, slot_allocator_type> new_slot(alloc_, std::forward<Args>(args)...);
                     if (grows) {
-                        rehash_impl(next_bucket_count());
+                        rehash_impl(next_bucket_count(max_bucket_count()));
                     } else {
                         clear_deleted_buckets();
                     }
@@ -2235,6 +2235,19 @@ namespace dice::sparse_map {
              * True if a rehash copies the elements and frees the old groups at the end, see `rehash_impl`.
              */
             static constexpr bool copy_on_rehash = !std::is_nothrow_move_constructible_v<slot_type>;
+
+            /**
+             * Rebuilds the table with at least `count` buckets, and with room for its elements. Does nothing if the
+             * bucket count stays the same and no bucket is marked as deleted.
+             * @param max_count `max_bucket_count()`, passed in because it asks the allocator for its maximum size
+             */
+            constexpr void rehash_at_least(size_type count, size_type max_count) {
+                count = std::max(count, bucket_count_for(size(), max_count));
+                if (nb_deleted_buckets_ == 0 && rounded_bucket_count(count, max_count) == bucket_count_) {
+                    return;
+                }
+                rehash_impl(count);
+            }
 
             /**
              * Moves or copies all elements into a new table with at least `count` buckets. How depends on the type of
