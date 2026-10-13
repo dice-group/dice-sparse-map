@@ -940,6 +940,19 @@ namespace dice::sparse_map {
          * empties this group reads the headers of the groups after it, up to the next group with an element. So the
          * loop `while (!empty()) { erase(begin()); }` reads every group header once in total.
          *
+         * Invalidation of iterators, references and pointers to elements: a group stores its elements densely, and
+         * an insertion or an erasure can move them in the group or to new memory. So, unlike with the unordered
+         * containers of the standard library, references and pointers to elements are invalidated like the
+         * iterators. For example, `map[a] = map[b]` reads a moved or freed element if `a` is not in the map.
+         *  - `clear`, `operator=`, `reserve`, `rehash`: may invalidate the iterators, references and pointers.
+         *  - `merge`: always invalidates the iterators, references and pointers of both tables.
+         *  - `insert_range`, and `insert` of a range or a list: may invalidate the iterators, references and
+         *    pointers also if no element is inserted, because they reserve room for the whole range first if its
+         *    element count is available in constant time.
+         *  - `insert`, `emplace`, `emplace_hint`, and in a map `try_emplace`, `insert_or_assign` and `operator[]`:
+         *    invalidate the iterators, references and pointers if an element is inserted.
+         *  - `erase`: always invalidates the iterators, references and pointers. Use the returned iterator.
+         *
          * The stored elements must be nothrow move constructible, or nothrow copy constructible without a move
          * constructor. The behaviour is undefined if their destructor throws. See `sparse_array` for the whole
          * requirement and for what a nothrow move needs from the allocator.
