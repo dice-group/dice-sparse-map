@@ -1,5 +1,6 @@
 #include "fixtures/allocators.hpp"
 #include "fixtures/test_types.hpp"
+#include "fixtures/throwing_hash.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 
@@ -41,50 +42,12 @@ namespace {
         return n.value;
     }
 
-    /// calls of `fragile_bucket_hash` that are left before it throws, -1 never throws
-    int hash_calls_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
-    /// the move assignment of `fragile_bucket_hash` throws while this is true
-    bool hash_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
     /**
-     * The hash of a key is its number. It is not avalanching, but it is marked as avalanching, so that the containers
-     * accept it. It throws `std::runtime_error` on the n-th call after `hash_calls_until_throw` was set to n, and its
-     * move assignment throws while `hash_moves_throw` is true.
+     * The hash of a key is its number. It is not avalanching, but it is marked as avalanching, so that the
+     * containers accept it. It throws on the n-th call after `fragile_bucket_hash::calls_until_throw` was set to n,
+     * and its move assignment throws while `fragile_bucket_hash::moves_throw` is true.
      */
-    struct fragile_bucket_hash {
-        using is_avalanching = void;
-
-        fragile_bucket_hash() = default;
-        fragile_bucket_hash(fragile_bucket_hash const &) = default;
-        fragile_bucket_hash(fragile_bucket_hash &&) = default;
-        fragile_bucket_hash &operator=(fragile_bucket_hash const &) = default;
-        ~fragile_bucket_hash() = default;
-
-        fragile_bucket_hash &operator=(fragile_bucket_hash && /*other*/) noexcept(false) {
-            if (hash_moves_throw) {
-                throw std::runtime_error("fragile_bucket_hash move assignment");
-            }
-            return *this;
-        }
-
-        std::size_t operator()(std::size_t key) const {
-            count_down();
-            return key;
-        }
-
-        std::size_t operator()(copied_number const &key) const {
-            count_down();
-            return key.value;
-        }
-
-    private:
-        static void count_down() {
-            if (hash_calls_until_throw >= 0 && 0 == hash_calls_until_throw--) {
-                throw std::runtime_error("fragile_bucket_hash");
-            }
-        }
-    };
+    using fragile_bucket_hash = throwing_hash<number_of_key>;
 
     template<typename T, typename Allocator = std::allocator<std::pair<T, T>>>
     using map_of = sparse_map<T, T, fragile_bucket_hash, std::equal_to<T>, Allocator>;
@@ -276,9 +239,9 @@ TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, st
         auto map = map_with_32_groups<map_t>();
         insert(map, 320);
         insert(map, 1300);
-        hash_calls_until_throw = 1;
+        fragile_bucket_hash::calls_until_throw = 1;
         CHECK_THROWS_AS(map.rehash(4096), std::runtime_error);
-        hash_calls_until_throw = -1;
+        fragile_bucket_hash::calls_until_throw = -1;
         if constexpr (std::is_same_v<T, std::size_t>) {
             // a rehash that moves leaves the map empty
             CHECK(map.empty());
@@ -325,9 +288,9 @@ TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::s
         insert(source, 320);
         auto target = map_with_32_groups<map_t>(allocator_t{2});
         insert(target, 0);
-        hash_moves_throw = true;
+        fragile_bucket_hash::moves_throw = true;
         CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
-        hash_moves_throw = false;
+        fragile_bucket_hash::moves_throw = false;
         check_begin(target, std::nullopt);
         check_begin(source, 320);  // NOLINT(bugprone-use-after-move)
         insert(target, 640);
