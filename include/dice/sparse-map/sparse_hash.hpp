@@ -1225,15 +1225,17 @@ namespace dice::sparse_map {
             /**
              * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
              * `other`, the elements are moved one by one, or copied if their move constructor can throw. `other` is
-             * empty afterwards in both cases. The hash function and the key equality are copied, so that `other` still
-             * finds its elements if moving them throws.
+             * empty afterwards in both cases.
+             *
+             * The hash function and the key equality are moved. On the path with the unequal allocator, where moving
+             * the elements can throw, `other` gets copies of them back first, so that it still finds its elements.
              */
             template<typename Alloc>
             requires std::constructible_from<slot_allocator_type, Alloc const &>
             constexpr sparse_hash(sparse_hash &&other, Alloc const &alloc)
                 : alloc_(alloc),
-                  hash_(other.hash_),
-                  key_equal_(other.key_equal_),
+                  hash_(std::move(other.hash_)),
+                  key_equal_(std::move(other.key_equal_)),
                   bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
                   nb_deleted_buckets_(other.nb_deleted_buckets_),
@@ -1244,6 +1246,7 @@ namespace dice::sparse_map {
                     buckets_ = std::exchange(other.buckets_, nullptr);
                     nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
                 } else {
+                    give_functors_back_to(other);
                     move_buckets_from(other);
                     other.destroy_buckets();
                 }
@@ -2005,6 +2008,20 @@ namespace dice::sparse_map {
                 build_buckets_from(other, [this](sparse_array *target, sparse_array const &source) {
                     std::construct_at(target, source, alloc_);
                 });
+            }
+
+            /**
+             * Copies the functors of this table into `other`, which they were moved out of. `other` finds its
+             * elements again, which matters while they are still there and moving them can throw. A functor that
+             * cannot be copied stays moved from.
+             */
+            constexpr void give_functors_back_to(sparse_hash &other) const {
+                if constexpr (std::is_copy_assignable_v<Hash>) {
+                    other.hash_ = hash_;
+                }
+                if constexpr (std::is_copy_assignable_v<KeyEqual>) {
+                    other.key_equal_ = key_equal_;
+                }
             }
 
             /**
