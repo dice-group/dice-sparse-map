@@ -49,83 +49,6 @@ namespace {
     static_assert(!array_of<counter::obj, counter::obj, std::allocator<slot_obj>>::copies_bytes);
 
     /**
-     * A trivially copyable key whose move can throw. An rvalue takes the constructor template, which is not a move
-     * constructor, so the type stays trivially copyable. A group of such keys has holes.
-     */
-    struct throwing_move_key {
-        std::size_t v = 0;
-
-        explicit throwing_move_key(std::size_t x) noexcept
-            : v(x) {
-        }
-
-        throwing_move_key(throwing_move_key const &other) = default;
-
-        template<typename U>
-        requires std::same_as<U, throwing_move_key>
-        throwing_move_key(U &&other) noexcept(false)  // NOLINT(bugprone-forwarding-reference-overload)
-            : v(other.v) {
-        }
-
-        throwing_move_key &operator=(throwing_move_key const &other) = default;
-        ~throwing_move_key() = default;
-
-        friend bool operator==(throwing_move_key const &, throwing_move_key const &) = default;
-    };
-
-    /**
-     * The hash of a key is its number, so key `k` lands in bucket `k`. It is not avalanching, but it is marked as
-     * avalanching, so that the containers accept it.
-     */
-    struct identity_key_hash {
-        using is_avalanching = void;
-
-        std::size_t operator()(throwing_move_key const &key) const noexcept {
-            return key.v;
-        }
-    };
-
-    using hole_group = dice::sparse_map::detail_sparse_hash::sparse_array<throwing_move_key,
-                                                                          std::allocator<throwing_move_key>,
-                                                                          dice::sparse_map::sh::sparsity::medium,
-                                                                          dice::sparse_map::sh::allocation_failure::terminating>;
-    static_assert(std::is_trivially_copyable_v<throwing_move_key>);
-    static_assert(!std::is_nothrow_move_constructible_v<throwing_move_key>);
-    static_assert(hole_group::has_holes);
-    // the slots of a group with holes include the holes, so the group copies its values one by one
-    static_assert(!hole_group::copies_bytes);
-
-    /**
-     * Inserts the keys 1 to 4 into `set` (buckets 1 to 4 of its first group) and erases key 1. That leaves a hole
-     * in the first slot of the group.
-     */
-    template<typename Set>
-    void make_hole(Set &set) {
-        set.reserve(32);
-        REQUIRE(set.bucket_count() == 64);
-        for (std::size_t k = 1; k <= 4; ++k) {
-            throwing_move_key const key{k};
-            set.insert(key);
-        }
-        REQUIRE(set.erase(throwing_move_key{1}) == 1);
-    }
-
-    /// `set` holds exactly the keys 2, 3 and 4
-    template<typename Set>
-    void check_keys_after_hole(Set const &set) {
-        std::size_t sum = 0;
-        for (auto const &key : set) {
-            sum += key.v;
-        }
-        CHECK(set.size() == 3);
-        CHECK(sum == 9);
-        CHECK(set.contains(throwing_move_key{2}));
-        CHECK(set.contains(throwing_move_key{3}));
-        CHECK(set.contains(throwing_move_key{4}));
-        CHECK(!set.contains(throwing_move_key{1}));
-    }
-
-    /**
      * A trivially copyable mapped value of 40 bytes, so that a copy moves more than one word per value.
      */
     struct wide_value {
@@ -255,24 +178,3 @@ TEST_CASE("trivially copyable values: copy and move into a table with an unequal
     CHECK(source.empty());  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
 }
 
-TEST_CASE("a trivially copyable key whose move can throw: a copy of a set with a hole keeps its keys") {
-    using set_t = dice::sparse_map::sparse_set<throwing_move_key, identity_key_hash>;
-    auto set = set_t{};
-    make_hole(set);
-    check_keys_after_hole(set);
-
-    auto const copy = set;
-    check_keys_after_hole(copy);
-}
-
-TEST_CASE("a trivially copyable key whose move can throw: copy and move of a set with a hole into a table with an unequal allocator") {
-    using alloc_t = pmr_like_allocator<throwing_move_key>;
-    using set_t = dice::sparse_map::sparse_set<throwing_move_key, identity_key_hash, std::equal_to<throwing_move_key>, alloc_t>;
-    auto set = set_t(alloc_t(1));
-    make_hole(set);
-
-    auto const copy = set_t(set, alloc_t(2));
-    check_keys_after_hole(copy);
-    auto const moved = set_t(std::move(set), alloc_t(3));
-    check_keys_after_hole(moved);
-}

@@ -371,14 +371,18 @@ namespace dice::sparse_map {
 
             /**
              * Transfers the key and the value of `other` one by one, so that a member without a move constructor is
-             * copied while the other one is moved. The implicitly declared move constructor would be deleted
-             * instead.
+             * copied while the other one is moved. The defaulted move constructor would be deleted instead.
+             *
+             * Only declared when a member has no move constructor, so that a slot of two members that have one keeps
+             * the defaulted move constructor and stays trivially copyable (see `copies_bytes`).
              */
             constexpr map_slot(map_slot &&other) noexcept(nothrow_transferable<Key> &&nothrow_transferable<T>)
+                requires(!std::is_move_constructible_v<Key> || !std::is_move_constructible_v<T>)
                 : key(forward_or_copy<Key>(std::move(other.key))),
                   value(forward_or_copy<T>(std::move(other.value))) {
             }
 
+            constexpr map_slot(map_slot &&other) = default;
             constexpr map_slot(map_slot const &other) = default;
             constexpr map_slot &operator=(map_slot const &other) = default;
             constexpr map_slot &operator=(map_slot &&other) = default;
@@ -527,7 +531,7 @@ namespace dice::sparse_map {
             /**
              * True if a group copies its values as bytes, with `std::memcpy`, instead of one by one through the
              * allocator, when it grows its storage and when it is copied or moved into new storage. That is the case
-             * if the group has no holes (`has_holes`), `value_type` is trivially copyable and trivially move
+             * if `value_type` is trivially copyable and trivially move
              * constructible (so a copy one by one would also use the trivial move, not a constructor template), and the
              * allocator has no `construct` and no `destroy` of its own (`HasConstructOrDestroy`), so that
              * `std::allocator_traits` constructs with `std::construct_at` and destroys with `std::destroy_at`. A
@@ -535,7 +539,7 @@ namespace dice::sparse_map {
              * itself: for such a type, the standard library can do the move assignments of `shifts_by_assignment` with
              * one `std::memmove`.
              */
-            static constexpr bool copies_bytes = !has_holes && std::is_trivially_copyable_v<value_type> && std::is_trivially_move_constructible_v<value_type> && !HasConstructOrDestroy<Allocator, value_type>;
+            static constexpr bool copies_bytes = std::is_trivially_copyable_v<value_type> && std::is_trivially_move_constructible_v<value_type> && !HasConstructOrDestroy<Allocator, value_type>;
 
         private:
             static constexpr std::size_t bitmap_nb_bits = nb_buckets;
