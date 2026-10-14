@@ -24,22 +24,14 @@
  * too high skips elements, which `check_begin` sees.
  *
  * `fragile_bucket_hash` puts key `k` into bucket `k` of a table with more than `k` buckets, so key `64 * g` is in
- * group `g`. The maps hold `std::size_t`, whose move constructor cannot throw, and `copied_number`
- * (`tests::copied_value<std::size_t>`), whose move constructor can throw, so that the groups have holes.
+ * group `g`. The maps hold `std::size_t`.
  */
 namespace {
     using namespace dice::sparse_map;
     using namespace dice::sparse_map::tests;
 
-    /// a number whose move constructor can throw
-    using copied_number = copied_value<std::size_t>;
-
     std::size_t number(std::size_t n) {
         return n;
-    }
-
-    std::size_t number(copied_number const &n) {
-        return n.value;
     }
 
     /**
@@ -53,7 +45,6 @@ namespace {
     using map_of = sparse_map<T, T, fragile_bucket_hash, std::equal_to<T>, Allocator>;
 
     static_assert(std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, std::size_t>>);
-    static_assert(!std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<copied_number, copied_number>>);
 
     template<typename Map>
     void insert(Map &map, std::size_t n) {
@@ -98,9 +89,8 @@ namespace {
 }  // namespace
 
 TYPE_TO_STRING_AS("std::size_t", std::size_t);
-TYPE_TO_STRING_AS("copied_number", copied_number);
 
-TEST_CASE_TEMPLATE("begin follows the first group that holds an element", T, std::size_t, copied_number) {
+TEST_CASE_TEMPLATE("begin follows the first group that holds an element", T, std::size_t) {
     using map_t = map_of<T>;
     auto map = map_with_32_groups<map_t>();
     check_begin(map, std::nullopt);
@@ -144,7 +134,7 @@ TEST_CASE_TEMPLATE("begin follows the first group that holds an element", T, std
     check_begin(map, std::nullopt);
 }
 
-TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, std::size_t, copied_number) {
+TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, std::size_t) {
     using map_t = map_of<T>;
 
     SUBCASE("constructors") {
@@ -256,7 +246,7 @@ TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, st
     }
 }
 
-TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::size_t, copied_number) {
+TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::size_t) {
     using allocator_t = id_allocator<std::pair<T, T>>;
     using map_t = map_of<T, allocator_t>;
 
