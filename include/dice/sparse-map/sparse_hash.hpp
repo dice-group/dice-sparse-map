@@ -1549,8 +1549,8 @@ namespace dice::sparse_map {
 
             /**
              * Moves every element of `source` whose key is not in this table into this table, and erases it from
-             * `source`. If an exception is thrown, the element that was being merged is still in `source`. A rehash of this table that throws can leave
-             * this table empty, see `rehash_impl`.
+             * `source`. If an exception is thrown, the element that was being merged is still in `source`. A rehash
+             * of this table that throws can leave this table empty, see `rehash_impl`.
              */
             template<typename OtherHash>
             constexpr void merge(OtherHash &source) {

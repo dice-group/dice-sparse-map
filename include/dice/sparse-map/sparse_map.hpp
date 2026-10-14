@@ -93,10 +93,9 @@ namespace dice::sparse_map {
      * `Key` and `T` must be nothrow move constructible, or nothrow copy constructible without a move constructor.
      * A type that can throw while the map transfers it is not allowed, because the map cannot undo a transfer that
      * throws halfway. The behaviour is undefined if the destructor of `Key` or `T` throws. The map moves its
-     * elements with `std::allocator_traits<Allocator>::construct` and expects that this does not throw either.
-     * With a
-     * scoped or a polymorphic allocator, that is the allocator-extended move constructor of `Key` and `T`, which does
-     * not throw when the allocators are equal. `std::vector` makes the same assumption.
+     * elements with `std::allocator_traits<Allocator>::construct` and expects that this does not throw either. With
+     * a scoped or a polymorphic allocator, that is the allocator-extended move constructor of `Key` and `T`, which
+     * does not throw when the allocators are equal. `std::vector` makes the same assumption.
      *
      * Invalidation of iterators, references and pointers to elements: a group stores its elements densely and moves
      * them when an element is inserted or erased. So, unlike with `std::unordered_map`, references and pointers to
