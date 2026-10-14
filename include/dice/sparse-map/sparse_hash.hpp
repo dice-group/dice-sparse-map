@@ -821,6 +821,11 @@ namespace dice::sparse_map {
              */
             template<typename... Args>
             constexpr void insert_at_offset(allocator_type &alloc, size_type offset, Args &&...value_args) {
+                // checked here instead of at class scope, so that `value_type` may be incomplete there. A group
+                // shifts its values, which cannot be undone, so a `value_type` that can throw while it is
+                // transferred would leave the group in a broken state.
+                static_assert(nothrow_transferable<value_type>);
+
                 if (nb_elements_ < capacity_) {
                     insert_at_offset_no_realloc(alloc, offset, std::forward<Args>(value_args)...);
                 } else {
@@ -897,6 +902,8 @@ namespace dice::sparse_map {
              * stays as it is, so an erase allocates nothing and does not throw.
              */
             constexpr void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
+                // see `insert_at_offset`: this function is `noexcept`, so a transfer that throws would terminate
+                static_assert(nothrow_transferable<value_type>);
                 DICE_SPARSE_MAP_ASSERT(offset < nb_elements_);
                 value_type *const raw_values = values();
 
