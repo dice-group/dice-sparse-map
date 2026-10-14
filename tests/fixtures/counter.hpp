@@ -149,6 +149,18 @@ namespace dice::sparse_map::tests {
         std::string records_ = "\n     ctor  defctor  cpyctor     dtor   assign    swaps      get  cnstget     hash   equals     less   ctormv assignmv|   total |\n";
     };
 
+    /**
+     * The hash of a `counter::obj` is its number, so key `k` lands in bucket `k` of a table with more than `k`
+     * buckets. It is not avalanching, but it is marked as avalanching, so that the containers accept it.
+     */
+    struct bucket_hash {
+        using is_avalanching = void;
+
+        std::size_t operator()(counter::obj const &key) const {
+            return key.get_for_hash();
+        }
+    };
+
 }  // namespace dice::sparse_map::tests
 
 template<>
