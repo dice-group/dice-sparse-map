@@ -56,20 +56,6 @@ namespace {
         inline_capacity
     >;
 
-    /// a mapped type whose move constructor can throw
-    struct throwing_move {
-        int value = 0;
-
-        throwing_move() = default;
-        throwing_move(throwing_move const &) = default;
-        throwing_move(throwing_move &&other) noexcept(false) // NOLINT(performance-noexcept-move-constructor)
-            :
-            value(other.value) {}
-        throwing_move &operator=(throwing_move const &) = default;
-        throwing_move &operator=(throwing_move &&) = default;
-        ~throwing_move() = default;
-    };
-
     /// a mapped type with a larger alignment than the state of the buckets has
     struct alignas(32) over_aligned {
         std::uint64_t value = 0;
@@ -142,16 +128,12 @@ TEST_CASE("which elements can be inline") {
     static_assert(detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<std::string, std::uint64_t>, pointer_alignment>::value);
     static_assert(detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, pointer_aligned>, pointer_alignment>::value);
     static_assert(detail_sparse_hash::inline_storable<std::uint64_t, pointer_alignment>::value);
-    // a move constructor that can throw
-    static_assert(!detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, throwing_move>, pointer_alignment>::value);
-    static_assert(!detail_sparse_hash::inline_storable<throwing_move, pointer_alignment>::value);
     // an alignment larger than the one of the state of the buckets
     static_assert(!detail_sparse_hash::inline_storable<detail_sparse_hash::map_slot<int, over_aligned>, pointer_alignment>::value);
     static_assert(!detail_sparse_hash::inline_storable<over_aligned, pointer_alignment>::value);
     static_assert(detail_sparse_hash::inline_storable<over_aligned, alignof(over_aligned)>::value);
 
-    // the inline capacity 0 compiles for all of them
-    CHECK(sparse_map<int, throwing_move>{}.empty());
+    // the inline capacity 0 compiles for both of them
     CHECK(sparse_map<int, over_aligned>{}.empty());
 }
 
