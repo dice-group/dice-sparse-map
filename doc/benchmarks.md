@@ -124,7 +124,7 @@ the harness and `free` gives them back to the kernel at once.
 
 ## How the numbers were taken
 
-- The headers of `dice::sparse_map` are those of commit `115ac93` of this repository.
+- The headers of `dice::sparse_map` are those of this branch.
 - Every map is in the configuration you get by typing its type name, its own default hash
   included. For `dice::sparse_map::sparse_map` that is
   `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of dice-hash 0.6.0. The other benchmarks in
