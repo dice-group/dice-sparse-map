@@ -152,33 +152,6 @@ namespace {
     };
 
     /**
-     * A value whose move constructor can throw. So the groups copy it when they insert or erase, and allocate a new
-     * array of elements for it.
-     */
-    struct copied {
-        std::size_t value = 0;
-
-        explicit copied(std::size_t value) noexcept
-            : value(value) {
-        }
-
-        copied(copied const &other) = default;
-
-        copied(copied &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
-        }
-
-        copied &operator=(copied const &other) = default;
-
-        copied &operator=(copied &&other) noexcept(false) {  // NOLINT(performance-noexcept-move-constructor)
-            value = other.value;
-            return *this;
-        }
-
-        ~copied() = default;
-    };
-
-    /**
      * A map with the default `sh::allocation_failure::terminating` that allocates through `failing_allocator`. Its
      * groups store the elements as `detail_sparse_hash::map_slot`.
      */
@@ -190,7 +163,6 @@ namespace {
                                    failing_allocator<std::pair<std::size_t, T>, detail_sparse_hash::map_slot<std::size_t, T>>>;
 
     static_assert(std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, std::size_t>>);
-    static_assert(!std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<std::size_t, copied>>);
 
     /// allocator whose `allocate` throws `std::length_error`
     struct length_error_allocator {
@@ -310,22 +282,3 @@ TEST_CASE("a failed allocation of a group aborts in an insert" * doctest::skip(!
     }));
 }
 
-TEST_CASE("a failed allocation of a group aborts in an insert of an element whose move constructor can throw" * doctest::skip(!can_fork)) {
-    auto map = failing_map<copied>(64);
-    CHECK(expect_abort([&] {
-        auto const guard = fail_while_in_scope{failing::groups};
-        map.try_emplace(1, 1);
-    }));
-}
-
-// With 64 buckets the table has one group. The first element of the group is not its last one, so the group copies the
-// other elements into a new array.
-TEST_CASE("a failed allocation of a group aborts in an erase of an element whose move constructor can throw" * doctest::skip(!can_fork)) {
-    auto map = failing_map<copied>(64);
-    insert_keys(map, 3);
-    REQUIRE(map.bucket_count() == 64);
-    CHECK(expect_abort([&] {
-        auto const guard = fail_while_in_scope{failing::groups};
-        map.erase(map.begin());
-    }));
-}

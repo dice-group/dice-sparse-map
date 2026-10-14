@@ -96,47 +96,6 @@ namespace constant_evaluation {
     }
 
     /**
-     * A value whose move constructor can throw, so a rehash copies it.
-     */
-    struct copied_value {
-        int value = 0;
-
-        constexpr explicit copied_value(int v) noexcept
-            : value(v) {
-        }
-
-        constexpr copied_value(copied_value const &other) noexcept
-            : value(other.value) {
-        }
-
-        constexpr copied_value(copied_value &&other) noexcept(false)  // NOLINT(performance-noexcept-move-constructor)
-            : value(other.value) {
-        }
-
-        constexpr copied_value &operator=(copied_value const &) = default;
-        constexpr copied_value &operator=(copied_value &&) = default;
-        constexpr ~copied_value() = default;
-    };
-
-    /**
-     * A rehash copies the elements of this map and frees the old groups at the end: their move constructor can throw.
-     */
-    constexpr bool map_of_copied_values_in_a_constant_expression() {
-        static_assert(!std::is_nothrow_move_constructible_v<detail_sparse_hash::map_slot<int, copied_value>>);
-        auto map = sparse_map<int, copied_value, constexpr_hash>{};
-        for (int i = 0; i < 100; ++i) {
-            map.try_emplace(i, i);
-        }
-        map.rehash(1024);
-
-        bool all_found = true;
-        for (int i = 0; i < 100; ++i) {
-            all_found = all_found && map.at(i).value == i;
-        }
-        return map.size() == 100 && map.bucket_count() >= 1024 && all_found;
-    }
-
-    /**
      * The members that the functions above do not call: the other constructors, lookups, the insertions with a hint
      * or of a list, emplace, erase of a range, swap, clear, reserve, the max load factor, the precalculated hash, and
      * the set's rvalue `merge` and `erase_if`.
@@ -195,7 +154,6 @@ namespace constant_evaluation {
     static_assert(map_in_a_constant_expression());
     static_assert(set_in_a_constant_expression());
     static_assert(map_of_strings_in_a_constant_expression());
-    static_assert(map_of_copied_values_in_a_constant_expression());
     static_assert(more_members_in_a_constant_expression());
     static_assert(emplace_in_a_constant_expression());
 }  // namespace constant_evaluation
@@ -204,7 +162,6 @@ TEST_CASE("containers in constant expressions") {
     CHECK(constant_evaluation::map_in_a_constant_expression());
     CHECK(constant_evaluation::set_in_a_constant_expression());
     CHECK(constant_evaluation::map_of_strings_in_a_constant_expression());
-    CHECK(constant_evaluation::map_of_copied_values_in_a_constant_expression());
     CHECK(constant_evaluation::more_members_in_a_constant_expression());
     CHECK(constant_evaluation::emplace_in_a_constant_expression());
 }

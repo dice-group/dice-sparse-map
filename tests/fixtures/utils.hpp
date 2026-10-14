@@ -82,7 +82,6 @@ namespace dice::sparse_map::tests {
 
     /**
      * Value with a pointer to its own member. Copies and moves point it to the member of the new object.
-     * The move constructor copies and is not `noexcept`.
      */
     struct self_reference_member_test {
         self_reference_member_test()
@@ -100,8 +99,8 @@ namespace dice::sparse_map::tests {
               value_ptr_(&value_) {
         }
 
-        self_reference_member_test(self_reference_member_test &&other)
-            : value_(*other.value_ptr_),
+        self_reference_member_test(self_reference_member_test &&other) noexcept
+            : value_(std::move(*other.value_ptr_)),
               value_ptr_(&value_) {
         }
 
@@ -206,18 +205,18 @@ namespace dice::sparse_map::tests {
     };
 
     /**
-     * Value that can be copied but has no move constructor, so a move copies.
+     * Value that can be copied but has no move constructor, so a move copies. The copy does not throw.
      */
     struct copy_only_test {
         explicit copy_only_test(std::int64_t value)
-            : value_(std::to_string(value)) {
+            : value_(value) {
         }
 
-        copy_only_test(copy_only_test const &other)
+        copy_only_test(copy_only_test const &other) noexcept
             : value_(other.value_) {
         }
 
-        copy_only_test &operator=(copy_only_test const &other) {
+        copy_only_test &operator=(copy_only_test const &other) noexcept {
             value_ = other.value_;
 
             return *this;
@@ -227,7 +226,7 @@ namespace dice::sparse_map::tests {
         }
 
         friend std::ostream &operator<<(std::ostream &stream, copy_only_test const &value) {
-            stream << value.value_;
+            stream << value.value();
 
             return stream;
         }
@@ -241,15 +240,15 @@ namespace dice::sparse_map::tests {
         }
 
         friend bool operator<(copy_only_test const &lhs, copy_only_test const &rhs) {
-            return lhs.value_ < rhs.value_;
+            return lhs.value() < rhs.value();
         }
 
         std::string value() const {
-            return value_;
+            return std::to_string(value_);
         }
 
     private:
-        std::string value_;
+        std::int64_t value_;
     };
 
 }  // namespace dice::sparse_map::tests

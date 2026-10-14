@@ -232,6 +232,13 @@ TEST_CASE_TEMPLATE("find is not noexcept when the hash can throw", container_t, 
     CHECK(container.find(1) != container.end());
 }
 
+// An erase of an iterator moves the values of its group one place to the front and updates the bitmaps. It does not
+// hash and does not allocate, so it is noexcept even when the hash function can throw.
+TEST_CASE_TEMPLATE("the erase of an iterator is noexcept", container_t, plain_map, plain_set, throwing_hash_map, throwing_hash_set, unequal_map, unequal_set) {
+    CHECK(noexcept(std::declval<container_t &>().erase(std::declval<container_t &>().begin())));
+    CHECK(noexcept(std::declval<container_t &>().erase(std::declval<container_t const &>().begin())));
+}
+
 // With `sh::allocation_failure::terminating` a failed allocation ends the process, with `throwing` it throws. The
 // `noexcept` specifications are the same.
 TEST_CASE_TEMPLATE("the noexcept specifications do not depend on allocation_failure", container_t, plain_map, plain_set, throwing_hash_map, throwing_hash_set, unequal_map, unequal_set) {

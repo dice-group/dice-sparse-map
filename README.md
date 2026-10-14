@@ -23,9 +23,7 @@ A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be
 `dice::sparse_map::sparse_map` tries to have an interface similar to `std::unordered_map`, but some differences exist.
 
 - **Allocation failure.** By default the process ends with `std::abort()` when an allocation of the map fails, that is when the `allocate` of the allocator throws. The last template parameter `AllocationFailure` chooses this: `dice::sparse_map::sh::allocation_failure::terminating` (the default) aborts, `dice::sparse_map::sh::allocation_failure::throwing` lets the exception of the allocator propagate (`std::bad_alloc` for `std::allocator`). In both modes a size limit of the map throws `std::length_error`, and an allocation that an element makes itself (like the copy of a `std::string`) is an exception of the element.
-- **Exception safety.** The guarantee follows from the type of the elements. If the insertion of one element throws, the map holds the same elements as before, except in one case: a rehash can leave the map empty. An insertion, `merge`, `rehash` or `reserve` can rehash. Calling `reserve` beforehand avoids rehashes. How a rehash transfers the elements depends on their type:
-  - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old buckets is freed while they are moved. If the hash function throws while the elements are moved, or the allocator with `allocation_failure::throwing`, the map is empty. Any other exception leaves the map unchanged.
-  - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and the new buckets are in memory at the same time. An exception leaves the map unchanged.
+- **Exception safety.** The guarantee follows from the type of the elements. If the insertion of one element throws, the map holds the same elements as before, except in one case: a rehash can leave the map empty. An insertion, `merge`, `rehash` or `reserve` can rehash. Calling `reserve` beforehand avoids rehashes. A rehash moves the elements in the order of their buckets. The memory of the old buckets is freed while they are moved. If the hash function throws while the elements are moved, or the allocator with `allocation_failure::throwing`, the map is empty. Any other exception leaves the map unchanged.
 - Iterator invalidation doesn't behave in the same way, any operation modifying the hash table invalidate them (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sparse__map.html#details) for details).
 - References and pointers to keys or values in the map are invalidated in the same way as iterators to these keys-values.
 - For iterators of a map, `*it` is a proxy `std::pair<const Key &, T &>` (`std::pair<const Key &, const T &>` for `const_iterator`), not `std::pair<const Key, T> &`. `it->second` is a mutable reference to the value. `*it` is not an lvalue: bind it with `auto &&` or `const auto &`, not with `auto &`. Example:
@@ -38,7 +36,7 @@ for(auto &&[key, value] : map) {
     value = 3;
 }
 ```
-- Move-only types must have a nothrow move constructor.
+- The key and the mapped type must be nothrow move constructible, or nothrow copy constructible without a move constructor. The map moves elements inside a group, and a transfer that throws halfway cannot be undone. A type without a move constructor is copied instead.
 - No support for some buckets related methods (like `bucket_size`, `bucket`, ...).
 
 These differences also apply between `std::unordered_set` and `dice::sparse_map::sparse_set`.
@@ -55,7 +53,7 @@ With Clang and GCC, the library uses the `__builtin_popcount` function which wil
 On Windows with MSVC, the detection is done at runtime.
 
 #### Move constructor
-Make sure that your key `Key` and potential value `T` have a `noexcept` move constructor. The library will work without it but insertions will be much slower if the copy constructor is expensive (the structure often needs to move some values around on insertion).
+Your key `Key` and potential value `T` need a `noexcept` move constructor. The map moves elements inside a group when it inserts and when it erases, and a transfer that throws halfway cannot be undone, so a type whose move constructor can throw is rejected with a `static_assert`. A type without a move constructor is copied instead, and then its copy constructor needs to be `noexcept`.
 
 ### Bucket count
 
