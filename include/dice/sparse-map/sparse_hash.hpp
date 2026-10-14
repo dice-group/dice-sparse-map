@@ -1198,17 +1198,17 @@ namespace dice::sparse_map {
              * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
              * `other`, the elements are moved one by one. `other` is empty afterwards in both cases.
              *
-             * The hash function and the key equality are moved. On the path with the unequal allocator, where the
-             * allocation of a group can throw, `other` gets copies of them back first, so that it stays usable: a
-             * moved-from hash function may not hash, and the elements of the groups that were moved already are
-             * moved-from.
+             * The hash function and the key equality are moved when this table takes the buckets of `other` over,
+             * and copied otherwise, see `take_functor`. So on the path with the unequal allocator, where the
+             * allocation of a group can throw, `other` keeps its own functors and stays usable. The elements of the
+             * groups that were moved already are moved-from.
              */
             template<typename Alloc>
             requires std::constructible_from<slot_allocator_type, Alloc const &>
             constexpr sparse_hash(sparse_hash &&other, Alloc const &alloc)
                 : alloc_(alloc),
-                  hash_(std::move(other.hash_)),
-                  key_equal_(std::move(other.key_equal_)),
+                  hash_(take_functor(other.hash_, alloc_, other.alloc_)),
+                  key_equal_(take_functor(other.key_equal_, alloc_, other.alloc_)),
                   bucket_count_(other.bucket_count_),
                   nb_elements_(other.nb_elements_),
                   nb_deleted_buckets_(other.nb_deleted_buckets_),
@@ -1219,7 +1219,6 @@ namespace dice::sparse_map {
                     buckets_ = std::exchange(other.buckets_, nullptr);
                     nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
                 } else {
-                    give_functors_back_to(other);
                     move_buckets_from(other);
                     other.destroy_buckets();
                 }
@@ -1986,17 +1985,22 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Copies the functors of this table into `other`, which they were moved out of. `other` finds its
-             * elements again, which matters while they are still there and moving them can throw. A functor that
-             * cannot be copied stays moved from.
+             * `from` moved if this table takes the buckets of the other table over, and a copy of `from` otherwise.
+             * On the path with the unequal allocator the other table keeps its own functors and still finds its
+             * elements while they are moved one by one.
+             * @param mine the allocator of this table
+             * @param theirs the allocator of the other table
              */
-            constexpr void give_functors_back_to(sparse_hash &other) const {
-                if constexpr (std::is_copy_assignable_v<Hash>) {
-                    other.hash_ = hash_;
+            template<typename Functor>
+            [[nodiscard]] static constexpr Functor take_functor(
+                Functor &from,
+                slot_allocator_type const &mine,
+                slot_allocator_type const &theirs
+            ) {
+                if (allocator_is_always_equal || mine == theirs) {
+                    return Functor(std::move(from));
                 }
-                if constexpr (std::is_copy_assignable_v<KeyEqual>) {
-                    other.key_equal_ = key_equal_;
-                }
+                return Functor(from);
             }
 
             /**
