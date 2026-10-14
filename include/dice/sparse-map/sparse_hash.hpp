@@ -2341,10 +2341,10 @@ namespace dice::sparse_map {
             };
 
             /**
-             * Creates a table with exactly `count` buckets, which must be 0 or a power of two that
-             * `max_bucket_count()` allows. The only constructor with a body: the public one rounds `bucket_count`
-             * and delegates here, and `rehash_impl` comes here directly with a count that it validated already, so
-             * that a rehash asks the allocator for its maximum size once.
+             * Creates a table with exactly `count` buckets, which must be 0 or a power of two of at least
+             * `min_bucket_count` that `max_bucket_count()` allows. The only constructor with a body: the public one
+             * rounds `bucket_count` and delegates here, and `rehash_impl` comes here directly with a count that it
+             * validated already, so that a rehash asks the allocator for its maximum size once.
              */
             template<typename Alloc>
             requires std::constructible_from<slot_allocator_type, Alloc const &>
@@ -2361,8 +2361,7 @@ namespace dice::sparse_map {
                 key_equal_(equal),
                 max_load_factor_(clamped_max_load_factor(max_load_factor)) {
                 DICE_SPARSE_MAP_ASSERT(
-                    count == 0
-                    || (std::has_single_bit(count) && count >= min_bucket_count && count <= max_bucket_count())
+                    count == 0 || (std::has_single_bit(count) && count >= min_bucket_count && count <= max_bucket_count())
                 );
                 if (count > 0) {
                     table_state state;
