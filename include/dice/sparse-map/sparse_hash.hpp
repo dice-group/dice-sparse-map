@@ -1136,16 +1136,14 @@ namespace dice::sparse_map {
             template<typename Alloc>
             requires std::constructible_from<slot_allocator_type, Alloc const &>
             constexpr sparse_hash(size_type bucket_count, Hash const &hash, KeyEqual const &equal, Alloc const &alloc, float max_load_factor)
-                : alloc_(alloc),
-                  hash_(hash),
-                  key_equal_(equal) {
-                bucket_count_ = rounded_bucket_count(bucket_count, max_bucket_count());
-                if (bucket_count_ > 0) {
-                    allocate_buckets(sparse_array::nb_sparse_buckets(bucket_count_));
-                }
-
-                this->max_load_factor(max_load_factor);
-
+                : sparse_hash(
+                      rounded_count_t{},
+                      rounded_bucket_count(bucket_count, max_bucket_count_of(slot_allocator_type(alloc))),
+                      hash,
+                      equal,
+                      alloc,
+                      max_load_factor
+                  ) {
                 // checked here instead of at class scope, so that value_type may be incomplete there
                 static_assert(nothrow_transferable<slot_type>,
                               "Key, and T if present, must be nothrow move constructible, or nothrow copy "
@@ -1680,12 +1678,7 @@ namespace dice::sparse_map {
              * cannot provide enough `sparse_array`s of `sparse_array::nb_buckets` buckets each
              */
             [[nodiscard]] constexpr size_type max_bucket_count() const noexcept {
-                constexpr std::uintmax_t largest_count = std::min<std::uintmax_t>(std::numeric_limits<size_type>::max(), std::numeric_limits<std::size_t>::max());
-                std::uintmax_t const max_nb_sparse_buckets = bucket_allocator_traits::max_size(bucket_allocator_type(alloc_));
-                std::uintmax_t const count = max_nb_sparse_buckets > largest_count / sparse_array::nb_buckets
-                                                 ? largest_count
-                                                 : max_nb_sparse_buckets * sparse_array::nb_buckets;
-                return static_cast<size_type>(std::bit_floor(count));
+                return max_bucket_count_of(alloc_);
             }
 
             /*
@@ -1830,11 +1823,60 @@ namespace dice::sparse_map {
             }
 
             /**
+             * @return the largest power of two that `size_type` and `std::size_t` can hold, or less if `alloc`
+             * cannot provide enough `sparse_array`s of `sparse_array::nb_buckets` buckets each. Takes the allocator
+             * as an argument, so that a constructor can ask before the table exists.
+             */
+            [[nodiscard]] static constexpr size_type max_bucket_count_of(slot_allocator_type const &alloc) noexcept {
+                constexpr std::uintmax_t largest_count = std::min<std::uintmax_t>(std::numeric_limits<size_type>::max(), std::numeric_limits<std::size_t>::max());
+                std::uintmax_t const max_nb_sparse_buckets = bucket_allocator_traits::max_size(bucket_allocator_type(alloc));
+                std::uintmax_t const count = max_nb_sparse_buckets > largest_count / sparse_array::nb_buckets
+                                                 ? largest_count
+                                                 : max_nb_sparse_buckets * sparse_array::nb_buckets;
+                return static_cast<size_type>(std::bit_floor(count));
+            }
+
+            /**
+             * Tag of the constructor that takes a bucket count which is rounded already.
+             */
+            struct rounded_count_t {
+                explicit rounded_count_t() = default;
+            };
+
+            /**
+             * Creates a table with exactly `count` buckets, which must be 0 or a power of two that
+             * `max_bucket_count()` allows. The only constructor with a body: the public one rounds `bucket_count`
+             * and delegates here, and `rehash_impl` comes here directly with a count that it validated already, so
+             * that a rehash asks the allocator for its maximum size once.
+             */
+            template<typename Alloc>
+            requires std::constructible_from<slot_allocator_type, Alloc const &>
+            constexpr sparse_hash(
+                rounded_count_t,
+                size_type count,
+                Hash const &hash,
+                KeyEqual const &equal,
+                Alloc const &alloc,
+                float max_load_factor
+            )
+                : alloc_(alloc),
+                  hash_(hash),
+                  key_equal_(equal) {
+                DICE_SPARSE_MAP_ASSERT(count == 0 || (std::has_single_bit(count) && count <= max_bucket_count()));
+                bucket_count_ = count;
+                if (bucket_count_ > 0) {
+                    allocate_buckets(sparse_array::nb_sparse_buckets(bucket_count_));
+                }
+
+                this->max_load_factor(max_load_factor);
+            }
+
+            /**
              * @return `bucket_count` rounded up to a power of two, or 0 for 0
              * @param max_count `max_bucket_count()`, passed in because it asks the allocator for its maximum size
              * @throws std::length_error if the result is larger than `max_count`
              */
-            [[nodiscard]] constexpr size_type rounded_bucket_count(size_type bucket_count, size_type max_count) const {
+            [[nodiscard]] static constexpr size_type rounded_bucket_count(size_type bucket_count, size_type max_count) {
                 if (bucket_count > max_count) {
                     throw std::length_error("The hash table exceeds its maximum size.");
                 }
@@ -2234,10 +2276,11 @@ namespace dice::sparse_map {
              */
             constexpr void rehash_at_least(size_type count, size_type max_count) {
                 count = std::max(count, bucket_count_for(size(), max_count));
-                if (nb_deleted_buckets_ == 0 && rounded_bucket_count(count, max_count) == bucket_count_) {
+                size_type const rounded = rounded_bucket_count(count, max_count);
+                if (nb_deleted_buckets_ == 0 && rounded == bucket_count_) {
                     return;
                 }
-                rehash_impl(count);
+                rehash_impl(rounded);
             }
 
             /**
@@ -2251,9 +2294,11 @@ namespace dice::sparse_map {
              *
              * The allocator throws here only with `sh::allocation_failure::throwing`. With
              * `sh::allocation_failure::terminating` a failed allocation ends the process.
+             * @param count the bucket count of the new table, 0 or a power of two that `max_bucket_count()` allows,
+             *              so that the new table does not ask the allocator for its maximum size again
              */
             constexpr void rehash_impl(size_type count) {
-                sparse_hash new_table(count, hash_, key_equal_, alloc_, max_load_factor_);
+                sparse_hash new_table(rounded_count_t{}, count, hash_, key_equal_, alloc_, max_load_factor_);
 
                 try {
                     for (sparse_array &bucket : buckets()) {
