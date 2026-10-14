@@ -799,7 +799,7 @@ namespace {
     using unequal_map = throwing_map<std::size_t, std::size_t, test_hash<std::size_t>, std::equal_to<std::size_t>, unequal_alloc>;
 
     /// the same with a hash whose move assignment throws
-    using fragile_unequal_map = throwing_map<std::size_t, std::size_t, fragile_hash, std::equal_to<std::size_t>, unequal_alloc>;
+    using fragile_unequal_map = throwing_map<std::size_t, std::size_t, fragile_test_hash, std::equal_to<std::size_t>, unequal_alloc>;
 
     /// the copy assignment of `copy_fragile_hash` throws while this is true
     bool hash_copies_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -883,9 +883,10 @@ TEST_CASE("a move assignment to an unequal allocator whose hash throws leaves th
         auto target = fragile_unequal_map{unequal_alloc{2, &counts}};
         target[5000] = 5000;
 
-        hash_moves_throw = true;
-        CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
-        hash_moves_throw = false;
+        {
+            auto const fragile = fragile_test_hash::fragile_moves{};
+            CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+        }
 
         CHECK(target.empty());
         check_holds(source, 0, 200);  // NOLINT(bugprone-use-after-move)
