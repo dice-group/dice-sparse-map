@@ -18,6 +18,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 /**
  * What a map holds after an allocation or the hash function failed in the middle of an operation. The allocations
@@ -781,3 +782,208 @@ TEST_CASE_TEMPLATE("a merge that throws in the clean-up rehash of the target lea
     CHECK(completed);
 }
 
+namespace {
+    /**
+     * Allocator with an id, like `id_allocator`, that also throws `std::bad_alloc` on the n-th allocation after a
+     * `bomb_after(n)` and counts the blocks it hands out. Instances with different ids compare unequal and nothing
+     * propagates, so a move between two of them moves the elements one by one.
+     */
+    template<typename T>
+    struct bombing_id_allocator {
+        using value_type = T;
+        using propagate_on_container_copy_assignment = std::false_type;
+        using propagate_on_container_move_assignment = std::false_type;
+        using propagate_on_container_swap = std::false_type;
+        using is_always_equal = std::false_type;
+
+        int id = 0;
+        alloc_counts *counts = nullptr;
+
+        bombing_id_allocator() noexcept = default;
+
+        explicit bombing_id_allocator(int id, alloc_counts *counts = nullptr) noexcept
+            : id(id),
+              counts(counts) {
+        }
+
+        template<typename U>
+        bombing_id_allocator(bombing_id_allocator<U> const &other) noexcept  // NOLINT(google-explicit-constructor)
+            : id(other.id),
+              counts(other.counts) {
+        }
+
+        template<typename U>
+        struct rebind {
+            using other = bombing_id_allocator<U>;
+        };
+
+        T *allocate(std::size_t n) {
+            T *const p = bombing_allocator<T>{}.allocate(n);
+            if (counts != nullptr && n != 0) {
+                ++counts->allocations;
+            }
+            return p;
+        }
+
+        void deallocate(T *p, std::size_t n) noexcept {
+            if (counts != nullptr && n != 0) {
+                ++counts->deallocations;
+            }
+            bombing_allocator<T>{}.deallocate(p, n);
+        }
+
+        friend bool operator==(bombing_id_allocator const &lhs, bombing_id_allocator const &rhs) noexcept {
+            return lhs.id == rhs.id;
+        }
+    };
+
+    using unequal_alloc = bombing_id_allocator<std::pair<std::size_t, std::size_t>>;
+
+    /// a map whose allocator has an id, so that two of them move the elements one by one
+    using unequal_map = throwing_map<std::size_t, std::size_t, test_hash<std::size_t>, std::equal_to<std::size_t>, unequal_alloc>;
+
+    /// the same with a hash whose move assignment throws
+    using fragile_unequal_map = throwing_map<std::size_t, std::size_t, fragile_hash, std::equal_to<std::size_t>, unequal_alloc>;
+
+    /// the copy assignment of `copy_fragile_hash` throws while this is true
+    bool hash_copies_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * A hash with state whose copy assignment throws while `hash_copies_throw` is true. The state goes into the
+     * hash value, so a moved-from one hashes differently and no longer finds the elements of its table.
+     */
+    struct copy_fragile_hash {
+        using is_avalanching = void;
+
+        std::vector<std::size_t> seed = std::vector<std::size_t>(3);
+
+        copy_fragile_hash() = default;
+        copy_fragile_hash(copy_fragile_hash const &) = default;
+        copy_fragile_hash(copy_fragile_hash &&) = default;
+        copy_fragile_hash &operator=(copy_fragile_hash &&) = default;
+        ~copy_fragile_hash() = default;
+
+        copy_fragile_hash &operator=(copy_fragile_hash const & /*other*/) {
+            if (hash_copies_throw) {
+                throw std::runtime_error("copy_fragile_hash copy assignment");
+            }
+            return *this;
+        }
+
+        std::size_t operator()(std::size_t key) const noexcept {
+            return test_hash<std::size_t>{}(key + seed.size());
+        }
+    };
+
+    using copy_fragile_map = throwing_map<std::size_t, std::size_t, copy_fragile_hash, std::equal_to<std::size_t>, unequal_alloc>;
+}  // namespace
+
+// The move assignment to an unequal allocator moves the elements one by one into new groups. An allocation that
+// fails while they move leaves the target empty and the source with all of its elements, because the target takes
+// the groups of the source only after every element was moved.
+TEST_CASE("a move assignment to an unequal allocator that fails to allocate leaves the target empty") {
+    auto counts = alloc_counts{};
+    std::size_t emptied = 0;
+    bool completed = false;
+    for (int budget = 0; budget < max_budget && !completed; ++budget) {
+        CAPTURE(budget);
+        {
+            auto source = unequal_map{unequal_alloc{1, &counts}};
+            for (std::size_t key = 0; key < 200; ++key) {
+                source[key] = key;
+            }
+            auto target = unequal_map{unequal_alloc{2, &counts}};
+            target[5000] = 5000;
+
+            try {
+                auto const bomb = bomb_after{budget};
+                target = std::move(source);
+                completed = true;
+            } catch (std::bad_alloc const &) {
+                CHECK(target.empty());
+                check_holds(source, 0, 200);  // NOLINT(bugprone-use-after-move)
+                ++emptied;
+            }
+            if (completed) {
+                check_holds(target, 0, 200);
+                CHECK(source.empty());  // NOLINT(bugprone-use-after-move)
+            }
+        }
+        CHECK(counts.allocations == counts.deallocations);
+    }
+    CHECK(emptied > 0);
+    CHECK(completed);
+}
+
+// The move assignment moves the functors after the elements, so that the source keeps its own while they move. If a
+// functor move throws, the target gives the groups it built back and stays empty.
+TEST_CASE("a move assignment to an unequal allocator whose hash throws leaves the target empty") {
+    auto counts = alloc_counts{};
+    {
+        auto source = fragile_unequal_map{unequal_alloc{1, &counts}};
+        for (std::size_t key = 0; key < 200; ++key) {
+            source[key] = key;
+        }
+        auto target = fragile_unequal_map{unequal_alloc{2, &counts}};
+        target[5000] = 5000;
+
+        hash_moves_throw = true;
+        CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+        hash_moves_throw = false;
+
+        CHECK(target.empty());
+        check_holds(source, 0, 200);  // NOLINT(bugprone-use-after-move)
+    }
+    CHECK(counts.allocations == counts.deallocations);
+}
+
+// The allocator-extended move constructor moves the elements one by one into new groups as well. The source keeps
+// its own functors, so it still finds its elements if an allocation fails while they move.
+TEST_CASE("a move construction with an unequal allocator that fails to allocate leaves the source usable") {
+    auto counts = alloc_counts{};
+    std::size_t failures = 0;
+    bool completed = false;
+    for (int budget = 0; budget < max_budget && !completed; ++budget) {
+        CAPTURE(budget);
+        {
+            auto source = unequal_map{unequal_alloc{1, &counts}};
+            for (std::size_t key = 0; key < 200; ++key) {
+                source[key] = key;
+            }
+
+            try {
+                auto const bomb = bomb_after{budget};
+                auto const moved = unequal_map{std::move(source), unequal_alloc{2, &counts}};
+                completed = true;
+                check_holds(moved, 0, 200);
+                CHECK(source.empty());  // NOLINT(bugprone-use-after-move)
+            } catch (std::bad_alloc const &) {
+                check_holds(source, 0, 200);  // NOLINT(bugprone-use-after-move)
+                ++failures;
+            }
+        }
+        CHECK(counts.allocations == counts.deallocations);
+    }
+    CHECK(failures > 0);
+    CHECK(completed);
+}
+
+// The constructor copies the functors of the source on the path with the unequal allocator instead of moving them
+// out and giving copies back, so it never copy assigns a functor of the source.
+TEST_CASE("a move construction with an unequal allocator does not copy assign the functors of the source") {
+    auto counts = alloc_counts{};
+    {
+        auto source = copy_fragile_map{unequal_alloc{1, &counts}};
+        for (std::size_t key = 0; key < 100; ++key) {
+            source[key] = key;
+        }
+
+        hash_copies_throw = true;
+        auto const moved = copy_fragile_map{std::move(source), unequal_alloc{2, &counts}};
+        hash_copies_throw = false;
+
+        check_holds(moved, 0, 100);
+        CHECK(source.empty());  // NOLINT(bugprone-use-after-move)
+    }
+    CHECK(counts.allocations == counts.deallocations);
+}
