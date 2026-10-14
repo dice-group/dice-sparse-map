@@ -20,10 +20,10 @@ Everything is relative to `dice::sparse_map::sparse_map<Key, std::size_t>` with 
 
 | panel | one operation is | `sparse_map<uint64_t, size_t>` | `sparse_map<std::string, size_t>` |
 |---|---|---|---|
-| build + destroy | one insert into an empty map, nothing reserved, plus its share of destroying the map | 53.2 ns | 299 ns |
-| find | one lookup, half of them for keys in the map | 30.9 ns | 143 ns |
-| churn | one erase plus one insert of a key that is not in the map, at a fixed size | 115 ns | 609 ns |
-| iterate | one element of a full pass, summing the mapped value | 0.972 ns | 2.61 ns |
+| build + destroy | one insert into an empty map, nothing reserved, plus its share of destroying the map | 53.1 ns | 302 ns |
+| find | one lookup, half of them for keys in the map | 30.9 ns | 142 ns |
+| churn | one erase plus one insert of a key that is not in the map, at a fixed size | 117 ns | 600 ns |
+| iterate | one element of a full pass, summing the mapped value | 0.986 ns | 2.62 ns |
 | peak memory | one entry's share of the highest resident set while building, baseline subtracted | 22.1 bytes | 106 bytes |
 
 The `geomean` column is only the sort key. The axis of `iterate` ends at 10 and the other axes at
@@ -33,11 +33,11 @@ The `geomean` column is only the sort key. The axis of `iterate` ends at 10 and 
 
 **Peak memory.** With `uint64_t` keys a `sparse_map` entry costs 22.1 bytes of peak resident memory. The flat maps need 2.20x (`unordered_dense`) to 2.65x (`boost`) of that, the node maps 2.06x and 2.18x. Counted as bytes requested from the heap (`memory` in the CSV), it is 19.2 bytes per entry against 40.5 to 48.0, for an entry of 16 bytes. Two things keep it small. A group of 64 buckets stores only its occupied buckets, so an empty bucket costs half a byte (its two bits and its share of the group header). And a rehash moves one old group after the other and frees each old group right after, so the values are never in memory twice. A flat map that doubles holds its old and its new array at the same moment, and with the 64 MiB trim threshold of this harness the old array stays resident after it is freed. With `std::string` keys the keys themselves take about 100 bytes per entry for every map (the `std::string`, the `size_t` and on average 60 bytes of characters on the heap). `sparse_map` needs 106 bytes, the others 1.15x to 1.41x of that.
 
-**Find.** A `uint64_t` lookup takes 30.9 ns. `boost` needs 0.66 of that, `absl` 0.72, `unordered_dense` 0.87, `absl node` 0.98 and `std::unordered_map` 1.79. With `std::string` keys `sparse_map` takes 143 ns. `absl node` needs 0.80 of that, `absl` 0.82, `unordered_dense` 0.92, `boost` 1.04 and `std::unordered_map` 1.57. A probe of `sparse_map` compares the key of every occupied bucket it visits, while the flat maps first compare a one byte fingerprint. With strings, a key comparison reads the characters on the heap. Every map has its own string hash: `sparse_map` uses `dice::hash::DiceHash` with wyhash, `std::unordered_map` uses `std::hash<std::string>`. The sparsity does not change a lookup.
+**Find.** A `uint64_t` lookup takes 30.9 ns. `boost` needs 0.69 of that, `absl` 0.72, `unordered_dense` 0.87, `absl node` 0.98 and `std::unordered_map` 1.82. With `std::string` keys `sparse_map` takes 142 ns. `absl node` and `absl` need 0.82 of that, `unordered_dense` 0.93, `boost` 1.05 and `std::unordered_map` 1.58. A probe of `sparse_map` compares the key of every occupied bucket it visits, while the flat maps first compare a one byte fingerprint. With strings, a key comparison reads the characters on the heap. Every map has its own string hash: `sparse_map` uses `dice::hash::DiceHash` with wyhash, `std::unordered_map` uses `std::hash<std::string>`. The sparsity does not change a lookup.
 
-**Build and churn.** One insert plus its share of the destructor takes 53.2 ns with `uint64_t` keys. The flat maps need 0.29 to 0.36 of that, `absl node` 1.52 and `std::unordered_map` 2.51. With strings it is 299 ns, the flat maps need 0.35 (`unordered_dense`) to 0.61. An insert into a group moves the values behind the new one by one place, and when the values array of the group is full, it allocates a larger one (4 more slots with sparsity medium) and moves all values of the group. A flat map writes one slot. `churn` (one erase plus one insert at a fixed size) costs 115 ns with `uint64_t` keys, and the flat maps need 0.32 to 0.52 of that. An erase moves the values behind the erased one to the front and leaves a deleted bucket. When the elements and the deleted buckets reach 75% of the buckets, the map rehashes to clear the deleted buckets.
+**Build and churn.** One insert plus its share of the destructor takes 53.1 ns with `uint64_t` keys. The flat maps need 0.29 to 0.37 of that, `absl node` 1.49 and `std::unordered_map` 2.52. With strings it is 302 ns, the flat maps need 0.35 (`unordered_dense`) to 0.60. An insert into a group moves the values behind the new one by one place, and when the values array of the group is full, it allocates a larger one (4 more slots with sparsity medium) and moves all values of the group. A flat map writes one slot. `churn` (one erase plus one insert at a fixed size) costs 117 ns with `uint64_t` keys, and the flat maps need 0.33 to 0.52 of that. An erase moves the values behind the erased one to the front and leaves a deleted bucket. When the elements and the deleted buckets reach 75% of the buckets, the map rehashes to clear the deleted buckets.
 
-**Iteration.** A full pass costs 0.972 ns per element with `uint64_t` keys. `sparse_map` walks the groups and reads the values of each group from one array. `unordered_dense` keeps all values in one array and needs 0.39 of that. `boost` needs 1.92, `absl` 2.85, `absl node` 5.72 and `std::unordered_map` 21.6. With strings the values are 40 bytes instead of 16. `unordered_dense` needs 0.49, `absl` 1.27 and `boost` 1.32.
+**Iteration.** A full pass costs 0.986 ns per element with `uint64_t` keys. `sparse_map` walks the groups and reads the values of each group from one array. `unordered_dense` keeps all values in one array and needs 0.38 of that. `boost` needs 1.88, `absl` 2.81, `absl node` 5.57 and `std::unordered_map` 22.6. With strings the values are 40 bytes instead of 16. `unordered_dense` needs 0.49, `absl` 1.27 and `boost` 1.33.
 
 ## With metall's allocator
 
@@ -76,11 +76,11 @@ Second, the arrays of the flat maps are large blocks (more than 1 MiB). metall p
 
 With `std::string` keys the characters of the keys are on the heap, not in the datastore: `std::string` allocates with `std::allocator`. So the disk usage counts the table only. `sparse_map` takes 75.9 bytes per entry at the peak, `unordered_dense` needs 0.97x of that, `std::unordered_map` 0.91x and `boost` 1.39x. The peak resident set counts the characters too, about 60 bytes per key, and is 133 bytes for `sparse_map`. The values of `sparse_map` are 40 bytes, so its arrays grow in steps of 160 bytes, and several of these sizes fall between two size classes of metall: an array of 1120 bytes takes a block of 1280.
 
-**Find.** `sparse_map` costs about the same as with `std::allocator`: 31.1 ns with `uint64_t` keys and 145 ns with strings (30.9 ns and 143 ns). The `offset_ptr` costs its lookup nothing that shows here. `boost` needs 0.81 (25.2 ns, 1.23x of its time with `std::allocator`). `unordered_dense` with `boost::container::vector` needs 1.82 (56.4 ns, 2.09x of its time with `std::allocator`).
+**Find.** `sparse_map` costs about the same as with `std::allocator`: 31.3 ns with `uint64_t` keys and 144 ns with strings (30.9 ns and 142 ns). The `offset_ptr` costs its lookup nothing that shows here. `boost` needs 0.82 (25.8 ns, 1.21x of its time with `std::allocator`). `unordered_dense` with `boost::container::vector` needs 1.88 (58.8 ns, 2.18x of its time with `std::allocator`).
 
-**Build, churn and iterate.** Every insert that allocates pays more with metall. One insert plus its share of the destructor costs `sparse_map` 75.7 ns with `uint64_t` keys (1.42x of `std::allocator`). `boost` needs 0.53 of that, `unordered_dense` 0.73 and `std::unordered_map` 1.51. With `uint64_t` keys `churn` costs 122 ns, `boost` needs 0.41 and `unordered_dense` 0.97. A full pass costs 0.973 ns per element, `unordered_dense` needs 0.53 and `boost` 2.61.
+**Build, churn and iterate.** Every insert that allocates pays more with metall. One insert plus its share of the destructor costs `sparse_map` 75.3 ns with `uint64_t` keys (1.42x of `std::allocator`). `boost` needs 0.54 of that, `unordered_dense` 0.74 and `std::unordered_map` 1.55. With `uint64_t` keys `churn` costs 127 ns, `boost` needs 0.41 and `unordered_dense` 0.96. A full pass costs 1.01 ns per element, `unordered_dense` needs 0.52 and `boost` 2.52.
 
-Sorted by the geomean of the five panels, `unordered_dense` with a boost vector and `boost::unordered_flat_map` come before `sparse_map` with metall and `uint64_t` keys, as with `std::allocator`. Both are relocatable. With `std::string` keys `unordered_dense` comes first, and `boost` (1.02) comes after `sparse_map` with the sparsities medium and low. `sparse_map` keeps the smallest peak disk usage with `uint64_t` keys, and `std::unordered_map` is last by far and cannot be opened again.
+Sorted by the geomean of the five panels, `unordered_dense` with a boost vector and `boost::unordered_flat_map` come before `sparse_map` with metall and `uint64_t` keys, as with `std::allocator`. Both are relocatable. With `std::string` keys `unordered_dense` comes first, and `boost` (1.03) comes after `sparse_map` with all three sparsities, level with sparsity high. `sparse_map` keeps the smallest peak disk usage with `uint64_t` keys, and `std::unordered_map` is last by far and cannot be opened again.
 
 ## Sparsity
 
@@ -90,10 +90,10 @@ The sparsity changes the memory and the cost of an insertion, not a lookup. Rela
 |---|---:|---:|---:|---:|
 | bytes requested per entry | 0.96 | 1.07 | 0.98 | 1.03 |
 | peak memory | 0.95 | 1.09 | 0.98 | 1.04 |
-| build + destroy | 1.20 | 0.87 | 1.20 | 0.93 |
-| find | 0.97 | 0.98 | 0.99 | 0.99 |
-| churn | 1.01 | 1.02 | 1.01 | 0.99 |
-| iterate | 0.95 | 1.10 | 1.00 | 1.00 |
+| build + destroy | 1.22 | 0.88 | 1.18 | 0.92 |
+| find | 0.98 | 1.01 | 1.00 | 1.00 |
+| churn | 1.00 | 1.02 | 1.02 | 1.00 |
+| iterate | 0.96 | 1.10 | 1.01 | 0.99 |
 
 With metall the picture is the same, except for the peak memory and the peak disk usage, which differ by at most 3.1 % between the three.
 
@@ -106,25 +106,25 @@ table is relative to `sparse_map` (in brackets the value of the plots, at 1 to 1
 
 | panel | `unordered_dense` | `boost` | `absl` | `absl node` | `std::unordered_map` |
 |---|---:|---:|---:|---:|---:|
-| build + destroy | 0.39 (0.36) | 0.27 (0.31) | 0.30 (0.29) | 1.73 (1.52) | 3.33 (2.51) |
-| find | 0.90 (0.87) | 0.70 (0.66) | 0.68 (0.72) | 0.84 (0.98) | 1.49 (1.79) |
-| churn | 0.62 (0.48) | 0.38 (0.32) | 0.54 (0.52) | 1.03 (1.09) | 1.64 (1.77) |
-| iterate | 0.34 (0.39) | 0.85 (1.92) | 1.45 (2.85) | 3.48 (5.72) | 28.3 (21.6) |
+| build + destroy | 0.39 (0.37) | 0.27 (0.31) | 0.30 (0.29) | 1.73 (1.49) | 3.35 (2.52) |
+| find | 0.88 (0.87) | 0.69 (0.69) | 0.67 (0.72) | 0.84 (0.98) | 1.47 (1.82) |
+| churn | 0.61 (0.47) | 0.37 (0.33) | 0.54 (0.52) | 1.01 (1.07) | 1.62 (1.79) |
+| iterate | 0.33 (0.38) | 0.85 (1.88) | 1.45 (2.81) | 3.51 (5.57) | 28.1 (22.6) |
 | peak memory | 1.52 (2.20) | 1.84 (2.65) | 1.95 (2.45) | 2.26 (2.18) | 2.02 (2.06) |
 | bytes requested | 2.26 (2.21) | 2.07 (2.28) | 2.20 (2.11) | 2.55 (2.50) | 2.28 (2.35) |
 
-`sparse_map` needs 2.23 ns per element for a full pass instead of 0.972 ns. Every group keeps its values in its own
+`sparse_map` needs 2.22 ns per element for a full pass instead of 0.986 ns. Every group keeps its values in its own
 block on the heap, so the pass reads one block per group, while a flat map reads one array from front to back.
 `boost`, which iterates slower than `sparse_map` at 1 million, is faster at 10 million, and `absl` needs 1.45 instead
-of 2.85. One insert with its share of the destructor takes 107 ns instead of 53.2 ns, 2.0 times as long, and 1.7
-(`boost`) to 2.1 times as long in the flat maps. A lookup takes 1.8 to 1.9 times as long in `sparse_map`,
+of 2.81. One insert with its share of the destructor takes 106 ns instead of 53.1 ns, 2.0 times as long, and 1.7
+(`boost`) to 2.1 times as long in the flat maps. A lookup takes 1.8 times as long in `sparse_map`,
 `unordered_dense` and `boost`, and 1.7 times as long in `absl`. The bytes requested do not change. The peak resident
 set of the flat maps is smaller at 10 million, because their arrays are larger than the 64 MiB `M_MMAP_THRESHOLD` of
 the harness and `free` gives them back to the kernel at once.
 
 ## How the numbers were taken
 
-- The headers of `dice::sparse_map` are those of commit `45e5786` of this repository.
+- The headers of `dice::sparse_map` are those of commit `115ac93` of this repository.
 - Every map is in the configuration you get by typing its type name, its own default hash
   included. For `dice::sparse_map::sparse_map` that is
   `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of dice-hash 0.6.0. The other benchmarks in
@@ -150,7 +150,7 @@ the harness and `free` gives them back to the kernel at once.
   maps do not double at the same size, so a ratio at one size compares two random points of two
   cycles.
 - About 10 million operations per size and panel, after one run of the same work that is not
-  timed. Three rounds, each a new container, with the rounds outermost. The numbers are the medians of the rounds. Between the rounds a cell moved by 1.7 % (median of all timed cells) and by at most 13.0 % (`iterate` of `std::unordered_map` with metall and `uint64_t` keys).
+  timed. Three rounds, each a new container, with the rounds outermost. The numbers are the medians of the rounds. Between the rounds a cell moved by 1.3 % (median of all timed cells) and by at most 18.7 % (`iterate` of `sparse_map` with `std::allocator` and `uint64_t` keys, the panel of about one nanosecond).
 - Peak memory is `VmHWM` of a forked child that builds the map, reset through
   `/proc/self/clear_refs` before the build, minus the resident set before the build and minus what
   the same child reads without a map. The key pools are built before the fork and are not counted.
@@ -190,12 +190,12 @@ the harness and `free` gives them back to the kernel at once.
 - Intel Core i9-14900K (8 performance cores with two threads each and 16 efficiency cores, 36 MB
   of L3 shared by all cores), Ubuntu 24.04 in a Docker container, clang 20.1.8 with libstdc++ 14,
   `-O3 -DNDEBUG -march=x86-64-v2` (CMake `Release`). Every process pinned to CPU 2, a thread of a
-  performance core, with `docker run --cpuset-cpus=2`. The load average (1 minute) was 1.05 to
-  1.95 during the runs, except in the first three minutes, in which it still fell from 10.0 after
-  the build. Run on 6 October 2026. Boost 1.91.0, abseil 20250814.2, unordered_dense 5.2.0, metall
-  0.36-pre2 (the develop branch of [dice-group/metall](https://github.com/dice-group/metall), the
-  conan package `metall/0.36-pre2@tentris/develop`), dice-hash 0.6.0, all from conan. conan builds
-  abseil's library with its default flags, not with `-march=x86-64-v2`.
+  performance core, with `docker run --cpuset-cpus=2`. The load average (1 minute) was 0.56 to
+  1.79 during the runs. Run on 14 October 2026. Boost 1.91.0, abseil 20250814.2,
+  unordered_dense 5.2.0, metall 0.36-pre2 (the develop branch of
+  [dice-group/metall](https://github.com/dice-group/metall), the conan package
+  `metall/0.36-pre2@tentris/develop`), dice-hash 0.6.0, all from conan. conan builds abseil's
+  library with its default flags, not with `-march=x86-64-v2`.
 
 ```sh
 cmake -G Ninja -B build-readme -DCMAKE_BUILD_TYPE=Release -DBUILD_README_BENCHMARKS=ON \
@@ -221,7 +221,7 @@ benchmarks/readme/plot.py bench_readme.csv doc --not-relocatable=std
 - With `std::string` keys every map uses another hash. Part of a difference between two maps with string keys is the hash, not the table.
 - Every map is in its default configuration. No map got `reserve`, a better hash or a different load factor, which would change the numbers of some maps a lot.
 - `iterate` is a full pass over every element, which many programs never do.
-- One machine, one compiler, one standard library. A difference of a few percent between two maps is a tie: a cell moves by up to 13 % between rounds.
+- One machine, one compiler, one standard library. A difference of a few percent between two maps is a tie: a cell moves by up to 19 % between rounds.
 
 ## Allocated memory over time
 
@@ -236,15 +236,15 @@ the map was constructed. All maps use `std::allocator`, and the plot has
 
 | map | peak | after the inserts | runtime of the plotted run | runtime without counting |
 |---|---:|---:|---:|---:|
-| `dice::sparse_map::sparse_map`, sparsity high | 185.5 MB | 185.5 MB | 1.637 s | 1.280 s |
-| `dice::sparse_map::sparse_map`, sparsity medium | 193.7 MB | 193.7 MB | 1.289 s | 1.136 s |
-| `dice::sparse_map::sparse_map`, sparsity low | 210.5 MB | 210.5 MB | 1.113 s | 1.018 s |
-| `ankerl::unordered_dense::map` | 494.9 MB | 360.7 MB | 0.385 s | 0.386 s |
-| `ankerl::unordered_dense::segmented_map` | 253.1 MB | 253.1 MB | 0.318 s | 0.321 s |
-| `boost::unordered_flat_map` | 402.7 MB | 268.4 MB | 0.271 s | 0.281 s |
-| `absl::flat_hash_map` | 427.8 MB | 285.2 MB | 0.328 s | 0.359 s |
-| `std::unordered_map` | 336.9 MB | 336.9 MB | 2.661 s | 2.575 s |
-| `absl::node_hash_map` | 402.7 MB | 391.0 MB | 1.325 s | 0.857 s |
+| `dice::sparse_map::sparse_map`, sparsity high | 185.5 MB | 185.5 MB | 1.652 s | 1.302 s |
+| `dice::sparse_map::sparse_map`, sparsity medium | 193.7 MB | 193.7 MB | 1.299 s | 1.093 s |
+| `dice::sparse_map::sparse_map`, sparsity low | 210.5 MB | 210.5 MB | 1.130 s | 1.014 s |
+| `ankerl::unordered_dense::map` | 494.9 MB | 360.7 MB | 0.378 s | 0.386 s |
+| `ankerl::unordered_dense::segmented_map` | 253.1 MB | 253.1 MB | 0.321 s | 0.322 s |
+| `boost::unordered_flat_map` | 402.7 MB | 268.4 MB | 0.271 s | 0.279 s |
+| `absl::flat_hash_map` | 427.8 MB | 285.2 MB | 0.338 s | 0.351 s |
+| `std::unordered_map` | 336.9 MB | 336.9 MB | 2.674 s | 2.571 s |
+| `absl::node_hash_map` | 402.7 MB | 391.0 MB | 1.320 s | 0.859 s |
 
 The program counts the bytes, and they are the same to the byte in all three rounds. The runtime
 of the plotted run includes the cost of the recording. The runtime without counting is the median
@@ -274,13 +274,13 @@ peak is at the end of the inserts.
 allocate a node for every insert and free every node in the destructor: 20 million allocations and
 frees. Their array of buckets doubles too.
 
-**Runtime.** Without counting, `sparse_map` with sparsity medium takes 1.14 s for the 10 million
+**Runtime.** Without counting, `sparse_map` with sparsity medium takes 1.09 s for the 10 million
 inserts and the destructor. The flat maps take 0.28 to 0.39 s, `absl::node_hash_map` 0.86 s and
 `std::unordered_map` 2.57 s. The x axis of the plot is the runtime of the run that records every
-event, and the recording costs time per event. So the lines of `sparse_map` are 9 % (sparsity low)
-to 28 % (sparsity high) longer than its runtime without counting, the line of
-`absl::node_hash_map` 55 % and the line of `std::unordered_map` 3 %. The flat maps make at most
-78,198 allocations and frees, and their plotted runs are 0.4 % to 8.5 % shorter than their runs
+event, and the recording costs time per event. So the lines of `sparse_map` are 11 % (sparsity low)
+to 27 % (sparsity high) longer than its runtime without counting, the line of
+`absl::node_hash_map` 54 % and the line of `std::unordered_map` 4 %. The flat maps make at most
+78,198 allocations and frees, and their plotted runs are 0.3 % to 3.7 % shorter than their runs
 without counting.
 
 How the timeline was taken:
@@ -301,13 +301,13 @@ How the timeline was taken:
   buffer), and a binary without the replaced `malloc` (the runtime without counting). Odd rounds run
   the maps in the order of their names, even rounds in reverse. The plot shows per map the run with
   the median runtime of the three runs that record every event. Between the rounds, the runtime
-  without counting moved by 1.1 % (`segmented_map`) to 7.1 % (`unordered_dense::map`) (largest
+  without counting moved by 0.2 % (`absl::node_hash_map`) to 16.2 % (sparsity high) (largest
   minus smallest, over the median).
 - The machine and the build of the panels (see
   [How the numbers were taken](#how-the-numbers-were-taken)): Intel Core i9-14900K, clang 20.1.8
   with libstdc++ 14, `-O3 -DNDEBUG -march=x86-64-v2`, `M_MMAP_THRESHOLD` and `M_TRIM_THRESHOLD` of
   glibc at 64 MiB. Every process pinned to CPU 2 with `docker run --cpuset-cpus=2`, load average
-  (1 minute) 1.17 to 1.33 during the runs. Run on 6 October 2026.
+  (1 minute) 1.31 to 1.50 during the runs. Run on 14 October 2026.
 - One size. At 10 million entries every map is at another point between two doublings, so the
   ratios change with the size. The panels use five sizes for this reason.
 - Bytes allocated, not resident memory. A freed block can stay resident in the heap of glibc, and
