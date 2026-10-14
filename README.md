@@ -11,7 +11,7 @@ Compromises:
 - **Speed traded for memory:** lookups and insertions are slower than in flat and dense maps like `ankerl::unordered_dense::map`, and iteration is slower than in `unordered_dense`, which keeps all values in one array (see the [benchmarks](#benchmarks)).
 - **Needs an avalanching hash function:** the bucket comes from the low bits of the hash as it is. A `static_assert` rejects a hash function that is not marked as avalanching. The default hash function `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` is marked for every key type it hashes, and a `dice_hash_overload` for your own key type must keep the avalanche (see [hash functions](doc/usage.md#hash-functions)).
 - **Allocation failure ends the process:** by default a failed allocation calls `std::abort()`. With `dice::sparse_map::sh::allocation_failure::throwing` the exception of the allocator propagates (see [allocation failure](doc/usage.md#allocation-failure)).
-- **Exception safety:** if a rehash of elements with a `noexcept` move constructor throws (the hash function, or the allocator with `sh::allocation_failure::throwing`), the exception reaches the caller and the map is empty, so refill it or drop it. Elements whose move can throw are copied and stay unchanged.
+- **Exception safety:** if a rehash throws (the hash function, or the allocator with `sh::allocation_failure::throwing`), the exception reaches the caller and the map is empty, so refill it or drop it.
 
 ## Usage
 

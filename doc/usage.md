@@ -110,8 +110,8 @@ All member functions are `constexpr`. A map or a set works in a constant express
 - **Maximum load factor.** The default is 0.5, and `max_load_factor(float)` clamps its argument to [0.1, 0.8]. `std::unordered_map` defaults to 1.0 and accepts any positive value.
 - `mutable_iterator(const_iterator)` turns a `const_iterator` into an `iterator`.
 - `emplace` constructs the element first, and inserts it if its key is not in the container yet. `try_emplace` constructs nothing if the key is there.
-- There is no bucket interface beyond `bucket_count`, and there are no node handles. `merge` moves the elements, or copies them if their move constructor can throw, instead of transferring nodes.
-- Keys and mapped values must be nothrow move constructible or copy constructible. The behaviour is undefined if the destructor of a key or a mapped value throws. If they are nothrow move constructible, their move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption. If they are also nothrow move assignable, an insertion or an erasure moves the elements after it in its group of 64 buckets with their move assignment, as `std::vector::insert` and `std::vector::erase` do.
+- There is no bucket interface beyond `bucket_count`, and there are no node handles. `merge` moves the elements instead of transferring nodes.
+- Keys and mapped values must be nothrow move constructible, or nothrow copy constructible without a move constructor. An insertion or an erasure transfers the elements after it in its group of 64 buckets, and a transfer that throws halfway cannot be undone, so a type that can throw while it is transferred is rejected with a `static_assert`. A type without a move constructor is copied instead. The behaviour is undefined if the destructor of a key or a mapped value throws. The move through the allocator (`std::allocator_traits::construct`) must not throw either. With a scoped or a polymorphic allocator, that is the allocator-extended move constructor, which does not throw for equal allocators. `std::vector` makes the same assumption. If the types are also nothrow move assignable, the transfer inside a group uses their move assignment, as `std::vector::insert` and `std::vector::erase` do.
 
 ## Heterogeneous lookup
 
@@ -170,7 +170,7 @@ The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wy
 
 ## Sparsity
 
-The `Sparsity` template parameter trades insertion speed for memory. With `sh::sparsity::high` a group grows its storage by 2 elements at a time, with `sh::sparsity::medium` (default) by 4, with `sh::sparsity::low` by 8. A higher sparsity needs less memory and builds a map slower. The lookup speed does not depend on it. For elements whose move constructor can throw, a group holds memory of the exact size and `Sparsity` has no effect (see [insertion and erasure in a group](design.md#insertion-and-erasure-in-a-group)).
+The `Sparsity` template parameter trades insertion speed for memory. With `sh::sparsity::high` a group grows its storage by 2 elements at a time, with `sh::sparsity::medium` (default) by 4, with `sh::sparsity::low` by 8. A higher sparsity needs less memory and builds a map slower. The lookup speed does not depend on it.
 
 | sparsity | bytes per element, `uint64_t -> uint64_t` | bytes per element, `std::string -> uint64_t` | build, `uint64_t -> size_t` | build, `std::string -> size_t` |
 |---|---:|---:|---:|---:|
@@ -193,12 +193,11 @@ In both modes a size limit of the container throws `std::length_error`, and an a
 
 The guarantee follows from the type of the elements. If the insertion of one element throws, the container holds the same elements as before, except in one case: a rehash can leave the container empty. An insertion, `merge`, `rehash` or `reserve` can rehash. Calling `reserve` beforehand avoids rehashes. How a rehash transfers the elements depends on their type:
 
-- Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old buckets is freed while they are moved. If the hash function throws while the elements are moved, or the allocator with `sh::allocation_failure::throwing`, the container is empty. Any other exception leaves the container unchanged.
-- Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and the new buckets are in memory at the same time. An exception leaves the container unchanged.
+- The elements are moved in the order of their buckets. The memory of the old buckets is freed while they are moved. If the hash function throws while the elements are moved, or the allocator with `sh::allocation_failure::throwing`, the container is empty. Any other exception leaves the container unchanged.
 
 If `merge` throws, the element that was being merged and the ones after it stay in the source. The ones merged before are in the target, unless a rehash of the target emptied it (see above).
 
-`erase` does not throw, unless the hash function or the key equality throws. An erased element whose move constructor can throw keeps its memory for a while, see [insertion and erasure in a group](design.md#insertion-and-erasure-in-a-group).
+`erase` does not throw, unless the hash function or the key equality throws. `erase` of an iterator is `noexcept`.
 
 ## Allocators and metall
 
@@ -227,7 +226,6 @@ A type that keeps a raw pointer, like `std::string`, cannot live in persistent m
 
 ## Optimization
 
-- Make sure that `Key` and `T` have a `noexcept` move constructor. Without it the containers still work, but insertions copy elements and are much slower.
 - Make sure that `Key` and `T` also have a `noexcept` move assignment. Without it, an insertion or an erasure moves the elements of a group by construction and destruction through the allocator, which is slower, most of all with an allocator that has its own `construct` and `destroy`, like the allocator of metall.
 - The library uses `std::popcount`. Compile with `-mpopcnt` or `-march=native` (x86) so that it becomes one instruction.
 - Define `DICE_SPARSE_MAP_DEBUG` (or `TSL_DEBUG`) to enable internal consistency checks.
