@@ -3,12 +3,10 @@
 #include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
-#include <dice/sparse-map/sparse_set.hpp>
 
 #include <doctest/doctest.h>
 
 #include <array>
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -24,8 +22,8 @@ using namespace dice::sparse_map::tests;
 /*
  * A group copies trivially copyable values as bytes (`sparse_array::copies_bytes`) when the allocator has no
  * `construct` and no `destroy` of its own: when it grows its storage, and when it is copied or moved into new
- * storage. A group with holes copies one by one. The static assertions check which groups do that. The test cases
- * run these paths against `std::unordered_map`, and copy and move a set whose group has a hole.
+ * storage. The static assertions check which groups do that. The test cases run these paths against
+ * `std::unordered_map`.
  */
 
 namespace {
