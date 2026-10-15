@@ -853,15 +853,8 @@ namespace dice::sparse_map {
                     destroy_value(alloc, raw_values + i - 1);
                 }
 
-                try {
-                    construct_value(alloc, raw_values + offset, forward_or_copy<value_type>(std::move(new_value.get())));
-                } catch (...) {
-                    for (size_type i = offset; i < nb_elements_; ++i) {
-                        construct_value(alloc, raw_values + i, forward_or_copy<value_type>(std::move(raw_values[i + 1])));
-                        destroy_value(alloc, raw_values + i + 1);
-                    }
-                    throw;
-                }
+                // `new_value` holds the value in `alloc`, so this transfer moves it and allocates nothing
+                construct_value(alloc, raw_values + offset, forward_or_copy<value_type>(std::move(new_value.get())));
             }
 
             template<typename... Args>
