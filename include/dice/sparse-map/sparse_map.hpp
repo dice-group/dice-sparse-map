@@ -100,7 +100,9 @@ namespace dice::sparse_map {
      * throws halfway. The behaviour is undefined if the destructor of `Key` or `T` throws. The map moves its
      * elements with `std::allocator_traits<Allocator>::construct` and expects that this does not throw either. With
      * a scoped or a polymorphic allocator, that is the allocator-extended move constructor of `Key` and `T`, which
-     * does not throw when the allocators are equal. `std::vector` makes the same assumption.
+     * does not throw when the allocators are equal. `std::vector` makes the same assumption. If `Key` and `T` are
+     * also nothrow move assignable, an insertion or an erase moves the elements after it in its group of 64 buckets
+     * with their move assignment, as `std::vector::insert` and `std::vector::erase` do.
      *
      * Invalidation of iterators, references and pointers to elements: see `detail_sparse_hash::sparse_hash`.
      */

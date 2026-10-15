@@ -31,6 +31,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -135,6 +136,15 @@ namespace dice::sparse_map {
          */
         template<typename K, typename Iterator, typename ConstIterator>
         concept NotIterator = !std::is_convertible_v<K, Iterator> && !std::is_convertible_v<K, ConstIterator>;
+
+        /**
+         * `Allocator` has its own `construct` or `destroy` for a `T`, so `std::allocator_traits` calls them and not
+         * `std::construct_at` and `std::destroy_at`.
+         */
+        template<typename Allocator, typename T>
+        concept HasConstructOrDestroy = requires (Allocator &alloc, T *p, T &value) { alloc.construct(p, std::move(value)); }
+                                        || requires (Allocator &alloc, T *p, T const &value) { alloc.construct(p, value); }
+                                        || requires (Allocator &alloc, T *p) { alloc.destroy(p); };
 
         /**
          * A type that meets the parts of the allocator requirements that the deduction guides check.
@@ -361,14 +371,18 @@ namespace dice::sparse_map {
 
             /**
              * Transfers the key and the value of `other` one by one, so that a member without a move constructor is
-             * copied while the other one is moved. The implicitly declared move constructor would be deleted
-             * instead.
+             * copied while the other one is moved. The defaulted move constructor would be deleted instead.
+             *
+             * Only declared when a member has no move constructor, so that a slot of two members that have one keeps
+             * the defaulted move constructor and stays trivially copyable (see `copies_bytes`).
              */
             constexpr map_slot(map_slot &&other) noexcept(nothrow_transferable<Key> &&nothrow_transferable<T>)
+                requires(!std::is_move_constructible_v<Key> || !std::is_move_constructible_v<T>)
                 : key(forward_or_copy<Key>(std::move(other.key))),
                   value(forward_or_copy<T>(std::move(other.value))) {
             }
 
+            constexpr map_slot(map_slot &&other) = default;
             constexpr map_slot(map_slot const &other) = default;
             constexpr map_slot &operator=(map_slot const &other) = default;
             constexpr map_slot &operator=(map_slot &&other) = default;
@@ -460,7 +474,14 @@ namespace dice::sparse_map {
          * past them.
          *
          * An index is a position in [0, bitmap_nb_bits), like a position in a `std::vector`. An offset is the
-         * position of the value of an index in `values_`: the number of occupied buckets before the index.
+         * position of the slot of an index in `values_`: the number of occupied buckets before the index.
+         *
+         * Every occupied bucket holds a value. An erase removes the value and moves the values after it one slot to
+         * the front, and an insertion moves them one slot to the back, see `shifts_by_assignment`. The storage grows
+         * by `capacity_growth_step` slots when it is full and does not shrink. A trivially copyable `value_type` is
+         * copied as bytes into new storage, see `copies_bytes`.
+         *
+         * `nb_elements_` counts the values, which is the number of occupied buckets.
          *
          * `sparse_array` does not store an allocator, so that groups do not grow with a stateful allocator. Every
          * function that allocates or frees takes the allocator as an argument. `clear(Allocator &)` must be
@@ -472,7 +493,8 @@ namespace dice::sparse_map {
          * not throw either. With a scoped or a polymorphic allocator, `construct` calls the allocator-extended move
          * constructor, which does not throw when the allocators are equal, as they are within a table.
          * `std::vector` makes the same assumption. A `T` without a move constructor is copied, see
-         * `forward_or_copy`. The behaviour is undefined if the destructor of `T` throws.
+         * `forward_or_copy`. Inside `values_`, a `T` that is also nothrow move assignable is moved with its move
+         * assignment, without the allocator. The behaviour is undefined if the destructor of `T` throws.
          *
          * `AllocationFailure` decides what a failed allocation of the values does, see `allocate`.
          *
@@ -493,6 +515,28 @@ namespace dice::sparse_map {
              * The number of buckets of a `sparse_array`.
              */
             static constexpr std::size_t nb_buckets = 64;
+
+            /**
+             * True if an insertion or an erase moves the values after its position by move assignment, as
+             * `std::vector::insert` and `std::vector::erase` do. Then an insertion constructs, besides the new value in
+             * its holder, only the value behind the last one through the allocator, and an erase destroys only the
+             * last one. That is the case if `value_type` is nothrow move constructible and nothrow move assignable.
+             * Otherwise each moved value is constructed at its new place and destroyed at its old place through the
+             * allocator.
+             */
+            static constexpr bool shifts_by_assignment = std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_move_assignable_v<value_type>;
+
+            /**
+             * True if a group copies its values as bytes, with `std::memcpy`, instead of one by one through the
+             * allocator, when it grows its storage and when it is copied or moved into new storage. That is the case
+             * if `value_type` is trivially copyable and trivially move constructible, and the allocator has no
+             * `construct` and no `destroy` of its own (`HasConstructOrDestroy`), so that
+             * `std::allocator_traits` constructs with `std::construct_at` and destroys with `std::destroy_at`. A
+             * constant evaluation copies one by one. An insertion or an erase in the middle of a group copies no bytes
+             * itself: for such a type, the standard library can do the move assignments of `shifts_by_assignment` with
+             * one `std::memmove`.
+             */
+            static constexpr bool copies_bytes = std::is_trivially_copyable_v<value_type> && std::is_trivially_move_constructible_v<value_type> && !HasConstructOrDestroy<Allocator, value_type>;
 
         private:
             static constexpr std::size_t bitmap_nb_bits = nb_buckets;
@@ -562,23 +606,7 @@ namespace dice::sparse_map {
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
-                if (capacity_ == 0) {
-                    return;
-                }
-
-                Allocator alloc(const_alloc);
-                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
-                try {
-                    for (size_type i = 0; i < other.nb_elements_; ++i) {
-                        construct_value(alloc, values() + i, other.values()[i]);
-                        ++nb_elements_;
-                    }
-                } catch (...) {
-                    clear(alloc);
-                    throw;
-                }
+                transfer_values_from(const_alloc, other);
             }
 
             constexpr sparse_array(sparse_array &&other) noexcept
@@ -599,23 +627,7 @@ namespace dice::sparse_map {
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
-                if (capacity_ == 0) {
-                    return;
-                }
-
-                Allocator alloc(const_alloc);
-                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
-                try {
-                    for (size_type i = 0; i < other.nb_elements_; ++i) {
-                        construct_value(alloc, values() + i, forward_or_copy<value_type>(std::move(other.values()[i])));
-                        ++nb_elements_;
-                    }
-                } catch (...) {
-                    clear(alloc);
-                    throw;
-                }
+                transfer_values_from(const_alloc, other);
             }
 
             /**
@@ -763,6 +775,52 @@ namespace dice::sparse_map {
                 return std::to_address(values_);
             }
 
+            /**
+             * Allocates storage for `capacity_` values from `const_alloc` and fills it with the values of `other`: a
+             * const `other` is copied, a non-const one is moved. The bitmaps and `capacity_` are already set.
+             */
+            template<typename Other>
+            constexpr void transfer_values_from(Allocator const &const_alloc, Other &other) {
+                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
+                if (capacity_ == 0) {
+                    return;
+                }
+
+                Allocator alloc(const_alloc);
+                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
+                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
+                if constexpr (copies_bytes) {
+                    if !consteval {
+                        copy_bytes(values(), other.values(), other.nb_elements_);
+                        nb_elements_ = other.nb_elements_;
+                        return;
+                    }
+                }
+                try {
+                    for (size_type i = 0; i < other.nb_elements_; ++i) {
+                        if constexpr (std::is_const_v<Other>) {
+                            construct_value(alloc, values() + i, other.values()[i]);
+                        } else {
+                            construct_value(alloc, values() + i, forward_or_copy<value_type>(std::move(other.values()[i])));
+                        }
+                        ++nb_elements_;
+                    }
+                } catch (...) {
+                    clear(alloc);
+                    throw;
+                }
+            }
+
+            /**
+             * Copies `count` values from `source` to `target` as bytes, with `std::memcpy`. The ranges do not overlap.
+             */
+            static void copy_bytes(value_type *target, value_type const *source, size_type count) noexcept {
+                static_assert(copies_bytes);
+                if (count > 0) {
+                    std::memcpy(static_cast<void *>(target), static_cast<void const *>(source), count * sizeof(value_type));
+                }
+            }
+
             template<typename... Args>
             static constexpr void construct_value(allocator_type &alloc, value_type *value, Args &&...value_args) {
                 allocator_traits::construct(alloc, value, std::forward<Args>(value_args)...);
@@ -848,13 +906,21 @@ namespace dice::sparse_map {
                 // constructed before the shift.
                 value_holder<value_type, allocator_type> new_value(alloc, std::forward<Args>(value_args)...);
 
-                for (size_type i = nb_elements_; i > offset; --i) {
-                    construct_value(alloc, raw_values + i, forward_or_copy<value_type>(std::move(raw_values[i - 1])));
-                    destroy_value(alloc, raw_values + i - 1);
-                }
+                if constexpr (shifts_by_assignment) {
+                    // as `std::vector::insert`: the last value is moved into a new slot behind it, the others move one
+                    // place to the back by assignment, and the new value is assigned into its place
+                    construct_value(alloc, raw_values + nb_elements_, std::move(raw_values[nb_elements_ - 1]));
+                    std::move_backward(raw_values + offset, raw_values + nb_elements_ - 1, raw_values + nb_elements_);
+                    raw_values[offset] = std::move(new_value.get());
+                } else {
+                    for (size_type i = nb_elements_; i > offset; --i) {
+                        construct_value(alloc, raw_values + i, forward_or_copy<value_type>(std::move(raw_values[i - 1])));
+                        destroy_value(alloc, raw_values + i - 1);
+                    }
 
-                // `new_value` holds the value in `alloc`, so this transfer moves it and allocates nothing
-                construct_value(alloc, raw_values + offset, forward_or_copy<value_type>(std::move(new_value.get())));
+                    // `new_value` holds the value in `alloc`, so this transfer moves it and allocates nothing
+                    construct_value(alloc, raw_values + offset, forward_or_copy<value_type>(std::move(new_value.get())));
+                }
             }
 
             template<typename... Args>
@@ -874,6 +940,18 @@ namespace dice::sparse_map {
                 }
 
                 // does not throw from here on
+                if constexpr (copies_bytes) {
+                    if !consteval {
+                        copy_bytes(raw_new_values, raw_values, offset);
+                        copy_bytes(raw_new_values + offset + 1, raw_values + offset, static_cast<size_type>(nb_elements_ - offset));
+                        // the values were copied as bytes, so the old storage is only freed
+                        destroy_and_deallocate_values(alloc, values_, 0, capacity_);
+                        values_ = new_values;
+                        capacity_ = new_capacity;
+                        return;
+                    }
+                }
+
                 for (size_type i = 0; i < offset; ++i) {
                     construct_value(alloc, raw_new_values + i, forward_or_copy<value_type>(std::move(raw_values[i])));
                 }
@@ -889,10 +967,8 @@ namespace dice::sparse_map {
             }
 
             /**
-             * Erasure
-             *
-             * The value is destroyed and the values after it are transferred one place to the front. The storage
-             * stays as it is, so an erase allocates nothing and does not throw.
+             * Erasure: the value is removed and the values after it move one place to the front (see
+             * `shifts_by_assignment`).
              */
             constexpr void erase_at_offset(allocator_type &alloc, size_type offset) noexcept {
                 // see `insert_at_offset`: this function is `noexcept`, so a transfer that throws would terminate
@@ -900,11 +976,18 @@ namespace dice::sparse_map {
                 DICE_SPARSE_MAP_ASSERT(offset < nb_elements_);
                 value_type *const raw_values = values();
 
-                destroy_value(alloc, raw_values + offset);
+                if constexpr (shifts_by_assignment) {
+                    // as `std::vector::erase`: the values after `offset` move one place to the front by assignment,
+                    // and the last value, now moved from, is destroyed
+                    std::move(raw_values + offset + 1, raw_values + nb_elements_, raw_values + offset);
+                    destroy_value(alloc, raw_values + nb_elements_ - 1);
+                } else {
+                    destroy_value(alloc, raw_values + offset);
 
-                for (size_type i = offset + 1; i < nb_elements_; ++i) {
-                    construct_value(alloc, raw_values + i - 1, forward_or_copy<value_type>(std::move(raw_values[i])));
-                    destroy_value(alloc, raw_values + i);
+                    for (size_type i = offset + 1; i < nb_elements_; ++i) {
+                        construct_value(alloc, raw_values + i - 1, forward_or_copy<value_type>(std::move(raw_values[i])));
+                        destroy_value(alloc, raw_values + i);
+                    }
                 }
             }
             pointer values_ = nullptr;
