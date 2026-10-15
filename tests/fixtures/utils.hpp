@@ -31,7 +31,6 @@
 #include <functional>
 #include <memory>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -341,102 +340,6 @@ namespace dice::sparse_map::tests {
 
         return map;
     }
-
-    template<typename T>
-    struct is_pair : std::false_type {};
-
-    template<typename T1, typename T2>
-    struct is_pair<std::pair<T1, T2>> : std::true_type {};
-
-    /**
-     * Serializer for the `serialize` functions of the containers. It writes into a string.
-     */
-    struct serializer {
-        serializer() {
-            ostream_.exceptions(ostream_.badbit | ostream_.failbit);
-        }
-
-        template<typename T>
-        void operator()(T const &val) {
-            serialize_impl(val);
-        }
-
-        std::string str() const {
-            return ostream_.str();
-        }
-
-    private:
-        template<typename T, typename U>
-        void serialize_impl(std::pair<T, U> const &val) {
-            serialize_impl(val.first);
-            serialize_impl(val.second);
-        }
-
-        void serialize_impl(std::string const &val) {
-            serialize_impl(boost::numeric_cast<std::uint64_t>(val.size()));
-            ostream_.write(val.data(), val.size());
-        }
-
-        void serialize_impl(move_only_test const &val) {
-            serialize_impl(val.value());
-        }
-
-        template<typename T, typename std::enable_if<std::is_arithmetic<T>::value>::type * = nullptr>
-        void serialize_impl(T const &val) {
-            ostream_.write(reinterpret_cast<char const *>(&val), sizeof(val));
-        }
-
-        std::stringstream ostream_;
-    };
-
-    /**
-     * Deserializer for the `deserialize` functions of the containers. It reads what `serializer` wrote.
-     */
-    struct deserializer {
-        deserializer(std::string const &init_str = "")
-            : istream_(init_str) {
-            istream_.exceptions(istream_.badbit | istream_.failbit | istream_.eofbit);
-        }
-
-        template<typename T>
-        T operator()() {
-            return deserialize_impl<T>();
-        }
-
-    private:
-        template<typename T, typename std::enable_if<is_pair<T>::value>::type * = nullptr>
-        T deserialize_impl() {
-            auto first = deserialize_impl<typename T::first_type>();
-            return std::make_pair(std::move(first), deserialize_impl<typename T::second_type>());
-        }
-
-        template<typename T, typename std::enable_if<std::is_same<std::string, T>::value>::type * = nullptr>
-        T deserialize_impl() {
-            std::size_t const str_size = boost::numeric_cast<std::size_t>(deserialize_impl<std::uint64_t>());
-
-            // TODO std::string::data() return a const pointer pre-C++17. Avoid the
-            // inefficient double allocation.
-            std::vector<char> chars(str_size);
-            istream_.read(chars.data(), str_size);
-
-            return std::string(chars.data(), chars.size());
-        }
-
-        template<typename T, typename std::enable_if<std::is_same<move_only_test, T>::value>::type * = nullptr>
-        move_only_test deserialize_impl() {
-            return move_only_test(deserialize_impl<std::string>());
-        }
-
-        template<typename T, typename std::enable_if<std::is_arithmetic<T>::value>::type * = nullptr>
-        T deserialize_impl() {
-            T val;
-            istream_.read(reinterpret_cast<char *>(&val), sizeof(val));
-
-            return val;
-        }
-
-        std::stringstream istream_;
-    };
 
 }  // namespace dice::sparse_map::tests
 
