@@ -34,6 +34,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -1245,5 +1246,106 @@ TEST_SUITE("test_sparse_map") {
          * erase
          */
         CHECK_EQ(map.erase(3, map.hash_function()(3)), 1);
+    }
+
+    /**
+     * iterators
+     */
+    TEST_CASE("value-initialized iterators compare equal") {
+        using map_t = dice::sparse_map::sparse_map<int, int>;
+        CHECK(map_t::iterator{} == map_t::iterator{});
+        CHECK(map_t::const_iterator{} == map_t::const_iterator{});
+    }
+
+    TEST_CASE("const_iterator is comparable with iterator") {
+        auto map = dice::sparse_map::sparse_map<std::string, int>{{"a", 1}};
+        decltype(map)::const_iterator const cit = map.begin();
+        CHECK(cit == map.begin());
+        CHECK(map.begin() == cit);
+        CHECK(cit != map.end());
+        CHECK(std::next(cit) == map.cend());
+        CHECK(map.mutable_iterator(cit) == map.begin());
+    }
+
+    /**
+     * Insertions whose arguments refer to an element of the same map. The new element is constructed before the
+     * elements of its group move or the table rehashes. With `identity_hash`, key `k` is in bucket `k`.
+     */
+    TEST_CASE("try_emplace with a mapped value that refers to an element of the same group") {
+        auto map = dice::sparse_map::sparse_map<int, std::string, identity_hash<int>>{};
+        map.reserve(16);
+        auto const original = std::string(100, 'x');
+        map.try_emplace(1, original);
+
+        // key 0 is placed before key 1 in the same group, so the value of key 1 moves one place
+        map.try_emplace(0, map.at(1));
+
+        CHECK(map.at(1) == original);
+        CHECK(map.at(0) == original);
+    }
+
+    TEST_CASE("try_emplace with a mapped value that refers to an element, when the insertion grows the table") {
+        auto map = dice::sparse_map::sparse_map<int, std::string, identity_hash<int>>{};
+        auto const original = std::string(100, 'x');
+        map.try_emplace(1, original);
+        REQUIRE(map.bucket_count() == 2);  // the threshold is 1, so the next insertion grows the table
+
+        map.try_emplace(5, map.at(1));
+
+        CHECK(map.bucket_count() == 4);
+        CHECK(map.at(5) == original);
+        CHECK(map.at(1) == original);
+    }
+
+    /**
+     * Not avalanching, but marked as avalanching, so that the containers accept it: the key "a" is in bucket 0, "b" in
+     * bucket 1 and so on.
+     */
+    struct first_letter_hash {
+        using is_avalanching = void;
+
+        [[nodiscard]] std::size_t operator()(std::string const &key) const noexcept {
+            return key.empty() ? 0 : static_cast<std::size_t>(key.front() - 'a');
+        }
+    };
+
+    // The key refers to the mapped value of "c", a `std::string`. When the group shifts, that value is moved, and the
+    // place it leaves holds an empty string.
+    TEST_CASE("operator[] with a key that refers to an element of the same group") {
+        auto map = dice::sparse_map::sparse_map<std::string, std::string, first_letter_hash>{};
+        map.reserve(16);
+        map["c"] = "b";  // the mapped value of key "c" is the key of the next element
+
+        map[map.at("c")] = "x";  // key "b" is placed before key "c"
+
+        CHECK(map.at("b") == "x");
+        CHECK(map.at("c") == "b");
+        CHECK(map.size() == 2);
+    }
+
+    /**
+     * load factor
+     */
+    TEST_CASE("insert of a range after the max load factor was lowered below the load") {
+        auto map = dice::sparse_map::sparse_map<int, int>{};
+        for (int i = 0; i < 100; ++i) {
+            map[i] = i;
+        }
+        map.max_load_factor(0.1f);
+        REQUIRE(map.load_factor() > map.max_load_factor());
+
+        // the range records the bucket count when an element is read, so the test sees that the insert makes room for
+        // the whole range before the first element
+        auto const more = std::vector<std::pair<int, int>>{{1000, 1}, {1001, 2}};
+        auto bucket_counts = std::vector<std::size_t>{};
+        auto const recorded = more | std::views::transform([&](std::pair<int, int> const &value) {
+                                  bucket_counts.push_back(map.bucket_count());
+                                  return value;
+                              });
+        map.insert(recorded.begin(), recorded.end());
+        CHECK(map.size() == 102);
+        CHECK(map.load_factor() <= map.max_load_factor());
+        CHECK(bucket_counts == std::vector<std::size_t>(2, map.bucket_count()));
+        CHECK(map.at(1001) == 2);
     }
 }

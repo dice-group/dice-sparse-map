@@ -43,7 +43,7 @@ TEST_CASE_MAP("the map configurations hold what is inserted", counter::obj, coun
         CHECK(map.size() == 100);
         CHECK(checksum::map(map) == checksum::map(map_t{map}));
     }
-    CHECK(counts.dtor() == counts.ctor() + counts.static_default_ctor + counts.copy_ctor() + counts.move_ctor());
+    CHECK(counts.dtor() + counter::static_dtor == counts.ctor() + counter::static_ctor + counts.copy_ctor() + counts.move_ctor());
 }
 
 TEST_CASE_SET("the set configurations hold what is inserted", int) {
