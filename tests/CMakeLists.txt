@@ -37,3 +37,5 @@ foreach (test_source IN LISTS test_sources)
     add_test(NAME ${test_name} COMMAND ${test_name})
     add_dependencies(build_tests ${test_name})
 endforeach ()
+
+add_subdirectory(compile)

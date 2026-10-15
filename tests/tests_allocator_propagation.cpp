@@ -1,4 +1,5 @@
 #include "fixtures/allocators.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -32,13 +33,13 @@ namespace {
     /// `sparse_map<int, int>` with the allocator `AllocatorOf`
     struct map_kind {
         template<template<typename> typename AllocatorOf>
-        using with = sparse_map<int, int, std::hash<int>, std::equal_to<int>, AllocatorOf<std::pair<int, int>>>;
+        using with = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, AllocatorOf<std::pair<int, int>>>;
     };
 
     /// `sparse_set<int>` with the allocator `AllocatorOf`
     struct set_kind {
         template<template<typename> typename AllocatorOf>
-        using with = sparse_set<int, std::hash<int>, std::equal_to<int>, AllocatorOf<int>>;
+        using with = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, AllocatorOf<int>>;
     };
 
     template<typename Container>

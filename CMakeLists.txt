@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(dice-sparse-map
         VERSION 0.3.0
         DESCRIPTION "C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers.")
-set(POBR_VERSION 2)  # Persisted Object Binary Representation Version
+set(POBR_VERSION 3)  # Persisted Object Binary Representation Version
 
 include(cmake/boilerplate_init.cmake)
 boilerplate_init()
@@ -29,6 +29,8 @@ foreach(style_file ${style_files})
             TLS_VERIFY ON)
 endforeach()
 
+find_package(dice-hash REQUIRED)
+
 add_library(${PROJECT_NAME} INTERFACE)
 # Use dice::sparse_map as target, more consistent with other libraries conventions (Boost, Qt, ...)
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
@@ -36,6 +38,11 @@ add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME}
         INTERFACE
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        )
+
+target_link_libraries(${PROJECT_NAME}
+        INTERFACE
+        dice-hash::dice-hash
         )
 
 if(MSVC)

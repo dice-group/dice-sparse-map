@@ -18,7 +18,6 @@ jobs:
       cxx: clang++-19
       base-branch: ${{ github.base_ref }}
       search-path: >
-        include/dice/sparse-map/sparse_growth_policy.hpp
         include/dice/sparse-map/sparse_hash.hpp
         include/dice/sparse-map/sparse_map.hpp
         include/dice/sparse-map/sparse_set.hpp

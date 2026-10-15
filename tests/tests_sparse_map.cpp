@@ -23,6 +23,7 @@
  */
 #include <dice/sparse-map/sparse_map.hpp>
 
+#include "fixtures/test_types.hpp"
 #include "fixtures/utils.hpp"
 
 #include <doctest/doctest.h>
@@ -54,21 +55,18 @@ TEST_SUITE("test_sparse_map") {
         dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>>,
         dice::sparse_map::sparse_map<self_reference_member_test, self_reference_member_test, mod_hash<9>>,
 
-        // Others GrowthPolicy
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<4>>,
-        dice::sparse_map::sparse_pg_map<move_only_test, move_only_test, mod_hash<9>>,
-        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::mod_growth_policy<>>,
-
-        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::power_of_two_growth_policy<4>>,
-        dice::sparse_map::sparse_pg_map<copy_only_test, copy_only_test, mod_hash<9>>,
-        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::mod_growth_policy<>>,
+        // Other sparsity levels and the strong exception guarantee for move-only and copy-only types
+        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<move_only_test, move_only_test, mod_hash<9>, std::equal_to<move_only_test>, std::allocator<std::pair<move_only_test, move_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>,
+        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<copy_only_test, copy_only_test, mod_hash<9>, std::equal_to<copy_only_test>, std::allocator<std::pair<copy_only_test, copy_only_test>>, dice::sparse_map::sh::exception_safety::strong>,
 
         // Strong exception guarantee
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::strong>,
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::strong>,
 
         // Others sparsity
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
-        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::power_of_two_growth_policy<2>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::high>,
+        dice::sparse_map::sparse_map<std::string, std::string, mod_hash<9>, std::equal_to<std::string>, std::allocator<std::pair<std::string, std::string>>, dice::sparse_map::sh::exception_safety::basic, dice::sparse_map::sh::sparsity::low>>;
 
     /**
      * layout
@@ -631,29 +629,40 @@ TEST_SUITE("test_sparse_map") {
      */
     TEST_CASE("test_extreme_bucket_count_value_construction") {
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>>(
                 std::numeric_limits<std::size_t>::max())),
             std::length_error);
 
         CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::power_of_two_growth_policy<2>>(
+            (dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>>(
                 std::numeric_limits<std::size_t>::max() / 2 + 1)),
             std::length_error);
+    }
 
-        CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::prime_growth_policy>(
-                std::numeric_limits<std::size_t>::max())),
-            std::length_error);
+    /**
+     * A hash picks its bucket with its low bits, `hash & (bucket_count() - 1)`. With a hash that returns the key, the
+     * iteration goes through the keys in the order of their buckets, `key % 64` for 64 buckets. A key whose bucket is
+     * taken goes on with quadratic probing: to the bucket `b + 1`, then `b + 3`.
+     */
+    TEST_CASE("a hash picks its bucket with a mask") {
+        dice::sparse_map::sparse_map<std::size_t, int, identity_hash<std::size_t>> map(64);
+        REQUIRE(map.bucket_count() == 64);
 
-        CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::prime_growth_policy>(
-                std::numeric_limits<std::size_t>::max() / 2)),
-            std::length_error);
+        // key % 64: 2, 63, 5, 17, 40, 0, 33, 50
+        for (std::size_t const key : {130U, 63U, 5U, 337U, 1000U, 6400U, 33U, 498U}) {
+            map.insert({key, 0});
+        }
+        // key % 64 is 10 for 10, 74 and 138: they take the buckets 10, 11 and 13. Then 12 takes the bucket 12.
+        for (std::size_t const key : {10U, 74U, 138U, 12U}) {
+            map.insert({key, 0});
+        }
+        REQUIRE(map.bucket_count() == 64);
 
-        CHECK_THROWS_AS(
-            (dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int, int>>, dice::sparse_map::sh::mod_growth_policy<>>(
-                std::numeric_limits<std::size_t>::max())),
-            std::length_error);
+        std::vector<std::size_t> keys;
+        for (auto const &entry : map) {
+            keys.push_back(entry.first);
+        }
+        CHECK(keys == std::vector<std::size_t>{6400U, 130U, 5U, 10U, 74U, 12U, 138U, 337U, 33U, 1000U, 498U, 63U});
     }
 
     TEST_CASE("test_range_construct") {
@@ -957,11 +966,13 @@ TEST_SUITE("test_sparse_map") {
         // Use a KeyEqual and Hash where any odd unsigned number 'x' is equal to
         // 'x-1'. Make sure that KeyEqual is called (and not ==).
         struct hash {
+            using is_avalanching = void;
+
             std::size_t operator()(std::uint64_t v) const {
                 if (v % 2u == 1u) {
-                    return std::hash<std::uint64_t>()(v - 1);
+                    return test_hash<std::uint64_t>()(v - 1);
                 } else {
-                    return std::hash<std::uint64_t>()(v);
+                    return test_hash<std::uint64_t>()(v);
                 }
             }
         };
@@ -997,7 +1008,10 @@ TEST_SUITE("test_sparse_map") {
         // buckets marked as deleted or containing a value to be sure that everything
         // works well in this edge case. Intrusive test (it's tightly coupled with the
         // implementation of the map).
+        // Not avalanching, but marked as avalanching, so that the containers accept it. The key itself picks the bucket.
         struct identity_hash {
+            using is_avalanching = void;
+
             std::size_t operator()(unsigned int value) const {
                 return std::size_t(value);
             }
@@ -1059,17 +1073,19 @@ TEST_SUITE("test_sparse_map") {
 
     TEST_CASE("test_heterogeneous_lookups") {
         struct hash_ptr {
+            using is_avalanching = void;
+
             std::size_t operator()(std::unique_ptr<int> const &p) const {
-                return std::hash<std::uintptr_t>()(
+                return test_hash<std::uintptr_t>()(
                     reinterpret_cast<std::uintptr_t>(p.get()));
             }
 
             std::size_t operator()(std::uintptr_t p) const {
-                return std::hash<std::uintptr_t>()(p);
+                return test_hash<std::uintptr_t>()(p);
             }
 
             std::size_t operator()(int const *const &p) const {
-                return std::hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(p));
+                return test_hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(p));
             }
         };
 

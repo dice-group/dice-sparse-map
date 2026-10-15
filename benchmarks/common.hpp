@@ -84,8 +84,8 @@ namespace dice::sparse_map::bench {
     using table_hash = ankerl::unordered_dense::hash<Key>;
 
     /**
-     * `sparse_map` and `sparse_set` with the default growth policy and exception safety, the given
-     * sparsity and an allocator made from the template `Alloc`.
+     * `sparse_map` and `sparse_set` with the default exception safety, the given sparsity and an
+     * allocator made from the template `Alloc`.
      */
     template<sh::sparsity sparsity, template<typename> typename Alloc = std::allocator>
     struct sparse_family {
@@ -95,7 +95,6 @@ namespace dice::sparse_map::bench {
                                                    table_hash<Key>,
                                                    std::equal_to<Key>,
                                                    Alloc<std::pair<Key, T>>,
-                                                   sh::power_of_two_growth_policy<2>,
                                                    sh::exception_safety::basic,
                                                    sparsity>;
 
@@ -104,7 +103,6 @@ namespace dice::sparse_map::bench {
                                                    table_hash<Key>,
                                                    std::equal_to<Key>,
                                                    Alloc<Key>,
-                                                   sh::power_of_two_growth_policy<2>,
                                                    sh::exception_safety::basic,
                                                    sparsity>;
     };

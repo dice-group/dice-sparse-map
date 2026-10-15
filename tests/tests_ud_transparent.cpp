@@ -50,20 +50,21 @@ namespace {
      */
     struct string_hash {
         using is_transparent = void;
+        using is_avalanching = void;
 
         [[nodiscard]] std::size_t operator()(char const *str) const noexcept {
             ++num_charstar_;
-            return std::hash<std::string_view>{}(str);
+            return test_hash<std::string_view>{}(str);
         }
 
         [[nodiscard]] std::size_t operator()(std::string_view str) const noexcept {
             ++num_stringview_;
-            return std::hash<std::string_view>{}(str);
+            return test_hash<std::string_view>{}(str);
         }
 
         [[nodiscard]] std::size_t operator()(std::string const &str) const noexcept {
             ++num_string_;
-            return std::hash<std::string_view>{}(str);
+            return test_hash<std::string_view>{}(str);
         }
 
         [[nodiscard]] std::array<std::size_t, 3> counts() const noexcept {
@@ -333,9 +334,10 @@ namespace {
 
     struct string_hash_simple {
         using is_transparent = void;
+        using is_avalanching = void;
 
         [[nodiscard]] std::size_t operator()(std::string_view str) const noexcept {
-            return std::hash<std::string_view>{}(str);
+            return test_hash<std::string_view>{}(str);
         }
     };
 

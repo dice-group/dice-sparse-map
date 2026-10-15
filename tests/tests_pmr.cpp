@@ -1,4 +1,5 @@
 #include "fixtures/counting_resource.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 
@@ -26,8 +27,8 @@ namespace {
     using dice::sparse_map::tests::counting_resource;
 
     using pmr_value = std::pair<std::pmr::string, std::pmr::vector<int>>;
-    using pmr_map = sparse_map<std::pmr::string, std::pmr::vector<int>, std::hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<pmr_value>>;
-    using pmr_int_map = sparse_map<int, int, std::hash<int>, std::equal_to<int>, std::pmr::polymorphic_allocator<std::pair<int, int>>>;
+    using pmr_map = sparse_map<std::pmr::string, std::pmr::vector<int>, tests::test_hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<pmr_value>>;
+    using pmr_int_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, std::pmr::polymorphic_allocator<std::pair<int, int>>>;
 
     /// a key that is too long for the small string buffer, so that the string allocates
     std::pmr::string long_key(int i) {

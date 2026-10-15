@@ -35,9 +35,11 @@ namespace {
     std::size_t num_hashed = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     struct hash_call_counter {
+        using is_avalanching = void;
+
         [[nodiscard]] std::size_t operator()(std::string const &str) const noexcept {
             ++num_hashed;
-            return std::hash<std::string>{}(str);
+            return test_hash<std::string>{}(str);
         }
     };
 
@@ -45,9 +47,10 @@ namespace {
 
     struct transparent_hash {
         using is_transparent = void;
+        using is_avalanching = void;
 
         [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
-            return std::hash<std::string_view>{}(sv);
+            return test_hash<std::string_view>{}(sv);
         }
     };
 
@@ -248,13 +251,24 @@ TEST_CASE("precomputed_equal_range_and_count_in_every_overload") {
 // that hashes the key. This checks it with an identity hash and with a 32 bit hash.
 namespace {
 
+    /**
+     * Returns the key itself. It is not avalanching, but it is marked as avalanching, so that the containers accept it.
+     */
     struct weak_hash {
+        using is_avalanching = void;
+
         [[nodiscard]] std::size_t operator()(int x) const noexcept {
             return static_cast<std::size_t>(x);
         }
     };
 
+    /**
+     * Returns 32 bits only. It is not avalanching, but it is marked as avalanching, so that the containers accept
+     * it.
+     */
     struct narrow_hash {
+        using is_avalanching = void;
+
         [[nodiscard]] std::uint32_t operator()(int x) const noexcept {
             return static_cast<std::uint32_t>(x) * UINT32_C(2654435761);
         }

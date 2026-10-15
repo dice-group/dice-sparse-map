@@ -1,6 +1,7 @@
 #include "fixtures/allocators.hpp"
 #include "fixtures/checksum.hpp"
 #include "fixtures/counter.hpp"
+#include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 
@@ -59,10 +60,9 @@ namespace {
     template<sh::exception_safety ExceptionSafety, sh::sparsity Sparsity>
     using bombing_map = sparse_map<counter::obj,
                                    counter::obj,
-                                   std::hash<counter::obj>,
+                                   test_hash<counter::obj>,
                                    std::equal_to<counter::obj>,
                                    leak_checking_allocator<std::pair<counter::obj, counter::obj>>,
-                                   sh::power_of_two_growth_policy<2>,
                                    ExceptionSafety,
                                    Sparsity>;
 
@@ -366,10 +366,9 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaks nothing",
     CHECK(live_blocks == 0);
 }
 
-// skipped: when `sparse_hash::operator=(sparse_hash const &)` throws, the target keeps the growth
-// policy of the source, but only the bucket groups it copied so far, and `sparse_buckets_` still
-// points to the memory of the old bucket vector. `find` then asserts in `bucket_for_hash`, or reads
-// freed memory, and `insert` writes there.
+// skipped: when `sparse_hash::operator=(sparse_hash const &)` throws, the target keeps the mask of the
+// source, but only the bucket groups it copied so far, and `sparse_buckets_` still points to the memory
+// of the old bucket vector. `find` then reads freed memory, and `insert` writes there.
 TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map" * doctest::skip(),
                    map_t,
                    bombing_map<basic, sh::sparsity::high>,

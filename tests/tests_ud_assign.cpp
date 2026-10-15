@@ -368,7 +368,7 @@ TEST_CASE_MAP("swap", int, int) {
 // Exchanging what two maps own needs no allocation, through the member and through the swap() that generic code
 // finds with `using std::swap`.
 TEST_CASE("swap_does_not_allocate") {
-    using map_t = dice::sparse_map::sparse_map<int, int, std::hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>>;
+    using map_t = dice::sparse_map::sparse_map<int, int, test_hash<int>, std::equal_to<int>, counting_allocator<std::pair<int, int>>>;
 
     auto a = map_t();
     auto b = map_t();

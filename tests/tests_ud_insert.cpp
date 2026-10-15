@@ -22,21 +22,6 @@ using namespace std::literals;
 
 namespace {
 
-    namespace sh = dice::sparse_map::sh;
-
-    /**
-     * True if `Container` grows with `sh::prime_growth_policy`. Its bucket counts are primes from a fixed table,
-     * the bucket counts of the other configurations are powers of two.
-     */
-    template<typename Container>
-    struct uses_prime_growth : std::false_type {};
-
-    template<typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator, sh::exception_safety exception_safety_level, sh::sparsity sparsity_level>
-    struct uses_prime_growth<dice::sparse_map::sparse_map<Key, T, Hash, KeyEqual, Allocator, sh::prime_growth_policy, exception_safety_level, sparsity_level>> : std::true_type {};
-
-    template<typename Key, typename Hash, typename KeyEqual, typename Allocator, sh::exception_safety exception_safety_level, sh::sparsity sparsity_level>
-    struct uses_prime_growth<dice::sparse_map::sparse_set<Key, Hash, KeyEqual, Allocator, sh::prime_growth_policy, exception_safety_level, sparsity_level>> : std::true_type {};
-
     /**
      * A minimal input iterator over pairs of `counter::obj`. Both members of the pair count up from the start value.
      * sparse_map reads `std::iterator_traits<InputIt>::iterator_category`, so the iterator declares the member types
@@ -123,16 +108,16 @@ TEST_CASE_MAP("ctors_map", counter::obj, counter::obj) {
     }
 }
 
-// The growth policy rounds a requested bucket count up: to the next power of two, or to the next prime of its table.
+// A requested bucket count is rounded up to the next power of two.
 TEST_CASE_MAP("ctor_bucket_count_map", counter::obj, counter::obj) {
     auto m = map_t{150U};
-    REQUIRE(m.bucket_count() == (uses_prime_growth<map_t>::value ? 193U : 256U));
+    REQUIRE(m.bucket_count() == 256U);
 }
 
 TEST_CASE_SET("ctor_bucket_count_set", int) {
     auto m = set_t{{1, 2, 3, 4}, 300U};
     REQUIRE(m.size() == 4U);
-    REQUIRE(m.bucket_count() == (uses_prime_growth<set_t>::value ? 389U : 512U));
+    REQUIRE(m.bucket_count() == 512U);
 }
 
 // insert

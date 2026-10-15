@@ -3,7 +3,7 @@
 
 The sparse-map library is a C++ implementation of a memory efficient hash map and hash set based on [tsl::sparse_map](https://github.com/Tessil/sparse-map). We added support for fancy pointers. It uses open-addressing with sparse quadratic probing. The goal of the library is to be the most memory efficient possible, even at low load factor, while keeping reasonable performances. You can find an [article](https://smerity.com/articles/2015/google_sparsehash.html) of Stephen Merity which explains the idea behind `google::sparse_hash_map` and this project.
 
-Four classes are provided: `dice::sparse_map::sparse_map`, `dice::sparse_map::sparse_set`, `dice::sparse_map::sparse_pg_map` and `dice::sparse_map::sparse_pg_set`. The first two are faster and use a power of two growth policy, the last two use a prime growth policy instead and are able to cope better with a poor hash function. Use the prime version if there is a chance of repeating patterns in the lower bits of your hash (e.g. you are storing pointers with an identity hash function). See [GrowthPolicy](#growth-policy) for details.
+Two classes are provided: `dice::sparse_map::sparse_map` and `dice::sparse_map::sparse_set`. The number of buckets is 0 or a power of two, see [Bucket count](#bucket-count). The hash function must be avalanching, see [Hash function](#hash-function).
 
 A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be found [here](https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html). The benchmark, in its additional tests page, notably includes `google::sparse_hash_map` and `spp::sparse_hash_map` to which `dice::sparse_map::sparse_map` is an alternative. This page also gives some advices on which hash table structure you should try for your use case (useful if you are a bit lost with the multiple hash tables implementations in the `tsl` namespace).
 
@@ -51,44 +51,19 @@ On Windows with MSVC, the detection is done at runtime.
 #### Move constructor
 Make sure that your key `Key` and potential value `T` have a `noexcept` move constructor. The library will work without it but insertions will be much slower if the copy constructor is expensive (the structure often needs to move some values around on insertion).
 
-### Growth policy
+### Bucket count
 
-The library supports multiple growth policies through the `GrowthPolicy` template parameter. Three policies are provided by the library but you can easily implement your own if needed.
+The number of buckets is 0 or a power of two and doubles when the table grows. A hash picks its bucket with a mask, <code>hash & (2<sup>n</sup> - 1)</code>, not with a modulo.
 
-* **[dice::sparse_map::sh::power_of_two_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1power__of__two__growth__policy.html)** Default policy used by `dice::sparse_map::sparse_map/set`. This policy keeps the size of the bucket array of the hash table to a power of two. This constraint allows the policy to avoid the usage of the slow modulo operation to map a hash to a bucket, instead of <code>hash % 2<sup>n</sup></code>, it uses <code>hash & (2<sup>n</sup> - 1)</code> (see [fast modulo](https://en.wikipedia.org/wiki/Modulo_operation#Performance_issues)). Fast but this may cause a lot of collisions with a poor hash function as the modulo with a power of two only masks the most significant bits in the end.
-* **[dice::sparse_map::sh::prime_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html)** Default policy used by `dice::sparse_map::sparse_pg_map/set`. The policy keeps the size of the bucket array of the hash table to a prime number. When mapping a hash to a bucket, using a prime number as modulo will result in a better distribution of the hash across the buckets even with a poor hash function. To allow the compiler to optimize the modulo operation, the policy use a lookup table with constant primes modulos (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1prime__growth__policy.html#details) for details). Slower than `dice::sparse_map::sh::power_of_two_growth_policy` but more secure.
-* **[dice::sparse_map::sh::mod_growth_policy.](https://tessil.github.io/sparse-map/classtsl_1_1sh_1_1mod__growth__policy.html)** The policy grows the map by a customizable growth factor passed in parameter. It then just use the modulo operator to map a hash to a bucket. Slower but more flexible.
+### Hash function
 
+A hash picks its bucket with its low bits as it is, without mixing. So the hash function must be avalanching: each bit of the key changes each bit of the hash with a probability of about one half. A `static_assert` checks `dice::sparse_map::sh::hash_is_avalanching<Hash>`. The trait is true if `Hash` has the public member type `is_avalanching`, its own or of a public base: `using is_avalanching = void;` as in `ankerl::unordered_dense`, or `using is_avalanching = std::true_type;` as in `boost::unordered`. A member type with a `value` that is false, like `std::false_type`, does not count. For a hash function that you cannot change, specialize `dice::sparse_map::sh::hash_is_avalanching`. `std::hash` is not avalanching: for integers, libstdc++ and libc++ return the value itself.
 
-To implement your own policy, you have to implement the following interface.
-
-```c++
-struct custom_policy {
-    // Called on hash table construction and rehash, min_bucket_count_in_out is the minimum buckets
-    // that the hash table needs. The policy can change it to a higher number of buckets if needed 
-    // and the hash table will use this value as bucket count. If 0 bucket is asked, then the value
-    // must stay at 0.    
-    explicit custom_policy(std::size_t& min_bucket_count_in_out);
-    
-    // Return the bucket [0, bucket_count()) to which the hash belongs. 
-    // If bucket_count() is 0, it must always return 0.
-    std::size_t bucket_for_hash(std::size_t hash) const noexcept;
-    
-    // Return the number of buckets that should be used on next growth
-    std::size_t next_bucket_count() const;
-    
-    // Return the maximum number of buckets supported by the policy.
-    std::size_t max_bucket_count() const;
-    
-    // Reset the growth policy as if it was created with a bucket count of 0.
-    // After a clear, the policy must always return 0 when bucket_for_hash is called.
-    void clear() noexcept;
-}
-```
+The default hash function is `dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>` of [dice-hash](https://github.com/dice-group/dice-hash). `DiceHash` declares `is_avalanching` if its policy does, for every key type: `wyhash`, `xxh3` and `rapidhash` do, `Martinus` does not. A `dice::hash::dice_hash_overload` for your own key type must keep the avalanche of the policy, for example by returning `dice_hash_templates<Policy>::dice_hash` of its members (see the README of dice-hash). The default hash function does not guard against `0.0` and `-0.0`: they compare equal but have different hashes, so they can be two keys. A hash picks the bucket, so the hash values of `DiceHash` are part of the persisted layout of a map: a dice-hash version that changes them needs a new `pobr_version`. `tests_default_hash` checks some of them.
 
 ### Installation
 
-To use sparse-map, just add the [include](include/) directory to your include path. It is a **header-only** library.
+To use sparse-map, just add the [include](include/) directory to your include path. It is a **header-only** library. It needs the headers of [dice-hash](https://github.com/dice-group/dice-hash) and its dependencies.
 
 If you use CMake, you can also use the `dice::sparse_map::sparse_map` exported target from the [CMakeLists.txt](CMakeLists.txt) with `target_link_libraries`. 
 ```cmake
@@ -141,7 +116,7 @@ int main() {
         it.value() += 2;
     }
     
-    // {d, 6} {a, 3} {e, 7} {c, 5}
+    // The order depends on the hash function.
     for(const auto& key_value : map) {
         std::cout << "{" << key_value.first << ", " << key_value.second << "}" << std::endl;
     }
@@ -151,7 +126,7 @@ int main() {
         std::cout << "Found \"a\"." << std::endl;
     }
     
-    const std::size_t precalculated_hash = std::hash<std::string>()("a");
+    const std::size_t precalculated_hash = map.hash_function()("a");
     // If we already know the hash beforehand, we can pass it as argument to speed-up the lookup.
     if(map.find("a", precalculated_hash) != map.end()) {
         std::cout << "Found \"a\" with hash " << precalculated_hash << "." << std::endl;
@@ -164,7 +139,7 @@ int main() {
     set.insert({1, 9, 0});
     set.insert({2, -1, 9});
     
-    // {0} {1} {2} {9} {-1}
+    // The order depends on the hash function.
     for(const auto& key : set) {
         std::cout << "{" << key << "}" << std::endl;
     }
@@ -225,13 +200,16 @@ struct equal_employee {
     }
 };
 
+// The hash must be avalanching, see "Hash function" above.
 struct hash_employee {
+    using is_avalanching = void;
+    
     std::size_t operator()(const employee& empl) const {
-        return std::hash<int>()(empl.m_id);
+        return dice::hash::DiceHash<int, dice::hash::Policies::wyhash>()(empl.m_id);
     }
     
     std::size_t operator()(int id) const {
-        return std::hash<int>()(id);
+        return dice::hash::DiceHash<int, dice::hash::Policies::wyhash>()(id);
     }
 };
 

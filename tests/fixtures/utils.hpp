@@ -42,20 +42,26 @@
 namespace dice::sparse_map::tests {
 
     /**
-     * Hash that returns the value itself.
+     * Hash that returns the value itself. It is not avalanching, but it is marked as avalanching, so that the
+     * containers accept it. Keys that differ only in high bits collide on purpose.
      */
     template<typename T>
     struct identity_hash {
+        using is_avalanching = void;
+
         std::size_t operator()(T const &value) const {
             return static_cast<std::size_t>(value);
         }
     };
 
     /**
-     * `std::hash` modulo `mod`. A small `mod` gives many collisions.
+     * `std::hash` modulo `mod`. A small `mod` gives many collisions. It is not avalanching, but it is marked as
+     * avalanching, so that the containers accept it. The keys collide on purpose.
      */
     template<unsigned int mod>
     struct mod_hash {
+        using is_avalanching = void;
+
         template<typename T>
         std::size_t operator()(T const &value) const {
             return std::hash<T>()(value) % mod;
