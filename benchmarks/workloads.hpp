@@ -14,7 +14,7 @@
 #include <vector>
 
 #if defined(__GLIBC__)
-#include <malloc.h>  // for mallopt
+#include <malloc.h> // for mallopt
 #endif
 
 /**
@@ -82,7 +82,7 @@ namespace dice::sparse_map::bench {
      * path of the hash, and about a quarter of the keys fit into the small string buffer of
      * `std::string`.
      */
-    inline constexpr std::size_t min_key_len = 8;  // room for the whole value, so keys stay distinct
+    inline constexpr std::size_t min_key_len = 8; // room for the whole value, so keys stay distinct
     inline constexpr std::size_t max_key_len = 135;
 
     /**
@@ -92,8 +92,9 @@ namespace dice::sparse_map::bench {
      * every byte value. So the filler is a fixed string, and the value goes into the first 8 bytes.
      * Two different values give two different keys, which every workload relies on.
      */
-    inline constexpr std::string_view key_filler = "service.name/attribute.count/http.status_code/db.query.duration_ms/net.peer.address.family/"
-                                                   "process.runtime.description/log.record.uid/k8s.pod.namespace";
+    inline constexpr std::string_view
+        key_filler = "service.name/attribute.count/http.status_code/db.query.duration_ms/net.peer.address.family/"
+                     "process.runtime.description/log.record.uid/k8s.pod.namespace";
 
     /**
      * The key that stands for the value `v`.
@@ -166,6 +167,41 @@ namespace dice::sparse_map::bench {
     }
 
     /**
+     * Builds a few maps (or sets) of `Map` with 1, 2 and 3 elements, looks up each element and one
+     * key that is not there, and destroys the maps. Returns the number of keys found, 6 for a correct
+     * map. `make_map` makes the empty maps.
+     *
+     * The benchmarks call it outside of the timed runs, once for every container type they time.
+     * A container with its own code path for small maps then runs that path in the same
+     * translation unit as the timed workloads on large maps. So the compiler sees both paths in
+     * use and cannot compile the large-map code as if the small-map path never ran. The keys come
+     * from a `volatile` value, so the compiler cannot compute the result in advance.
+     */
+    template<typename Map, typename Factory = default_factory<Map>>
+    std::size_t use_small_maps(Factory const &make_map = Factory{}) {
+        static std::uint64_t volatile first_value = 4711;
+        std::uint64_t const first = first_value;
+        std::size_t found = 0;
+        for (std::size_t n = 1; n <= 3; ++n) {
+            Map map = make_map();
+            for (std::size_t i = 0; i < n; ++i) {
+                if constexpr (requires { typename Map::mapped_type; }) {
+                    map[key_for<Map>(first + i)] = i;
+                } else {
+                    map.insert(key_for<Map>(first + i));
+                }
+            }
+            for (std::size_t i = 0; i <= n; ++i) {
+                if (map.find(key_for<Map>(first + i)) != map.end()) {
+                    ++found;
+                }
+            }
+        }
+        ankerl::nanobench::doNotOptimizeAway(found);
+        return found;
+    }
+
+    /**
      * A mapped type of the size a real one has.
      *
      * With eight bytes of payload, the property that separates the table designs stays hidden.
@@ -183,9 +219,7 @@ namespace dice::sparse_map::bench {
         // the checksums are exactly the ones of the small-value maps.
         big_value() = default;
         // NOLINTNEXTLINE(google-explicit-constructor,hicpp-explicit-conversions)
-        big_value(std::size_t v)
-            : value(v) {
-        }
+        big_value(std::size_t v) : value(v) {}
         // NOLINTNEXTLINE(google-explicit-constructor,hicpp-explicit-conversions)
         operator std::size_t() const {
             return value;
@@ -281,9 +315,8 @@ namespace dice::sparse_map::bench {
             // search 100 entries in the map
             for (std::size_t search = 0; search < 100; ++search) {
                 auto const r = search_rng();
-                auto const &key = (r & 1U) != 0
-                                      ? key_for<Map>(inserted[((r >> 32U) * inserted.size()) >> 32U])
-                                      : key_for<Map>(r | never_inserted);
+                auto const &key = (r & 1U) != 0 ? key_for<Map>(inserted[((r >> 32U) * inserted.size()) >> 32U])
+                                                : key_for<Map>(r | never_inserted);
                 auto it = map.find(key);
                 if (it != map.end()) {
                     checksum += it->second;
@@ -307,8 +340,7 @@ namespace dice::sparse_map::bench {
         ankerl::nanobench::Rng rng{999};
 
         template<typename Factory = default_factory<Map>>
-        explicit lookup_table(std::size_t num_elements = 50000, Factory const &make_map = Factory{})
-            : map(make_map()) {
+        explicit lookup_table(std::size_t num_elements = 50000, Factory const &make_map = Factory{}) : map(make_map()) {
             tame_allocator();
             keys.reserve(num_elements);
             while (map.size() < num_elements) {
@@ -426,8 +458,7 @@ namespace dice::sparse_map::bench {
 
             for (std::size_t search = 0; search < 2; ++search) {
                 auto const r = rng();
-                auto const &key = (r & 1U) != 0 ? key_for<Map>(live[((r >> 32U) * live.size()) >> 32U])
-                                                : key_for<Map>(r | never_inserted);
+                auto const &key = (r & 1U) != 0 ? key_for<Map>(live[((r >> 32U) * live.size()) >> 32U]) : key_for<Map>(r | never_inserted);
                 auto it = map.find(key);
                 if (it != map.end()) {
                     checksum += it->second;
@@ -466,7 +497,7 @@ namespace dice::sparse_map::bench {
     template<typename Map>
     std::uint64_t hash_strings() {
         typename Map::hasher const hash{};
-        std::uint64_t checksum = 0;  // the hash is 64 bits wide whatever size_t is
+        std::uint64_t checksum = 0; // the hash is 64 bits wide whatever size_t is
         for (auto const &key : hash_keys()) {
             checksum += hash(key);
         }
@@ -552,8 +583,7 @@ namespace dice::sparse_map::bench {
 
             for (std::size_t search = 0; search < 2; ++search) {
                 auto const r = rng();
-                auto const key = (r & 1U) != 0 ? key_for<Set>(live[((r >> 32U) * live.size()) >> 32U])
-                                               : key_for<Set>(r | never_inserted);
+                auto const key = (r & 1U) != 0 ? key_for<Set>(live[((r >> 32U) * live.size()) >> 32U]) : key_for<Set>(r | never_inserted);
                 auto it = set.find(key);
                 if (it != set.end()) {
                     checksum += static_cast<std::size_t>(*it);
@@ -563,6 +593,6 @@ namespace dice::sparse_map::bench {
         return checksum + set.size();
     }
 
-}  // namespace dice::sparse_map::bench
+} // namespace dice::sparse_map::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_WORKLOADS_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_WORKLOADS_HPP

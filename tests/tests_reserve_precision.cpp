@@ -19,7 +19,7 @@ namespace {
     std::size_t room(Set const &set) {
         return static_cast<std::size_t>(static_cast<double>(set.bucket_count()) * static_cast<double>(set.max_load_factor()));
     }
-}  // namespace
+} // namespace
 
 TEST_CASE("reserve makes room for more than 2^24 elements") {
     auto set = dice::sparse_map::sparse_set<std::uint64_t>{};

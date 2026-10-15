@@ -91,7 +91,7 @@ namespace {
         return typename Container::allocator_type{id, &counts};
     }
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("sparse_map", map_kind);
 TYPE_TO_STRING_AS("sparse_set", set_kind);
@@ -231,7 +231,7 @@ TEST_CASE_TEMPLATE("move assignment with propagation takes the allocator and the
         CHECK(target_counts.deallocations == target_counts.allocations);
 
         // the source is still usable
-        source.clear();  // NOLINT(bugprone-use-after-move)
+        source.clear(); // NOLINT(bugprone-use-after-move)
         insert_keys(source, 10);
         CHECK(holds(source, 10));
     }

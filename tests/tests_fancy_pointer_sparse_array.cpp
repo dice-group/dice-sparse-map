@@ -34,7 +34,7 @@ template<typename T>
 void construction() {
     typename T::allocator_type a;
     typename T::array_type test(max_index, a);
-    test.clear(a);  // needed because destructor asserts
+    test.clear(a); // needed because destructor asserts
 }
 
 namespace details {
@@ -55,7 +55,7 @@ namespace details {
         }
         return check;
     }
-}  // namespace details
+} // namespace details
 
 template<typename T>
 void set() {
@@ -64,7 +64,7 @@ void set() {
     auto check = details::generate_check_for_test_array<T>();
     //'set' did not create the correct order of items
     REQUIRE(std::equal(test.begin(), test.end(), check.begin()));
-    test.clear(a);  // needed because destructor asserts
+    test.clear(a); // needed because destructor asserts
 }
 
 template<typename T>
@@ -102,25 +102,33 @@ void const_iterator() {
     test.clear(a);
 }
 
-
 /*
  * The types to give the tests as template parameter.
  */
 template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 struct std_alloc {
     using allocator_type = std::allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, std::allocator<T>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<
+        T,
+        std::allocator<T>,
+        Sparsity,
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
     using const_iterator_type = T const *;
 };
 
 template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 struct custom_alloc {
     using allocator_type = dice::sparse_map::tests::offset_ptr_allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, dice::sparse_map::tests::offset_ptr_allocator<T>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<
+        T,
+        dice::sparse_map::tests::offset_ptr_allocator<T>,
+        Sparsity,
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
     // the iterators of a sparse_array are plain pointers, also with an allocator with fancy pointers
     using const_iterator_type = T const *;
 };
-
 
 // A sparse_array does not store its allocator and frees its storage only in `clear(Allocator &)`. An assignment could
 // not free the old storage, so a sparse_array is neither copy assignable nor move assignable.
@@ -132,7 +140,6 @@ static_assert(!std::is_move_assignable_v<custom_alloc<int>::array_type>);
  * They are not template test cases, so that every test case has its own name.
  */
 TEST_SUITE("fancy_pointers/sparse_array_tests") {
-
     TEST_CASE("std_alloc_compile") {
         compilation<std_alloc<int>>();
     }

@@ -48,19 +48,18 @@ namespace {
     using metall_allocator = metall::manager::allocator_type<T>;
 
     template<sh::sparsity Sparsity>
-    using persistent_map = sparse_map<std::uint64_t,
-                                      std::uint64_t,
-                                      tests::test_hash<std::uint64_t>,
-                                      std::equal_to<std::uint64_t>,
-                                      metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
-                                      Sparsity>;
+    using persistent_map = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
+        Sparsity
+    >;
 
     template<sh::sparsity Sparsity>
-    using persistent_set = sparse_set<std::uint64_t,
-                                      tests::test_hash<std::uint64_t>,
-                                      std::equal_to<std::uint64_t>,
-                                      metall_allocator<std::uint64_t>,
-                                      Sparsity>;
+    using persistent_set =
+        sparse_set<std::uint64_t, tests::test_hash<std::uint64_t>, std::equal_to<std::uint64_t>, metall_allocator<std::uint64_t>, Sparsity>;
 
     /// number of elements a container holds after it was filled, and again after it was changed
     constexpr std::uint64_t num_elements = 100000;
@@ -156,8 +155,11 @@ namespace {
     struct datastore_path {
         std::filesystem::path path;
 
-        explicit datastore_path(std::string const &name)
-            : path(std::filesystem::temp_directory_path() / ("dice_sparse_map_tests_metall_" + file_name_part(name) + "_" + std::to_string(std::random_device{}()))) {
+        explicit datastore_path(std::string const &name) :
+            path(
+                std::filesystem::temp_directory_path()
+                / ("dice_sparse_map_tests_metall_" + file_name_part(name) + "_" + std::to_string(std::random_device{}()))
+            ) {
             static_cast<void>(metall::manager::remove(path.c_str()));
         }
 
@@ -177,10 +179,10 @@ namespace {
      * raw pointer into the old mapping crashes on it instead of reading the old data.
      */
     struct address_blocker {
-        address_blocker(void const *address, std::size_t size) noexcept
-            : size_(size) {
+        address_blocker(void const *address, std::size_t size) noexcept : size_(size) {
             void *const requested = const_cast<void *>(address);
-            void *const mapped = ::mmap(requested, size_, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
+            void *const
+                mapped = ::mmap(requested, size_, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
             if (mapped == requested) {
                 block_ = mapped;
             } else if (mapped != MAP_FAILED) {
@@ -313,11 +315,13 @@ namespace {
     using inner_map = persistent_map<sh::sparsity::medium>;
 
     /// The outer map passes its allocator to every inner map it constructs (uses-allocator construction).
-    using scoped_outer_map = sparse_map<std::uint64_t,
-                                        inner_map,
-                                        tests::test_hash<std::uint64_t>,
-                                        std::equal_to<std::uint64_t>,
-                                        std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, inner_map>>>>;
+    using scoped_outer_map = sparse_map<
+        std::uint64_t,
+        inner_map,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, inner_map>>>
+    >;
 
     constexpr std::uint64_t num_outer = 100;
     constexpr std::uint64_t num_inner = 100;
@@ -401,7 +405,7 @@ namespace {
         }
     }
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("sparse_map<metall, high>", persistent_map<sh::sparsity::high>);
 TYPE_TO_STRING_AS("sparse_map<metall, medium>", persistent_map<sh::sparsity::medium>);
@@ -410,14 +414,16 @@ TYPE_TO_STRING_AS("sparse_set<metall, high>", persistent_set<sh::sparsity::high>
 TYPE_TO_STRING_AS("sparse_set<metall, medium>", persistent_set<sh::sparsity::medium>);
 TYPE_TO_STRING_AS("sparse_set<metall, low>", persistent_set<sh::sparsity::low>);
 
-TEST_CASE_TEMPLATE("a container in a metall datastore survives closing and opening",
-                   container_t,
-                   persistent_map<sh::sparsity::high>,
-                   persistent_map<sh::sparsity::medium>,
-                   persistent_map<sh::sparsity::low>,
-                   persistent_set<sh::sparsity::high>,
-                   persistent_set<sh::sparsity::medium>,
-                   persistent_set<sh::sparsity::low>) {
+TEST_CASE_TEMPLATE(
+    "a container in a metall datastore survives closing and opening",
+    container_t,
+    persistent_map<sh::sparsity::high>,
+    persistent_map<sh::sparsity::medium>,
+    persistent_map<sh::sparsity::low>,
+    persistent_set<sh::sparsity::high>,
+    persistent_set<sh::sparsity::medium>,
+    persistent_set<sh::sparsity::low>
+) {
     check_round_trip<container_t>(doctest::toString<container_t>().c_str());
 }
 
@@ -427,12 +433,14 @@ TEST_CASE("a map of maps with std::scoped_allocator_adaptor survives closing and
 
 namespace {
     /// `identity_hash` puts key `64 * g` into group `g`
-    using bucket_map = sparse_map<std::uint64_t,
-                                  std::uint64_t,
-                                  tests::identity_hash<std::uint64_t>,
-                                  std::equal_to<std::uint64_t>,
-                                  metall_allocator<std::pair<std::uint64_t, std::uint64_t>>>;
-}  // namespace
+    using bucket_map = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::identity_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::pair<std::uint64_t, std::uint64_t>>
+    >;
+} // namespace
 
 // metall maps a datastore that is open read-only without write access, so a write into the map faults. `begin()` of a
 // const map reads where the first element is and writes nothing.
@@ -476,5 +484,138 @@ TEST_CASE("begin, iteration and find of a map in a datastore that is open read-o
         REQUIRE(it != map->end());
         CHECK(it->second == value_of(1300));
         CHECK(map->find(0) == map->end());
+    }
+}
+
+namespace {
+    /**
+     * A map that keeps up to 2 elements inline. Its hash is the key, marked as avalanching, so that key `k` has the
+     * home bucket `k % 64` and the keys 1 and 65 collide.
+     */
+    using small_inline_map = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::marked_avalanching<std::hash<std::uint64_t>>,
+        std::equal_to<std::uint64_t>,
+        metall_allocator<std::pair<std::uint64_t, std::uint64_t>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        2
+    >;
+
+    /// a map that keeps up to 2 small maps inline, and passes its allocator to them
+    using inline_outer_map = sparse_map<
+        std::uint64_t,
+        small_inline_map,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, small_inline_map>>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        2
+    >;
+
+    /// true if `map` holds exactly the keys `first` to `first + n - 1`, each mapped to `value_of(key)`
+    bool holds_range(small_inline_map const &map, std::uint64_t first, std::uint64_t n) {
+        bool all_found = map.size() == n;
+        for (std::uint64_t key = first; key < first + n; ++key) {
+            all_found = all_found && holds(map, key);
+        }
+        return all_found;
+    }
+} // namespace
+
+// The inline elements of a map live in the map object, so in the datastore if the map is there. A map whose inline
+// elements are maps with buckets keeps working when the datastore is mapped at another address: the state of the
+// buckets of an inner map, with its `offset_ptr`, is in the inline group of the outer map. A map with inline elements
+// has 64 buckets, like one whose elements are in an allocated group.
+TEST_CASE("maps with inline elements survive closing and opening at another address") {
+    datastore_path const store{"inline_maps"};
+    mapping last_mapping;
+
+    {
+        metall::manager manager{metall::create_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        last_mapping = mapping_of(manager);
+        auto *outer = manager.construct<inline_outer_map>("outer")(manager.get_allocator());
+        REQUIRE(outer != nullptr);
+        insert_one((*outer)[1], std::uint64_t{10});
+        auto &second = (*outer)[2];
+        for (std::uint64_t key = 0; key < 20; ++key) {
+            insert_one(second, key);
+        }
+        REQUIRE(outer->bucket_count() == 64);
+        REQUIRE(outer->at(1).bucket_count() == 64);
+        REQUIRE(outer->at(2).bucket_count() == 64);
+        REQUIRE(outer->erase(5) == 0);
+
+        // 65 is outside its home bucket 1, so the erasure of 1 leaves a deleted bucket in the inline group
+        auto *small = manager.construct<small_inline_map>("small")(manager.get_allocator());
+        REQUIRE(small != nullptr);
+        insert_one(*small, std::uint64_t{1});
+        insert_one(*small, std::uint64_t{65});
+        REQUIRE(small->erase(1) == 1);
+        REQUIRE(small->size() == 1);
+        REQUIRE(small->bucket_count() == 64);
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        last_mapping = mapping_of(manager);
+        auto *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        CHECK(outer->size() == 2);
+        CHECK(outer->bucket_count() == 64);
+        CHECK(holds_range(outer->at(1), 10, 1));
+        CHECK(holds_range(outer->at(2), 0, 20));
+        CHECK(small->size() == 1);
+        CHECK(holds(*small, 65));
+        CHECK_FALSE(small->contains(1));
+
+        // the outer map moves its inline maps into an allocated group
+        insert_one((*outer)[3], std::uint64_t{30});
+        CHECK(outer->bucket_count() == 64);
+        CHECK(holds_range(outer->at(1), 10, 1));
+        CHECK(holds_range(outer->at(2), 0, 20));
+        CHECK(holds_range(outer->at(3), 30, 1));
+
+        // the small map moves its elements into an allocated group, with its deleted bucket in front of 65
+        insert_one(*small, std::uint64_t{7});
+        insert_one(*small, std::uint64_t{8});
+        CHECK(small->bucket_count() == 64);
+        CHECK(small->size() == 3);
+        CHECK(holds(*small, 65));
+        CHECK(holds(*small, 7));
+        CHECK(holds(*small, 8));
+    }
+
+    {
+        auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+        CHECK(blocker.blocks());
+        metall::manager manager{metall::open_only, store.path.c_str()};
+        REQUIRE(manager.check_sanity());
+        REQUIRE(manager.get_address() != last_mapping.address);
+        auto *outer = std::get<0>(manager.find<inline_outer_map>("outer"));
+        auto *small = std::get<0>(manager.find<small_inline_map>("small"));
+        REQUIRE(outer != nullptr);
+        REQUIRE(small != nullptr);
+        CHECK(outer->size() == 3);
+        CHECK(holds_range(outer->at(1), 10, 1));
+        CHECK(holds_range(outer->at(2), 0, 20));
+        CHECK(holds_range(outer->at(3), 30, 1));
+        CHECK(small->size() == 3);
+        CHECK(holds(*small, 65));
+        CHECK(holds(*small, 7));
+        CHECK(holds(*small, 8));
+
+        CHECK(manager.destroy<inline_outer_map>("outer"));
+        CHECK(manager.destroy<small_inline_map>("small"));
+        CHECK(manager.all_memory_deallocated());
     }
 }

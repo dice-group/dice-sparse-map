@@ -86,7 +86,7 @@ namespace {
         return map;
     }
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("std::size_t", std::size_t);
 
@@ -132,6 +132,60 @@ TEST_CASE_TEMPLATE("begin follows the first group that holds an element", T, std
     it = map.erase(map.find(T{70}));
     CHECK(it == map.end());
     check_begin(map, std::nullopt);
+}
+
+// The inline group has no group index: `begin()` of an inline map is its first inline element. The move into an
+// allocated group sets the first non-empty group to group 0, and to the number of groups for an empty group.
+TEST_CASE("begin of a map with an inline group, inline, after the move into an allocated group, and back") {
+    using inline_map = sparse_map<
+        std::size_t,
+        std::size_t,
+        fragile_bucket_hash,
+        std::equal_to<std::size_t>,
+        std::allocator<std::pair<std::size_t, std::size_t>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        2
+    >;
+    auto map = inline_map{};
+    check_begin(map, std::nullopt);
+    insert(map, 9);
+    insert(map, 5);
+    check_begin(map, 5);
+    insert(map, 7); // moves the elements into an allocated group
+    REQUIRE(map.bucket_count() == 64);
+    check_begin(map, 5);
+    map.erase(5);
+    check_begin(map, 7);
+    // the buckets 8, 11 and 14 of 64 buckets, after bucket 7
+    for (std::size_t const n : {72, 75, 78}) {
+        insert(map, n);
+    }
+    check_begin(map, 7);
+    map.erase(7);
+    map.erase(9);
+    check_begin(map, 72);
+
+    auto empty_group = inline_map{};
+    empty_group.rehash(10); // an empty map gets an allocated group of 64 buckets
+    REQUIRE(empty_group.bucket_count() == 64);
+    check_begin(empty_group, std::nullopt);
+    insert(empty_group, 3);
+    check_begin(empty_group, 3);
+    empty_group.erase(3);
+    empty_group.rehash(0); // an empty table without buckets is inline again
+    REQUIRE(empty_group.bucket_count() == 0);
+    check_begin(empty_group, std::nullopt);
+    insert(empty_group, 4);
+    check_begin(empty_group, 4);
+
+    // `reserve` moves the inline elements into an allocated group without an insertion after it
+    auto reserved = inline_map{};
+    insert(reserved, 9);
+    insert(reserved, 5);
+    reserved.reserve(3);
+    REQUIRE(reserved.bucket_count() == 64);
+    check_begin(reserved, 5);
 }
 
 TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, std::size_t) {
@@ -184,15 +238,15 @@ TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, st
         insert(source, 320);
         auto moved = std::move(source);
         check_begin(moved, 320);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
-        insert(source, 64);                 // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
+        insert(source, 64); // NOLINT(bugprone-use-after-move)
         check_begin(source, 64);
 
         auto target = map_with_32_groups<map_t>();
         insert(target, 0);
         target = std::move(moved);
         check_begin(target, 320);
-        check_begin(moved, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(moved, std::nullopt); // NOLINT(bugprone-use-after-move)
     }
 
     SUBCASE("swap") {
@@ -216,10 +270,7 @@ TEST_CASE_TEMPLATE("every operation that changes a map keeps begin right", T, st
         check_begin(source, 1920);
 
         insert(target, 700);
-        CHECK(erase_if(target, [](auto const &element) {
-                  return number(element.first) < 1000;
-              })
-              == 2);
+        CHECK(erase_if(target, [](auto const &element) { return number(element.first) < 1000; }) == 2);
         check_begin(target, 1920);
         target.erase(target.cbegin(), target.cend());
         check_begin(target, std::nullopt);
@@ -255,12 +306,12 @@ TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::s
         insert(source, 320);
         auto const same = map_t(std::move(source), allocator_t{1});
         check_begin(same, 320);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
 
-        insert(source, 640);  // NOLINT(bugprone-use-after-move)
+        insert(source, 640); // NOLINT(bugprone-use-after-move)
         auto const other = map_t(std::move(source), allocator_t{2});
         check_begin(other, 640);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
     }
 
     SUBCASE("move assignment") {
@@ -270,7 +321,7 @@ TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::s
         insert(target, 0);
         target = std::move(source);
         check_begin(target, 320);
-        check_begin(source, std::nullopt);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, std::nullopt); // NOLINT(bugprone-use-after-move)
     }
 
     SUBCASE("move assignment whose hash function throws") {
@@ -282,7 +333,7 @@ TEST_CASE_TEMPLATE("moves with an unequal allocator keep begin right", T, std::s
         CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
         fragile_bucket_hash::moves_throw = false;
         check_begin(target, std::nullopt);
-        check_begin(source, 320);  // NOLINT(bugprone-use-after-move)
+        check_begin(source, 320); // NOLINT(bugprone-use-after-move)
         insert(target, 640);
         check_begin(target, 640);
     }
@@ -308,7 +359,7 @@ namespace {
      * with `--no-skip`, or set this to true.
      */
     constexpr bool run_timing_test = false;
-}  // namespace
+} // namespace
 
 /*
  * A timing test, because the cost of `begin()` cannot be seen through the interface otherwise. A table that searches

@@ -44,7 +44,7 @@ namespace {
     };
 
     /// copies of `counting_hash` since the counter was last set to 0
-    std::size_t hash_copies = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    std::size_t hash_copies = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * A hash function that counts its copies in `hash_copies`.
@@ -81,7 +81,7 @@ namespace {
     template<typename Set, typename K>
     concept HasHeterogeneousInsert = requires (Set set, K key) { set.insert(key); };
 
-}  // namespace
+} // namespace
 
 TEST_SUITE("ranges") {
     TEST_CASE("insert_range after the max load factor was lowered below the load") {
@@ -97,9 +97,9 @@ TEST_SUITE("ranges") {
         auto const more = std::vector<std::pair<int, int>>{{1000, 1}, {1001, 2}};
         auto bucket_counts = std::vector<std::size_t>{};
         map.insert_range(more | std::views::transform([&](std::pair<int, int> const &value) {
-                             bucket_counts.push_back(map.bucket_count());
-                             return value;
-                         }));
+            bucket_counts.push_back(map.bucket_count());
+            return value;
+        }));
         CHECK(map.size() == 102);
         CHECK(map.load_factor() <= map.max_load_factor());
         CHECK(bucket_counts == std::vector<std::size_t>(2, map.bucket_count()));
@@ -128,8 +128,7 @@ TEST_SUITE("ranges") {
 
         SUBCASE("insert of an iterator pair") {
             auto range = input | std::views::filter(predicate);
-            REQUIRE_FALSE(std::sized_sentinel_for<std::ranges::iterator_t<decltype(range)>,
-                                                  std::ranges::iterator_t<decltype(range)>>);
+            REQUIRE_FALSE(std::sized_sentinel_for<std::ranges::iterator_t<decltype(range)>, std::ranges::iterator_t<decltype(range)>>);
 
             auto map = sparse_map<int, int>{};
             map.insert(std::ranges::begin(range), std::ranges::end(range));
@@ -144,9 +143,9 @@ TEST_SUITE("ranges") {
             auto map = sparse_map<int, int>{};
             auto bucket_counts = std::vector<std::size_t>{};
             auto range = input | std::views::transform([&](std::pair<int, int> const &value) {
-                             bucket_counts.push_back(map.bucket_count());
-                             return value;
-                         });
+                bucket_counts.push_back(map.bucket_count());
+                return value;
+            });
             REQUIRE(std::ranges::sized_range<decltype(range)>);
 
             map.insert_range(range);
@@ -199,9 +198,7 @@ TEST_SUITE("ranges") {
         CHECK(map == source);
 
         auto squares = sparse_map<int, int>{};
-        squares.insert_range(std::views::iota(0, 100) | std::views::transform([](int i) {
-                                 return std::pair{i, i * i};
-                             }));
+        squares.insert_range(std::views::iota(0, 100) | std::views::transform([](int i) { return std::pair{i, i * i}; }));
         CHECK(squares.size() == 100);
         CHECK(squares.at(9) == 81);
 
@@ -259,53 +256,89 @@ TEST_SUITE("deduction guides") {
         auto const keys = std::vector<std::string>{"x", "y"};
 
         sparse_map map_from_iterators(input.begin(), input.end(), 4, map_alloc_t(1));
-        static_assert(std::is_same_v<decltype(map_from_iterators), sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(map_from_iterators),
+            sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>
+        >);
         CHECK(map_from_iterators.get_allocator().id == 1);
 
         sparse_map map_from_range(std::from_range, input, map_alloc_t(2));
-        static_assert(std::is_same_v<decltype(map_from_range), sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(map_from_range),
+            sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>
+        >);
         CHECK(map_from_range.at(2) == "b");
 
         sparse_map map_from_list({std::pair{1, std::string{"a"}}}, 4, map_alloc_t(3));
-        static_assert(std::is_same_v<decltype(map_from_list), sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(map_from_list),
+            sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>
+        >);
         CHECK(map_from_list.size() == 1);
 
         sparse_set set_from_iterators(keys.begin(), keys.end(), set_alloc_t(4));
-        static_assert(std::is_same_v<decltype(set_from_iterators), sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(set_from_iterators),
+            sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>
+        >);
         CHECK(set_from_iterators.contains("x"));
 
         sparse_set set_from_range(std::from_range, keys, 4, set_alloc_t(5));
-        static_assert(std::is_same_v<decltype(set_from_range), sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(set_from_range),
+            sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>
+        >);
         CHECK(set_from_range.size() == 2);
 
         sparse_set set_from_list({1, 2, 3}, set_alloc_t::rebind<int>::other(6));
-        static_assert(std::is_same_v<decltype(set_from_list), sparse_set<int, detail_sparse_hash::default_hash<int>, std::equal_to<int>, tests::id_allocator<int>>>);
+        static_assert(std::is_same_v<
+            decltype(set_from_list),
+            sparse_set<int, detail_sparse_hash::default_hash<int>, std::equal_to<int>, tests::id_allocator<int>>
+        >);
         CHECK(set_from_list.size() == 3);
 
         sparse_map map_from_iterators_alloc(input.begin(), input.end(), map_alloc_t(7));
-        static_assert(std::is_same_v<decltype(map_from_iterators_alloc), sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(map_from_iterators_alloc),
+            sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>
+        >);
         CHECK(map_from_iterators_alloc.at(1) == "a");
 
         sparse_map map_from_range_count(std::from_range, input, 4, map_alloc_t(8));
-        static_assert(std::is_same_v<decltype(map_from_range_count), sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(map_from_range_count),
+            sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>
+        >);
         CHECK(map_from_range_count.at(1) == "a");
         CHECK(map_from_range_count.get_allocator().id == 8);
 
         sparse_map map_from_list_alloc({std::pair{1, std::string{"a"}}}, map_alloc_t(9));
-        static_assert(std::is_same_v<decltype(map_from_list_alloc), sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(map_from_list_alloc),
+            sparse_map<int, std::string, detail_sparse_hash::default_hash<int>, std::equal_to<int>, map_alloc_t>
+        >);
         CHECK(map_from_list_alloc.at(1) == "a");
 
         sparse_set set_from_iterators_count(keys.begin(), keys.end(), 4, set_alloc_t(10));
-        static_assert(std::is_same_v<decltype(set_from_iterators_count), sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(set_from_iterators_count),
+            sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>
+        >);
         CHECK(set_from_iterators_count.contains("y"));
 
         sparse_set set_from_range_alloc(std::from_range, keys, set_alloc_t(11));
-        static_assert(std::is_same_v<decltype(set_from_range_alloc), sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(set_from_range_alloc),
+            sparse_set<std::string, detail_sparse_hash::default_hash<std::string>, std::equal_to<std::string>, set_alloc_t>
+        >);
         CHECK(set_from_range_alloc.contains("y"));
         CHECK(set_from_range_alloc.get_allocator().id == 11);
 
         sparse_set set_from_list_count({1, 2, 3}, 4, tests::id_allocator<int>(12));
-        static_assert(std::is_same_v<decltype(set_from_list_count), sparse_set<int, detail_sparse_hash::default_hash<int>, std::equal_to<int>, tests::id_allocator<int>>>);
+        static_assert(std::is_same_v<
+            decltype(set_from_list_count),
+            sparse_set<int, detail_sparse_hash::default_hash<int>, std::equal_to<int>, tests::id_allocator<int>>
+        >);
         CHECK(set_from_list_count.contains(3));
     }
 
@@ -330,16 +363,22 @@ TEST_SUITE("deduction guides") {
         CHECK(map_from_list.at(1) == 2.5);
 
         sparse_map map_from_iterators_alloc(input.begin(), input.end(), 4, int_hash_t{}, map_alloc_t(1));
-        static_assert(std::is_same_v<decltype(map_from_iterators_alloc), sparse_map<int, std::string, int_hash_t, std::equal_to<int>, map_alloc_t>>);
+        static_assert(
+            std::is_same_v<decltype(map_from_iterators_alloc), sparse_map<int, std::string, int_hash_t, std::equal_to<int>, map_alloc_t>>
+        );
         CHECK(map_from_iterators_alloc.at(1) == "a");
 
         sparse_map map_from_range_alloc(std::from_range, input, 4, int_hash_t{}, map_alloc_t(2));
-        static_assert(std::is_same_v<decltype(map_from_range_alloc), sparse_map<int, std::string, int_hash_t, std::equal_to<int>, map_alloc_t>>);
+        static_assert(
+            std::is_same_v<decltype(map_from_range_alloc), sparse_map<int, std::string, int_hash_t, std::equal_to<int>, map_alloc_t>>
+        );
         CHECK(map_from_range_alloc.at(2) == "b");
         CHECK(map_from_range_alloc.get_allocator().id == 2);
 
         sparse_map map_from_list_alloc({std::pair{1, std::string{"a"}}}, 4, int_hash_t{}, map_alloc_t(3));
-        static_assert(std::is_same_v<decltype(map_from_list_alloc), sparse_map<int, std::string, int_hash_t, std::equal_to<int>, map_alloc_t>>);
+        static_assert(
+            std::is_same_v<decltype(map_from_list_alloc), sparse_map<int, std::string, int_hash_t, std::equal_to<int>, map_alloc_t>>
+        );
         CHECK(map_from_list_alloc.at(1) == "a");
 
         sparse_set set_from_iterators(keys.begin(), keys.end(), 4, string_hash_t{});
@@ -355,16 +394,23 @@ TEST_SUITE("deduction guides") {
         CHECK(set_from_list.contains(3));
 
         sparse_set set_from_iterators_alloc(keys.begin(), keys.end(), 4, string_hash_t{}, set_alloc_t(4));
-        static_assert(std::is_same_v<decltype(set_from_iterators_alloc), sparse_set<std::string, string_hash_t, std::equal_to<std::string>, set_alloc_t>>);
+        static_assert(std::is_same_v<
+            decltype(set_from_iterators_alloc),
+            sparse_set<std::string, string_hash_t, std::equal_to<std::string>, set_alloc_t>
+        >);
         CHECK(set_from_iterators_alloc.contains("x"));
 
         sparse_set set_from_range_alloc(std::from_range, keys, 4, string_hash_t{}, set_alloc_t(5));
-        static_assert(std::is_same_v<decltype(set_from_range_alloc), sparse_set<std::string, string_hash_t, std::equal_to<std::string>, set_alloc_t>>);
+        static_assert(
+            std::is_same_v<decltype(set_from_range_alloc), sparse_set<std::string, string_hash_t, std::equal_to<std::string>, set_alloc_t>>
+        );
         CHECK(set_from_range_alloc.contains("y"));
         CHECK(set_from_range_alloc.get_allocator().id == 5);
 
         sparse_set set_from_list_alloc({1, 2, 3}, 4, int_hash_t{}, tests::id_allocator<int>(6));
-        static_assert(std::is_same_v<decltype(set_from_list_alloc), sparse_set<int, int_hash_t, std::equal_to<int>, tests::id_allocator<int>>>);
+        static_assert(
+            std::is_same_v<decltype(set_from_list_alloc), sparse_set<int, int_hash_t, std::equal_to<int>, tests::id_allocator<int>>>
+        );
         CHECK(set_from_list_alloc.contains(3));
     }
 }
@@ -376,9 +422,7 @@ TEST_SUITE("erase_if and merge") {
             map[i] = i * 3;
         }
 
-        auto const erased = erase_if(map, [](auto const &element) {
-            return element.second % 2 == 0;
-        });
+        auto const erased = erase_if(map, [](auto const &element) { return element.second % 2 == 0; });
         CHECK(erased == 500);
         CHECK(map.size() == 500);
         for (int i = 0; i < 1000; ++i) {
@@ -391,10 +435,7 @@ TEST_SUITE("erase_if and merge") {
         for (int i = 0; i < 1000; ++i) {
             set.insert(i);
         }
-        CHECK(erase_if(set, [](int key) {
-                  return key < 100;
-              })
-              == 100);
+        CHECK(erase_if(set, [](int key) { return key < 100; }) == 100);
         CHECK(set.size() == 900);
         CHECK(!set.contains(99));
         CHECK(set.contains(100));
@@ -403,21 +444,23 @@ TEST_SUITE("erase_if and merge") {
     TEST_CASE("merge moves the elements whose keys are missing") {
         auto target = sparse_map<std::string, int>{{"a", 1}, {"b", 2}};
         // another hash function, key equality, sparsity and allocation failure mode
-        auto source = sparse_map<std::string,
-                                 int,
-                                 tests::test_hash<std::string>,
-                                 string_equal,
-                                 std::allocator<std::pair<std::string, int>>,
-                                 sh::sparsity::high,
-                                 sh::allocation_failure::throwing>{{"b", 20}, {"c", 30}, {"d", 40}};
+        auto source = sparse_map<
+            std::string,
+            int,
+            tests::test_hash<std::string>,
+            string_equal,
+            std::allocator<std::pair<std::string, int>>,
+            sh::sparsity::high,
+            sh::allocation_failure::throwing
+        >{{"b", 20}, {"c", 30}, {"d", 40}};
 
         target.merge(source);
 
         CHECK(target.size() == 4);
-        CHECK(target.at("b") == 2);  // the element of the target stays
+        CHECK(target.at("b") == 2); // the element of the target stays
         CHECK(target.at("c") == 30);
         CHECK(target.at("d") == 40);
-        CHECK(source.size() == 1);  // the duplicate stays in the source
+        CHECK(source.size() == 1); // the duplicate stays in the source
         CHECK(source.at("b") == 20);
 
         auto other = sparse_map<std::string, int>{{"e", 50}};
@@ -440,19 +483,21 @@ TEST_SUITE("erase_if and merge") {
     TEST_CASE("merge of sets moves the elements whose keys are missing from a set of another type") {
         auto target = sparse_set<std::string>{"a", "b"};
         // another hash function, key equality, sparsity and allocation failure mode
-        auto source = sparse_set<std::string,
-                                 tests::test_hash<std::string>,
-                                 string_equal,
-                                 std::allocator<std::string>,
-                                 sh::sparsity::high,
-                                 sh::allocation_failure::throwing>{"b", "c", "d"};
+        auto source = sparse_set<
+            std::string,
+            tests::test_hash<std::string>,
+            string_equal,
+            std::allocator<std::string>,
+            sh::sparsity::high,
+            sh::allocation_failure::throwing
+        >{"b", "c", "d"};
 
         target.merge(source);
 
         CHECK(target.size() == 4);
         CHECK(target.contains("c"));
         CHECK(target.contains("d"));
-        CHECK(source.size() == 1);  // the duplicate stays in the source
+        CHECK(source.size() == 1); // the duplicate stays in the source
         CHECK(source.contains("b"));
     }
 
@@ -489,7 +534,9 @@ TEST_SUITE("heterogeneous insertion") {
     // The heterogeneous overloads need `is_transparent` on the hash function and on the key equality.
     static_assert(HasHeterogeneousFind<string_map, std::string_view>);
     static_assert(HasHeterogeneousInsert<string_set, std::string_view>);
-    static_assert(!HasHeterogeneousTryEmplace<sparse_map<std::string, int, tests::test_hash<std::string>, std::equal_to<>>, std::string_view>);
+    static_assert(
+        !HasHeterogeneousTryEmplace<sparse_map<std::string, int, tests::test_hash<std::string>, std::equal_to<>>, std::string_view>
+    );
     static_assert(!HasHeterogeneousFind<sparse_map<std::string, int, tests::test_hash<std::string>, std::equal_to<>>, std::string_view>);
     static_assert(!HasHeterogeneousFind<sparse_map<std::string, int, string_hash, std::equal_to<std::string>>, std::string_view>);
     static_assert(!HasHeterogeneousInsert<sparse_set<std::string, tests::test_hash<std::string>, std::equal_to<>>, std::string_view>);
@@ -576,7 +623,7 @@ TEST_SUITE("allocator-extended constructors") {
         auto const moved = Container(std::move(source), alloc_t(1, &counts));
         CHECK(counts.allocations == allocations);
         CHECK(moved.size() == 100);
-        CHECK(source.empty());  // NOLINT(bugprone-use-after-move)
+        CHECK(source.empty()); // NOLINT(bugprone-use-after-move)
     }
 
     TEST_CASE_TEMPLATE("move with an unequal allocator moves the elements", Container, map_t, set_t) {
@@ -590,6 +637,6 @@ TEST_SUITE("allocator-extended constructors") {
         CHECK(counts.allocations > 0);
         CHECK(moved.size() == 100);
         CHECK(holds_42(moved));
-        CHECK(source.empty());  // NOLINT(bugprone-use-after-move)
+        CHECK(source.empty()); // NOLINT(bugprone-use-after-move)
     }
 }

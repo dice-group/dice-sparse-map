@@ -49,8 +49,8 @@ namespace dice::sparse_map {
      * `is_avalanching` for every key type. A `dice::hash::dice_hash_overload` for
      * your own key type must keep the avalanche of the policy.
      *
-     * The number of buckets is 0 or a power of two and doubles when the table
-     * grows. A hash picks its bucket with a mask.
+     * The number of buckets is 0 or a power of two of at least 64 (one group) and
+     * doubles when the table grows. A hash picks its bucket with a mask.
      *
      * The interface follows `std::unordered_map`, with these differences:
      *  - `value_type` is `std::pair<Key, T>`. Elements are stored as `Key` and `T` in a standard layout type,
@@ -105,26 +105,69 @@ namespace dice::sparse_map {
      * also nothrow move assignable, an insertion or an erase moves the elements after it in its group of 64 buckets
      * with their move assignment, as `std::vector::insert` and `std::vector::erase` do.
      *
-     * Invalidation of iterators, references and pointers to elements: see `detail_sparse_hash::sparse_hash`.
+     * `inline_capacity` (default 0) is the number of elements that a map keeps in the map object itself, without
+     * an allocation. The map object then holds group 0 of a table of 64 buckets: a bitmap of the buckets that hold an
+     * element, a bitmap of the deleted buckets and room for `inline_capacity` elements. A lookup is the one of a table
+     * of 64 buckets. When an insertion finds the inline group full, the elements move into an allocated group of 64
+     * buckets, in the same buckets and in the same order, without a rehash. With `allocation_failure::throwing`, if an
+     * allocation of this move throws, the map is unchanged. A lower maximum load factor lowers the limit to the load
+     * threshold of 64 buckets. An erase of an inline element moves the elements after it, and marks its bucket as
+     * deleted only while an element can be outside the bucket of its hash: it allocates nothing and keeps the order of
+     * the other elements. The inline capacity is at most 32. Inline storage makes the map object larger: with
+     * `std::allocator` on 64 bit targets, `sizeof(sparse_map<std::uint64_t, std::uint64_t>)` is 72 with the inline
+     * capacity 0 and 96 with 4. The inline capacity 0 has no inline group at all.
+     *
+     * An inline capacity other than 0 does not compile for these elements:
+     *  - Elements whose move constructor can throw (a `static_assert`). The inline elements move one by one in a move,
+     *    a swap and the move into an allocated group, and `noexcept` of the move constructor and of `swap` does not
+     *    depend on the element type.
+     *  - Elements with an alignment larger than the alignment of the allocator's pointer type and `size_type` (a
+     *    `static_assert`). That is 8 bytes with `std::allocator` on 64 bit targets.
+     *  - A `Key` or `T` that is incomplete where the map type is instantiated, for example a map that is a member of a
+     *    type it stores (the compiler reports the incomplete type). The map object holds the elements.
+     *
+     * Move construction, move assignment and `swap` move the inline elements one by one. So, unlike with
+     * `std::unordered_map`, they invalidate the iterators, references and pointers to inline elements, and a byte
+     * copy of a map object is not a move. In a constant expression the inline group holds no element: the first
+     * insertion allocates the group of 64 buckets. `bucket_count()` of a map with inline elements is 64, of an empty
+     * inline map 0. A bucket count from 1 to 64, in the constructor or in `rehash(n)`, gives an empty map an
+     * allocated group of 64 buckets instead of the inline group.
+     *
+     * Invalidation of iterators, references and pointers to elements: see `detail_sparse_hash::sparse_hash`. The
+     * move constructor, the move assignment and `swap` also invalidate the iterators, references and pointers to
+     * inline elements.
      */
-    template<typename Key,
-             typename T,
-             typename Hash = detail_sparse_hash::default_hash<Key>,
-             typename KeyEqual = std::equal_to<Key>,
-             typename Allocator = std::allocator<std::pair<Key, T>>,
-             sh::sparsity Sparsity = sh::sparsity::medium,
-             sh::allocation_failure AllocationFailure = sh::allocation_failure::terminating>
+    template<
+        typename Key,
+        typename T,
+        typename Hash = detail_sparse_hash::default_hash<Key>,
+        typename KeyEqual = std::equal_to<Key>,
+        typename Allocator = std::allocator<std::pair<Key, T>>,
+        sh::sparsity Sparsity = sh::sparsity::medium,
+        sh::allocation_failure AllocationFailure = sh::allocation_failure::terminating,
+        std::size_t inline_capacity = 0
+    >
     struct sparse_map {
-        static_assert(sh::hash_is_avalanching_v<Hash>,
-                      "Hash must be avalanching: sparse_map picks the bucket with the low bits of the hash as it is. "
-                      "Mark an avalanching hash function with `using is_avalanching = void;` or with a specialization "
-                      "of dice::sparse_map::sh::hash_is_avalanching. std::hash is not avalanching. "
-                      "dice::hash::DiceHash is avalanching only for some policies.");
+        static_assert(
+            sh::hash_is_avalanching_v<Hash>,
+            "Hash must be avalanching: sparse_map picks the bucket with the low bits of the hash as it is. "
+            "Mark an avalanching hash function with `using is_avalanching = void;` or with a specialization "
+            "of dice::sparse_map::sh::hash_is_avalanching. std::hash is not avalanching. "
+            "dice::hash::DiceHash is avalanching only for some policies."
+        );
 
     private:
-        using ht = detail_sparse_hash::sparse_hash<detail_sparse_hash::map_access<Key, T>, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>;
+        using ht = detail_sparse_hash::sparse_hash<
+            detail_sparse_hash::map_access<Key, T>,
+            Hash,
+            KeyEqual,
+            Allocator,
+            Sparsity,
+            AllocationFailure,
+            inline_capacity
+        >;
 
-        template<typename, typename, typename, typename, typename, sh::sparsity, sh::allocation_failure>
+        template<typename, typename, typename, typename, typename, sh::sparsity, sh::allocation_failure, std::size_t>
         friend struct sparse_map;
 
         /// the heterogeneous overloads exist if `Hash::is_transparent` and `KeyEqual::is_transparent` exist
@@ -155,103 +198,93 @@ namespace dice::sparse_map {
         /*
          * Constructors
          */
-        constexpr sparse_map()
-            : sparse_map(ht::default_init_bucket_count) {
-        }
+        constexpr sparse_map() : sparse_map(ht::default_init_bucket_count) {}
 
-        constexpr explicit sparse_map(size_type bucket_count,
-                                      Hash const &hash = Hash(),
-                                      KeyEqual const &equal = KeyEqual(),
-                                      Allocator const &alloc = Allocator())
-            : ht_(bucket_count, hash, equal, alloc, ht::default_max_load_factor) {
-        }
+        constexpr explicit sparse_map(
+            size_type bucket_count,
+            Hash const &hash = Hash(),
+            KeyEqual const &equal = KeyEqual(),
+            Allocator const &alloc = Allocator()
+        ) :
+            ht_(bucket_count, hash, equal, alloc, ht::default_max_load_factor) {}
 
-        constexpr sparse_map(size_type bucket_count, Allocator const &alloc)
-            : sparse_map(bucket_count, Hash(), KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(size_type bucket_count, Allocator const &alloc) : sparse_map(bucket_count, Hash(), KeyEqual(), alloc) {}
 
-        constexpr sparse_map(size_type bucket_count, Hash const &hash, Allocator const &alloc)
-            : sparse_map(bucket_count, hash, KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(size_type bucket_count, Hash const &hash, Allocator const &alloc) :
+            sparse_map(bucket_count, hash, KeyEqual(), alloc) {}
 
-        constexpr explicit sparse_map(Allocator const &alloc)
-            : sparse_map(ht::default_init_bucket_count, alloc) {
-        }
+        constexpr explicit sparse_map(Allocator const &alloc) : sparse_map(ht::default_init_bucket_count, alloc) {}
 
         template<typename InputIt>
-        constexpr sparse_map(InputIt first,
-                             InputIt last,
-                             size_type bucket_count = ht::default_init_bucket_count,
-                             Hash const &hash = Hash(),
-                             KeyEqual const &equal = KeyEqual(),
-                             Allocator const &alloc = Allocator())
-            : sparse_map(bucket_count, hash, equal, alloc) {
+        constexpr sparse_map(
+            InputIt first,
+            InputIt last,
+            size_type bucket_count = ht::default_init_bucket_count,
+            Hash const &hash = Hash(),
+            KeyEqual const &equal = KeyEqual(),
+            Allocator const &alloc = Allocator()
+        ) :
+            sparse_map(bucket_count, hash, equal, alloc) {
             insert(first, last);
         }
 
         template<typename InputIt>
-        constexpr sparse_map(InputIt first, InputIt last, size_type bucket_count, Allocator const &alloc)
-            : sparse_map(first, last, bucket_count, Hash(), KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(InputIt first, InputIt last, size_type bucket_count, Allocator const &alloc) :
+            sparse_map(first, last, bucket_count, Hash(), KeyEqual(), alloc) {}
 
         template<typename InputIt>
-        constexpr sparse_map(InputIt first, InputIt last, size_type bucket_count, Hash const &hash, Allocator const &alloc)
-            : sparse_map(first, last, bucket_count, hash, KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(InputIt first, InputIt last, size_type bucket_count, Hash const &hash, Allocator const &alloc) :
+            sparse_map(first, last, bucket_count, hash, KeyEqual(), alloc) {}
 
         template<typename InputIt>
-        constexpr sparse_map(InputIt first, InputIt last, Allocator const &alloc)
-            : sparse_map(first, last, ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(InputIt first, InputIt last, Allocator const &alloc) :
+            sparse_map(first, last, ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {}
 
         /**
          * Constructs the map from the elements of `range` (`std::from_range` constructor of C++23).
          */
         template<detail_sparse_hash::ContainerCompatibleRange<value_type> R>
-        constexpr sparse_map(std::from_range_t /*tag*/,
-                             R &&range,
-                             size_type bucket_count = ht::default_init_bucket_count,
-                             Hash const &hash = Hash(),
-                             KeyEqual const &equal = KeyEqual(),
-                             Allocator const &alloc = Allocator())
-            : sparse_map(bucket_count, hash, equal, alloc) {
+        constexpr sparse_map(
+            std::from_range_t /*tag*/,
+            R &&range,
+            size_type bucket_count = ht::default_init_bucket_count,
+            Hash const &hash = Hash(),
+            KeyEqual const &equal = KeyEqual(),
+            Allocator const &alloc = Allocator()
+        ) :
+            sparse_map(bucket_count, hash, equal, alloc) {
             insert_range(std::forward<R>(range));
         }
 
         template<detail_sparse_hash::ContainerCompatibleRange<value_type> R>
-        constexpr sparse_map(std::from_range_t /*tag*/, R &&range, size_type bucket_count, Allocator const &alloc)
-            : sparse_map(std::from_range, std::forward<R>(range), bucket_count, Hash(), KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(std::from_range_t /*tag*/, R &&range, size_type bucket_count, Allocator const &alloc) :
+            sparse_map(std::from_range, std::forward<R>(range), bucket_count, Hash(), KeyEqual(), alloc) {}
 
         template<detail_sparse_hash::ContainerCompatibleRange<value_type> R>
-        constexpr sparse_map(std::from_range_t /*tag*/, R &&range, size_type bucket_count, Hash const &hash, Allocator const &alloc)
-            : sparse_map(std::from_range, std::forward<R>(range), bucket_count, hash, KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(std::from_range_t /*tag*/, R &&range, size_type bucket_count, Hash const &hash, Allocator const &alloc) :
+            sparse_map(std::from_range, std::forward<R>(range), bucket_count, hash, KeyEqual(), alloc) {}
 
         template<detail_sparse_hash::ContainerCompatibleRange<value_type> R>
-        constexpr sparse_map(std::from_range_t /*tag*/, R &&range, Allocator const &alloc)
-            : sparse_map(std::from_range, std::forward<R>(range), ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(std::from_range_t /*tag*/, R &&range, Allocator const &alloc) :
+            sparse_map(std::from_range, std::forward<R>(range), ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {}
 
-        constexpr sparse_map(std::initializer_list<value_type> init,
-                             size_type bucket_count = ht::default_init_bucket_count,
-                             Hash const &hash = Hash(),
-                             KeyEqual const &equal = KeyEqual(),
-                             Allocator const &alloc = Allocator())
-            : sparse_map(init.begin(), init.end(), bucket_count, hash, equal, alloc) {
-        }
+        constexpr sparse_map(
+            std::initializer_list<value_type> init,
+            size_type bucket_count = ht::default_init_bucket_count,
+            Hash const &hash = Hash(),
+            KeyEqual const &equal = KeyEqual(),
+            Allocator const &alloc = Allocator()
+        ) :
+            sparse_map(init.begin(), init.end(), bucket_count, hash, equal, alloc) {}
 
-        constexpr sparse_map(std::initializer_list<value_type> init, size_type bucket_count, Allocator const &alloc)
-            : sparse_map(init.begin(), init.end(), bucket_count, Hash(), KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(std::initializer_list<value_type> init, size_type bucket_count, Allocator const &alloc) :
+            sparse_map(init.begin(), init.end(), bucket_count, Hash(), KeyEqual(), alloc) {}
 
-        constexpr sparse_map(std::initializer_list<value_type> init, size_type bucket_count, Hash const &hash, Allocator const &alloc)
-            : sparse_map(init.begin(), init.end(), bucket_count, hash, KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(std::initializer_list<value_type> init, size_type bucket_count, Hash const &hash, Allocator const &alloc) :
+            sparse_map(init.begin(), init.end(), bucket_count, hash, KeyEqual(), alloc) {}
 
-        constexpr sparse_map(std::initializer_list<value_type> init, Allocator const &alloc)
-            : sparse_map(init.begin(), init.end(), ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {
-        }
+        constexpr sparse_map(std::initializer_list<value_type> init, Allocator const &alloc) :
+            sparse_map(init.begin(), init.end(), ht::default_init_bucket_count, Hash(), KeyEqual(), alloc) {}
 
         constexpr sparse_map(sparse_map const &other) = default;
         constexpr sparse_map(sparse_map &&other) = default;
@@ -259,17 +292,13 @@ namespace dice::sparse_map {
         /**
          * Copies `other` into a map with the allocator `alloc`.
          */
-        constexpr sparse_map(sparse_map const &other, std::type_identity_t<Allocator> const &alloc)
-            : ht_(other.ht_, alloc) {
-        }
+        constexpr sparse_map(sparse_map const &other, std::type_identity_t<Allocator> const &alloc) : ht_(other.ht_, alloc) {}
 
         /**
          * Moves `other` into a map with the allocator `alloc`. If `alloc` is not equal to the allocator of `other`,
          * the elements are moved one by one.
          */
-        constexpr sparse_map(sparse_map &&other, std::type_identity_t<Allocator> const &alloc)
-            : ht_(std::move(other.ht_), alloc) {
-        }
+        constexpr sparse_map(sparse_map &&other, std::type_identity_t<Allocator> const &alloc) : ht_(std::move(other.ht_), alloc) {}
 
         constexpr ~sparse_map() = default;
 
@@ -526,13 +555,25 @@ namespace dice::sparse_map {
          * and the ones after it stay in `source`; the ones merged before are in this map, unless a rehash emptied it
          * (see the class documentation).
          */
-        template<typename Hash2, typename KeyEqual2, sh::sparsity Sparsity2, sh::allocation_failure AllocationFailure2>
-        constexpr void merge(sparse_map<Key, T, Hash2, KeyEqual2, Allocator, Sparsity2, AllocationFailure2> &source) {
+        template<
+            typename Hash2,
+            typename KeyEqual2,
+            sh::sparsity Sparsity2,
+            sh::allocation_failure AllocationFailure2,
+            std::size_t inline_capacity2
+        >
+        constexpr void merge(sparse_map<Key, T, Hash2, KeyEqual2, Allocator, Sparsity2, AllocationFailure2, inline_capacity2> &source) {
             ht_.merge(source.ht_);
         }
 
-        template<typename Hash2, typename KeyEqual2, sh::sparsity Sparsity2, sh::allocation_failure AllocationFailure2>
-        constexpr void merge(sparse_map<Key, T, Hash2, KeyEqual2, Allocator, Sparsity2, AllocationFailure2> &&source) {
+        template<
+            typename Hash2,
+            typename KeyEqual2,
+            sh::sparsity Sparsity2,
+            sh::allocation_failure AllocationFailure2,
+            std::size_t inline_capacity2
+        >
+        constexpr void merge(sparse_map<Key, T, Hash2, KeyEqual2, Allocator, Sparsity2, AllocationFailure2, inline_capacity2> &&source) {
             ht_.merge(source.ht_);
         }
 
@@ -543,7 +584,7 @@ namespace dice::sparse_map {
         /**
          * @throws std::out_of_range if there is no element with the key `key`
          */
-        constexpr T &at(key_type const &key) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T &at(key_type const &key) {
             return ht_.at(key);
         }
 
@@ -551,18 +592,18 @@ namespace dice::sparse_map {
          * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
          * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        constexpr T &at(key_type const &key, std::size_t precalculated_hash) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T &at(key_type const &key, std::size_t precalculated_hash) {
             return ht_.at(key, precalculated_hash);
         }
 
-        constexpr T const &at(key_type const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T const &at(key_type const &key) const {
             return ht_.at(key);
         }
 
         /**
          * @copydoc at(key_type const &key, std::size_t precalculated_hash)
          */
-        constexpr T const &at(key_type const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T const &at(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.at(key, precalculated_hash);
         }
 
@@ -572,25 +613,25 @@ namespace dice::sparse_map {
          */
         template<typename K>
         requires is_transparent
-        constexpr T &at(K const &key) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T &at(K const &key) {
             return ht_.at(key);
         }
 
         template<typename K>
         requires is_transparent
-        constexpr T &at(K const &key, std::size_t precalculated_hash) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T &at(K const &key, std::size_t precalculated_hash) {
             return ht_.at(key, precalculated_hash);
         }
 
         template<typename K>
         requires is_transparent
-        constexpr T const &at(K const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T const &at(K const &key) const {
             return ht_.at(key);
         }
 
         template<typename K>
         requires is_transparent
-        constexpr T const &at(K const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE constexpr T const &at(K const &key, std::size_t precalculated_hash) const {
             return ht_.at(key, precalculated_hash);
         }
 
@@ -612,7 +653,7 @@ namespace dice::sparse_map {
             return ht_[std::forward<K>(key)];
         }
 
-        [[nodiscard]] constexpr size_type count(key_type const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(key_type const &key) const {
             return ht_.count(key);
         }
 
@@ -620,23 +661,23 @@ namespace dice::sparse_map {
          * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
          * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        [[nodiscard]] constexpr size_type count(key_type const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.count(key, precalculated_hash);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr size_type count(K const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(K const &key) const {
             return ht_.count(key);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr size_type count(K const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr size_type count(K const &key, std::size_t precalculated_hash) const {
             return ht_.count(key, precalculated_hash);
         }
 
-        [[nodiscard]] constexpr iterator find(key_type const &key) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr iterator find(key_type const &key) {
             return ht_.find(key);
         }
 
@@ -644,43 +685,46 @@ namespace dice::sparse_map {
          * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
          * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        [[nodiscard]] constexpr iterator find(key_type const &key, std::size_t precalculated_hash) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr iterator find(key_type const &key, std::size_t precalculated_hash) {
             return ht_.find(key, precalculated_hash);
         }
 
-        [[nodiscard]] constexpr const_iterator find(key_type const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find(key_type const &key) const {
             return ht_.find(key);
         }
 
-        [[nodiscard]] constexpr const_iterator find(key_type const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find(
+            key_type const &key,
+            std::size_t precalculated_hash
+        ) const {
             return ht_.find(key, precalculated_hash);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr iterator find(K const &key) {
-            return ht_.find(key);
-        }
-
-        template<typename K>
-        requires is_transparent
-        [[nodiscard]] constexpr iterator find(K const &key, std::size_t precalculated_hash) {
-            return ht_.find(key, precalculated_hash);
-        }
-
-        template<typename K>
-        requires is_transparent
-        [[nodiscard]] constexpr const_iterator find(K const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr iterator find(K const &key) {
             return ht_.find(key);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr const_iterator find(K const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr iterator find(K const &key, std::size_t precalculated_hash) {
             return ht_.find(key, precalculated_hash);
         }
 
-        [[nodiscard]] constexpr bool contains(key_type const &key) const {
+        template<typename K>
+        requires is_transparent
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find(K const &key) const {
+            return ht_.find(key);
+        }
+
+        template<typename K>
+        requires is_transparent
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr const_iterator find(K const &key, std::size_t precalculated_hash) const {
+            return ht_.find(key, precalculated_hash);
+        }
+
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr bool contains(key_type const &key) const {
             return ht_.contains(key);
         }
 
@@ -688,23 +732,23 @@ namespace dice::sparse_map {
          * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
          * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        [[nodiscard]] constexpr bool contains(key_type const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr bool contains(key_type const &key, std::size_t precalculated_hash) const {
             return ht_.contains(key, precalculated_hash);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr bool contains(K const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr bool contains(K const &key) const {
             return ht_.contains(key);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr bool contains(K const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr bool contains(K const &key, std::size_t precalculated_hash) const {
             return ht_.contains(key, precalculated_hash);
         }
 
-        [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(key_type const &key) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(key_type const &key) {
             return ht_.equal_range(key);
         }
 
@@ -712,39 +756,53 @@ namespace dice::sparse_map {
          * Uses `precalculated_hash` instead of hashing the key. It must be `hash_function()(key)`, otherwise the
          * behaviour is undefined. Saves the hashing if the caller has the hash already.
          */
-        [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(key_type const &key, std::size_t precalculated_hash) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(
+            key_type const &key,
+            std::size_t precalculated_hash
+        ) {
             return ht_.equal_range(key, precalculated_hash);
         }
 
-        [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(key_type const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(
+            key_type const &key
+        ) const {
             return ht_.equal_range(key);
         }
 
-        [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(key_type const &key, std::size_t precalculated_hash) const {
-            return ht_.equal_range(key, precalculated_hash);
-        }
-
-        template<typename K>
-        requires is_transparent
-        [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(K const &key) {
-            return ht_.equal_range(key);
-        }
-
-        template<typename K>
-        requires is_transparent
-        [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(K const &key, std::size_t precalculated_hash) {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(
+            key_type const &key,
+            std::size_t precalculated_hash
+        ) const {
             return ht_.equal_range(key, precalculated_hash);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(K const &key) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(K const &key) {
             return ht_.equal_range(key);
         }
 
         template<typename K>
         requires is_transparent
-        [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(K const &key, std::size_t precalculated_hash) const {
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<iterator, iterator> equal_range(
+            K const &key,
+            std::size_t precalculated_hash
+        ) {
+            return ht_.equal_range(key, precalculated_hash);
+        }
+
+        template<typename K>
+        requires is_transparent
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(K const &key) const {
+            return ht_.equal_range(key);
+        }
+
+        template<typename K>
+        requires is_transparent
+        DICE_SPARSE_MAP_ALWAYS_INLINE [[nodiscard]] constexpr std::pair<const_iterator, const_iterator> equal_range(
+            K const &key,
+            std::size_t precalculated_hash
+        ) const {
             return ht_.equal_range(key, precalculated_hash);
         }
 
@@ -834,9 +892,21 @@ namespace dice::sparse_map {
      * Erases every element `e` of `map` for which `pred(e)` is true (C++20). `e` is a `const_reference`.
      * @return the number of erased elements
      */
-    template<typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator, sh::sparsity Sparsity, sh::allocation_failure AllocationFailure, typename Predicate>
-    constexpr typename sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure>::size_type
-    erase_if(sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure> &map, Predicate pred) {
+    template<
+        typename Key,
+        typename T,
+        typename Hash,
+        typename KeyEqual,
+        typename Allocator,
+        sh::sparsity Sparsity,
+        sh::allocation_failure AllocationFailure,
+        std::size_t inline_capacity,
+        typename Predicate
+    >
+    constexpr typename sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity>::size_type erase_if(
+        sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, AllocationFailure, inline_capacity> &map,
+        Predicate pred
+    ) {
         auto const old_size = map.size();
         for (auto it = map.cbegin(); it != map.cend();) {
             if (pred(*it)) {
@@ -852,54 +922,100 @@ namespace dice::sparse_map {
      * Deduction guides, as for `std::unordered_map`. A guide without a hash function takes the default hash function
      * of `sparse_map`.
      */
-    template<detail_sparse_hash::LegacyInputIterator InputIt,
-             typename Hash = detail_sparse_hash::default_hash<detail_sparse_hash::iter_key_t<InputIt>>,
-             typename KeyEqual = std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>,
-             typename Allocator = std::allocator<detail_sparse_hash::iter_to_alloc_t<InputIt>>>
-    requires (detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
+    template<
+        detail_sparse_hash::LegacyInputIterator InputIt,
+        typename Hash = detail_sparse_hash::default_hash<detail_sparse_hash::iter_key_t<InputIt>>,
+        typename KeyEqual = std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>,
+        typename Allocator = std::allocator<detail_sparse_hash::iter_to_alloc_t<InputIt>>
+    >
+    requires (
+        detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>
+    )
     sparse_map(InputIt, InputIt, std::size_t = 0, Hash = Hash(), KeyEqual = KeyEqual(), Allocator = Allocator())
         -> sparse_map<detail_sparse_hash::iter_key_t<InputIt>, detail_sparse_hash::iter_mapped_t<InputIt>, Hash, KeyEqual, Allocator>;
 
-    template<std::ranges::input_range R,
-             typename Hash = detail_sparse_hash::default_hash<detail_sparse_hash::range_key_t<R>>,
-             typename KeyEqual = std::equal_to<detail_sparse_hash::range_key_t<R>>,
-             typename Allocator = std::allocator<detail_sparse_hash::range_to_alloc_t<R>>>
-    requires (detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
+    template<
+        std::ranges::input_range R,
+        typename Hash = detail_sparse_hash::default_hash<detail_sparse_hash::range_key_t<R>>,
+        typename KeyEqual = std::equal_to<detail_sparse_hash::range_key_t<R>>,
+        typename Allocator = std::allocator<detail_sparse_hash::range_to_alloc_t<R>>
+    >
+    requires (
+        detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>
+    )
     sparse_map(std::from_range_t, R &&, std::size_t = 0, Hash = Hash(), KeyEqual = KeyEqual(), Allocator = Allocator())
         -> sparse_map<detail_sparse_hash::range_key_t<R>, detail_sparse_hash::range_mapped_t<R>, Hash, KeyEqual, Allocator>;
 
-    template<typename Key,
-             typename T,
-             typename Hash = detail_sparse_hash::default_hash<Key>,
-             typename KeyEqual = std::equal_to<Key>,
-             typename Allocator = std::allocator<std::pair<Key, T>>>
-    requires (detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>)
+    template<
+        typename Key,
+        typename T,
+        typename Hash = detail_sparse_hash::default_hash<Key>,
+        typename KeyEqual = std::equal_to<Key>,
+        typename Allocator = std::allocator<std::pair<Key, T>>
+    >
+    requires (
+        detail_sparse_hash::HashLike<Hash> && !detail_sparse_hash::AllocatorLike<KeyEqual> && detail_sparse_hash::AllocatorLike<Allocator>
+    )
     sparse_map(std::initializer_list<std::pair<Key, T>>, std::size_t = 0, Hash = Hash(), KeyEqual = KeyEqual(), Allocator = Allocator())
         -> sparse_map<Key, T, Hash, KeyEqual, Allocator>;
 
     template<detail_sparse_hash::LegacyInputIterator InputIt, detail_sparse_hash::AllocatorLike Allocator>
-    sparse_map(InputIt, InputIt, std::size_t, Allocator)
-        -> sparse_map<detail_sparse_hash::iter_key_t<InputIt>, detail_sparse_hash::iter_mapped_t<InputIt>, detail_sparse_hash::default_hash<detail_sparse_hash::iter_key_t<InputIt>>, std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>, Allocator>;
+    sparse_map(InputIt, InputIt, std::size_t, Allocator) -> sparse_map<
+        detail_sparse_hash::iter_key_t<InputIt>,
+        detail_sparse_hash::iter_mapped_t<InputIt>,
+        detail_sparse_hash::default_hash<detail_sparse_hash::iter_key_t<InputIt>>,
+        std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>,
+        Allocator
+    >;
 
     template<detail_sparse_hash::LegacyInputIterator InputIt, detail_sparse_hash::AllocatorLike Allocator>
-    sparse_map(InputIt, InputIt, Allocator)
-        -> sparse_map<detail_sparse_hash::iter_key_t<InputIt>, detail_sparse_hash::iter_mapped_t<InputIt>, detail_sparse_hash::default_hash<detail_sparse_hash::iter_key_t<InputIt>>, std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>, Allocator>;
+    sparse_map(InputIt, InputIt, Allocator) -> sparse_map<
+        detail_sparse_hash::iter_key_t<InputIt>,
+        detail_sparse_hash::iter_mapped_t<InputIt>,
+        detail_sparse_hash::default_hash<detail_sparse_hash::iter_key_t<InputIt>>,
+        std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>,
+        Allocator
+    >;
 
-    template<detail_sparse_hash::LegacyInputIterator InputIt, detail_sparse_hash::HashLike Hash, detail_sparse_hash::AllocatorLike Allocator>
-    sparse_map(InputIt, InputIt, std::size_t, Hash, Allocator)
-        -> sparse_map<detail_sparse_hash::iter_key_t<InputIt>, detail_sparse_hash::iter_mapped_t<InputIt>, Hash, std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>, Allocator>;
+    template<
+        detail_sparse_hash::LegacyInputIterator InputIt,
+        detail_sparse_hash::HashLike Hash,
+        detail_sparse_hash::AllocatorLike Allocator
+    >
+    sparse_map(InputIt, InputIt, std::size_t, Hash, Allocator) -> sparse_map<
+        detail_sparse_hash::iter_key_t<InputIt>,
+        detail_sparse_hash::iter_mapped_t<InputIt>,
+        Hash,
+        std::equal_to<detail_sparse_hash::iter_key_t<InputIt>>,
+        Allocator
+    >;
 
     template<std::ranges::input_range R, detail_sparse_hash::AllocatorLike Allocator>
-    sparse_map(std::from_range_t, R &&, std::size_t, Allocator)
-        -> sparse_map<detail_sparse_hash::range_key_t<R>, detail_sparse_hash::range_mapped_t<R>, detail_sparse_hash::default_hash<detail_sparse_hash::range_key_t<R>>, std::equal_to<detail_sparse_hash::range_key_t<R>>, Allocator>;
+    sparse_map(std::from_range_t, R &&, std::size_t, Allocator) -> sparse_map<
+        detail_sparse_hash::range_key_t<R>,
+        detail_sparse_hash::range_mapped_t<R>,
+        detail_sparse_hash::default_hash<detail_sparse_hash::range_key_t<R>>,
+        std::equal_to<detail_sparse_hash::range_key_t<R>>,
+        Allocator
+    >;
 
     template<std::ranges::input_range R, detail_sparse_hash::AllocatorLike Allocator>
-    sparse_map(std::from_range_t, R &&, Allocator)
-        -> sparse_map<detail_sparse_hash::range_key_t<R>, detail_sparse_hash::range_mapped_t<R>, detail_sparse_hash::default_hash<detail_sparse_hash::range_key_t<R>>, std::equal_to<detail_sparse_hash::range_key_t<R>>, Allocator>;
+    sparse_map(std::from_range_t, R &&, Allocator) -> sparse_map<
+        detail_sparse_hash::range_key_t<R>,
+        detail_sparse_hash::range_mapped_t<R>,
+        detail_sparse_hash::default_hash<detail_sparse_hash::range_key_t<R>>,
+        std::equal_to<detail_sparse_hash::range_key_t<R>>,
+        Allocator
+    >;
 
     template<std::ranges::input_range R, detail_sparse_hash::HashLike Hash, detail_sparse_hash::AllocatorLike Allocator>
-    sparse_map(std::from_range_t, R &&, std::size_t, Hash, Allocator)
-        -> sparse_map<detail_sparse_hash::range_key_t<R>, detail_sparse_hash::range_mapped_t<R>, Hash, std::equal_to<detail_sparse_hash::range_key_t<R>>, Allocator>;
+    sparse_map(std::from_range_t, R &&, std::size_t, Hash, Allocator) -> sparse_map<
+        detail_sparse_hash::range_key_t<R>,
+        detail_sparse_hash::range_mapped_t<R>,
+        Hash,
+        std::equal_to<detail_sparse_hash::range_key_t<R>>,
+        Allocator
+    >;
 
     template<typename Key, typename T, detail_sparse_hash::AllocatorLike Allocator>
     sparse_map(std::initializer_list<std::pair<Key, T>>, std::size_t, Allocator)
@@ -913,6 +1029,6 @@ namespace dice::sparse_map {
     sparse_map(std::initializer_list<std::pair<Key, T>>, std::size_t, Hash, Allocator)
         -> sparse_map<Key, T, Hash, std::equal_to<Key>, Allocator>;
 
-}  // namespace dice::sparse_map
+} // namespace dice::sparse_map
 
 #endif

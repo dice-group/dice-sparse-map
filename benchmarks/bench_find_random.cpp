@@ -1,4 +1,5 @@
 #include "common.hpp"
+#include "workloads.hpp"
 
 #include <doctest/doctest.h>
 #include <nanobench.h>
@@ -43,6 +44,8 @@ namespace {
     void bench_find(std::string_view container) {
         static constexpr std::size_t num_total = 4;
         static constexpr std::size_t num_finds_per_iter = Sizes::num_finds_per_insert * num_total;
+
+        CHECK(use_small_maps<Map>() == 6);
 
         auto total = std::chrono::steady_clock::duration();
         for (std::size_t num_found = 0; num_found < 5; ++num_found) {
@@ -92,10 +95,12 @@ namespace {
                 checksum += map.size();
                 auto const after = std::chrono::steady_clock::now();
                 total += after - before;
-                std::cout << std::format("{:.6f}s random find {}% success {}\n",
-                                         std::chrono::duration<double>(after - before).count(),
-                                         num_found * 100 / num_total,
-                                         container);
+                std::cout << std::format(
+                    "{:.6f}s random find {}% success {}\n",
+                    std::chrono::duration<double>(after - before).count(),
+                    num_found * 100 / num_total,
+                    container
+                );
             }
             REQUIRE(checksum == Sizes::checksums[num_found]);
         }
@@ -109,7 +114,7 @@ namespace {
         });
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("find_random sparse_map high") {
     find_random<sparse_high>("sparse_map high");

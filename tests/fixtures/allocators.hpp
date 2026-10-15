@@ -1,7 +1,9 @@
 #ifndef DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
 #define DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
 
+#include <algorithm>
 #include <cstddef>
+#include <map>
 #include <memory>
 #include <new>
 #include <type_traits>
@@ -18,7 +20,7 @@ namespace dice::sparse_map::tests {
      * Number of allocations that are left before `bombing_allocator` throws `std::bad_alloc`.
      * -1 never throws. The countdown is global, because a container copies and rebinds its allocator.
      */
-    inline int allocations_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    inline int allocations_until_throw = -1; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * Arms the countdown of `bombing_allocator` while it is in scope.
@@ -46,7 +48,7 @@ namespace dice::sparse_map::tests {
         bombing_allocator() noexcept = default;
 
         template<typename U>
-        bombing_allocator(bombing_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        bombing_allocator(bombing_allocator<U> const & /*other*/) noexcept { // NOLINT(google-explicit-constructor)
         }
 
         T *allocate(std::size_t n) {
@@ -61,6 +63,53 @@ namespace dice::sparse_map::tests {
         }
 
         friend bool operator==(bombing_allocator const & /*lhs*/, bombing_allocator const & /*rhs*/) noexcept {
+            return true;
+        }
+    };
+
+    /// blocks that `leak_checking_allocator` handed out and did not get back yet
+    inline std::ptrdiff_t live_blocks = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /// bytes that `leak_checking_allocator` handed out and did not get back yet
+    inline std::size_t live_bytes = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /// the maximum of `live_bytes` since a test set it
+    inline std::size_t peak_bytes = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /// all allocations of `leak_checking_allocator`
+    inline std::size_t nb_allocations = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * `bombing_allocator` that also counts the blocks and the bytes it hands out and gets back, so that a
+     * test can check that a failed operation leaks no memory, and how much memory an operation needs at
+     * most. All instances compare equal.
+     */
+    template<typename T>
+    struct leak_checking_allocator {
+        using value_type = T;
+
+        leak_checking_allocator() noexcept = default;
+
+        template<typename U>
+        leak_checking_allocator(leak_checking_allocator<U> const & /*other*/) noexcept { // NOLINT(google-explicit-constructor)
+        }
+
+        T *allocate(std::size_t n) {
+            T *p = bombing_allocator<T>{}.allocate(n);
+            ++live_blocks;
+            ++nb_allocations;
+            live_bytes += n * sizeof(T);
+            peak_bytes = std::max(peak_bytes, live_bytes);
+            return p;
+        }
+
+        void deallocate(T *p, std::size_t n) noexcept {
+            --live_blocks;
+            live_bytes -= n * sizeof(T);
+            bombing_allocator<T>{}.deallocate(p, n);
+        }
+
+        friend bool operator==(leak_checking_allocator const & /*lhs*/, leak_checking_allocator const & /*rhs*/) noexcept {
             return true;
         }
     };
@@ -80,11 +129,13 @@ namespace dice::sparse_map::tests {
      * container gets a default constructed allocator when `Soccc` is `std::false_type`.
      * Allocations of size 0 are not counted.
      */
-    template<typename T,
-             typename Pocca = std::false_type,
-             typename Soccc = std::true_type,
-             typename Pocma = std::false_type,
-             typename Pocs = std::false_type>
+    template<
+        typename T,
+        typename Pocca = std::false_type,
+        typename Soccc = std::true_type,
+        typename Pocma = std::false_type,
+        typename Pocs = std::false_type
+    >
     struct id_allocator {
         using value_type = T;
         using propagate_on_container_copy_assignment = Pocca;
@@ -97,16 +148,13 @@ namespace dice::sparse_map::tests {
 
         id_allocator() noexcept = default;
 
-        explicit id_allocator(int id, alloc_counts *counts = nullptr) noexcept
-            : id(id),
-              counts(counts) {
-        }
+        explicit id_allocator(int id, alloc_counts *counts = nullptr) noexcept : id(id), counts(counts) {}
 
         template<typename U>
-        id_allocator(id_allocator<U, Pocca, Soccc, Pocma, Pocs> const &other) noexcept  // NOLINT(google-explicit-constructor)
-            : id(other.id),
-              counts(other.counts) {
-        }
+        id_allocator(id_allocator<U, Pocca, Soccc, Pocma, Pocs> const &other) noexcept // NOLINT(google-explicit-constructor)
+            :
+            id(other.id),
+            counts(other.counts) {}
 
         template<typename U>
         struct rebind {
@@ -156,11 +204,116 @@ namespace dice::sparse_map::tests {
     template<typename T>
     using pocs_allocator = id_allocator<T, std::false_type, std::true_type, std::false_type, std::true_type>;
 
+    /// the id of the `recording_id_allocator` that constructed each live element, by the address of the element
+    inline std::map<void const *, int> constructed_by; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * True if a `recording_id_allocator` destroyed an element that no allocator with its id constructed, or
+     * constructed an element at the address of a live element.
+     */
+    inline bool construct_mismatch = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * Allocator with an id and its own `construct` and `destroy`, so that `std::allocator_traits` calls them for every
+     * element and a test can see which allocator constructed and destroyed each element. `construct` records the id
+     * by the address of the element in `constructed_by`, `destroy` removes it and sets `construct_mismatch` if the id
+     * differs. Instances with different ids compare unequal. The propagation traits are template parameters, as in
+     * `id_allocator`.
+     */
+    template<
+        typename T,
+        typename Pocca = std::false_type,
+        typename Soccc = std::true_type,
+        typename Pocma = std::false_type,
+        typename Pocs = std::false_type
+    >
+    struct recording_id_allocator {
+        using value_type = T;
+        using propagate_on_container_copy_assignment = Pocca;
+        using propagate_on_container_move_assignment = Pocma;
+        using propagate_on_container_swap = Pocs;
+        using is_always_equal = std::false_type;
+
+        int id = 0;
+
+        recording_id_allocator() noexcept = default;
+
+        explicit recording_id_allocator(int id) noexcept : id(id) {}
+
+        template<typename U>
+        recording_id_allocator(
+            recording_id_allocator<U, Pocca, Soccc, Pocma, Pocs> const &other
+        ) noexcept // NOLINT(google-explicit-constructor)
+            :
+            id(other.id) {}
+
+        template<typename U>
+        struct rebind {
+            using other = recording_id_allocator<U, Pocca, Soccc, Pocma, Pocs>;
+        };
+
+        T *allocate(std::size_t n) {
+            return std::allocator<T>{}.allocate(n);
+        }
+
+        void deallocate(T *p, std::size_t n) noexcept {
+            std::allocator<T>{}.deallocate(p, n);
+        }
+
+        template<typename U, typename... Args>
+        void construct(U *p, Args &&...args) {
+            std::construct_at(p, std::forward<Args>(args)...);
+            if (!constructed_by.try_emplace(p, id).second) {
+                construct_mismatch = true;
+            }
+        }
+
+        template<typename U>
+        void destroy(U *p) noexcept {
+            auto const it = constructed_by.find(p);
+            if (it == constructed_by.end() || it->second != id) {
+                construct_mismatch = true;
+            }
+            if (it != constructed_by.end()) {
+                constructed_by.erase(it);
+            }
+            std::destroy_at(p);
+        }
+
+        [[nodiscard]] recording_id_allocator select_on_container_copy_construction() const noexcept {
+            if constexpr (Soccc::value) {
+                return *this;
+            } else {
+                return recording_id_allocator{};
+            }
+        }
+
+        friend bool operator==(recording_id_allocator const &lhs, recording_id_allocator const &rhs) noexcept {
+            return lhs.id == rhs.id;
+        }
+    };
+
+    /// `pmr_like_allocator` that records which allocator constructed each element
+    template<typename T>
+    using recording_pmr_like_allocator = recording_id_allocator<T, std::false_type, std::false_type>;
+
+    /// `pocca_allocator` that records which allocator constructed each element
+    template<typename T>
+    using recording_pocca_allocator = recording_id_allocator<T, std::true_type>;
+
+    /// `pocma_allocator` that records which allocator constructed each element
+    template<typename T>
+    using recording_pocma_allocator = recording_id_allocator<T, std::false_type, std::true_type, std::true_type>;
+
+    /// `pocs_allocator` that records which allocator constructed each element
+    template<typename T>
+    using recording_pocs_allocator = recording_id_allocator<T, std::false_type, std::true_type, std::false_type, std::true_type>;
+
     /**
      * Stateless allocator that counts allocations in a global counter.
      * All instances compare equal.
      */
-    inline std::size_t num_allocations = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    inline std::size_t num_allocations = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     template<typename T>
     struct counting_allocator {
@@ -169,7 +322,7 @@ namespace dice::sparse_map::tests {
         counting_allocator() noexcept = default;
 
         template<typename U>
-        counting_allocator(counting_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        counting_allocator(counting_allocator<U> const & /*other*/) noexcept { // NOLINT(google-explicit-constructor)
         }
 
         T *allocate(std::size_t n) {
@@ -195,7 +348,7 @@ namespace dice::sparse_map::tests {
     };
 
     /// the calls of `construct` and `destroy` of all `construct_counting_allocator`s
-    inline construct_counts construct_calls{};  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    inline construct_counts construct_calls{}; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     /**
      * Stateless allocator with its own `construct` and `destroy`, so that `std::allocator_traits` calls them for
@@ -209,7 +362,7 @@ namespace dice::sparse_map::tests {
         construct_counting_allocator() noexcept = default;
 
         template<typename U>
-        construct_counting_allocator(construct_counting_allocator<U> const & /*other*/) noexcept {  // NOLINT(google-explicit-constructor)
+        construct_counting_allocator(construct_counting_allocator<U> const & /*other*/) noexcept { // NOLINT(google-explicit-constructor)
         }
 
         T *allocate(std::size_t n) {
@@ -237,6 +390,6 @@ namespace dice::sparse_map::tests {
         }
     };
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_ALLOCATORS_HPP

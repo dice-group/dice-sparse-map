@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -33,28 +34,52 @@ namespace {
     using metall_allocator = metall::manager::allocator_type<T>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using map_of = sparse_map<std::uint64_t,
-                              std::uint64_t,
-                              tests::test_hash<std::uint64_t>,
-                              std::equal_to<std::uint64_t>,
-                              AllocatorOf<entry_t>,
-                              Sparsity>;
+    using map_of = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        AllocatorOf<entry_t>,
+        Sparsity
+    >;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using set_of = sparse_set<std::uint64_t,
-                              tests::test_hash<std::uint64_t>,
-                              std::equal_to<std::uint64_t>,
-                              AllocatorOf<std::uint64_t>,
-                              Sparsity>;
+    using set_of =
+        sparse_set<std::uint64_t, tests::test_hash<std::uint64_t>, std::equal_to<std::uint64_t>, AllocatorOf<std::uint64_t>, Sparsity>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using array_of = detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
+    using array_of =
+        detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
+
+    /// with 4 elements in the inline group
+    template<template<typename> typename AllocatorOf>
+    using inline_map_of = sparse_map<
+        std::uint64_t,
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        AllocatorOf<entry_t>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        4
+    >;
+
+    template<template<typename> typename AllocatorOf>
+    using inline_set_of = sparse_set<
+        std::uint64_t,
+        tests::test_hash<std::uint64_t>,
+        std::equal_to<std::uint64_t>,
+        AllocatorOf<std::uint64_t>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        4
+    >;
 
     constexpr auto high = sh::sparsity::high;
     constexpr auto medium = sh::sparsity::medium;
     constexpr auto low = sh::sparsity::low;
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("sparse_array<std::allocator, high>", array_of<std::allocator, high>);
 TYPE_TO_STRING_AS("sparse_array<std::allocator, medium>", array_of<std::allocator, medium>);
@@ -86,47 +111,74 @@ TYPE_TO_STRING_AS("sparse_set<metall, high>", set_of<metall_allocator, high>);
 TYPE_TO_STRING_AS("sparse_set<metall, medium>", set_of<metall_allocator, medium>);
 TYPE_TO_STRING_AS("sparse_set<metall, low>", set_of<metall_allocator, low>);
 
-TEST_CASE_TEMPLATE("sparse_array is standard layout",
-                   array_t,
-                   array_of<std::allocator, high>,
-                   array_of<std::allocator, medium>,
-                   array_of<std::allocator, low>,
-                   array_of<offset_ptr_allocator, high>,
-                   array_of<offset_ptr_allocator, medium>,
-                   array_of<offset_ptr_allocator, low>,
-                   array_of<metall_allocator, high>,
-                   array_of<metall_allocator, medium>,
-                   array_of<metall_allocator, low>) {
+TEST_CASE_TEMPLATE(
+    "sparse_array is standard layout",
+    array_t,
+    array_of<std::allocator, high>,
+    array_of<std::allocator, medium>,
+    array_of<std::allocator, low>,
+    array_of<offset_ptr_allocator, high>,
+    array_of<offset_ptr_allocator, medium>,
+    array_of<offset_ptr_allocator, low>,
+    array_of<metall_allocator, high>,
+    array_of<metall_allocator, medium>,
+    array_of<metall_allocator, low>
+) {
     MESSAGE(doctest::toString<array_t>() << ": sizeof " << sizeof(array_t));
     CHECK(std::is_standard_layout_v<array_t>);
 }
 
-TEST_CASE_TEMPLATE("sparse_map and sparse_set with a stateless allocator are standard layout",
-                   container_t,
-                   map_of<std::allocator, high>,
-                   map_of<std::allocator, medium>,
-                   map_of<std::allocator, low>,
-                   map_of<offset_ptr_allocator, high>,
-                   map_of<offset_ptr_allocator, medium>,
-                   map_of<offset_ptr_allocator, low>,
-                   set_of<std::allocator, high>,
-                   set_of<std::allocator, medium>,
-                   set_of<std::allocator, low>,
-                   set_of<offset_ptr_allocator, high>,
-                   set_of<offset_ptr_allocator, medium>,
-                   set_of<offset_ptr_allocator, low>) {
+TEST_CASE_TEMPLATE(
+    "sparse_map and sparse_set with a stateless allocator are standard layout",
+    container_t,
+    map_of<std::allocator, high>,
+    map_of<std::allocator, medium>,
+    map_of<std::allocator, low>,
+    map_of<offset_ptr_allocator, high>,
+    map_of<offset_ptr_allocator, medium>,
+    map_of<offset_ptr_allocator, low>,
+    set_of<std::allocator, high>,
+    set_of<std::allocator, medium>,
+    set_of<std::allocator, low>,
+    set_of<offset_ptr_allocator, high>,
+    set_of<offset_ptr_allocator, medium>,
+    set_of<offset_ptr_allocator, low>
+) {
     MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
     CHECK(std::is_standard_layout_v<container_t>);
 }
 
-TEST_CASE_TEMPLATE("sparse_map and sparse_set with the metall allocator are standard layout",
-                   container_t,
-                   map_of<metall_allocator, high>,
-                   map_of<metall_allocator, medium>,
-                   map_of<metall_allocator, low>,
-                   set_of<metall_allocator, high>,
-                   set_of<metall_allocator, medium>,
-                   set_of<metall_allocator, low>) {
+TEST_CASE_TEMPLATE(
+    "sparse_map and sparse_set with the metall allocator are standard layout",
+    container_t,
+    map_of<metall_allocator, high>,
+    map_of<metall_allocator, medium>,
+    map_of<metall_allocator, low>,
+    set_of<metall_allocator, high>,
+    set_of<metall_allocator, medium>,
+    set_of<metall_allocator, low>
+) {
+    MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
+    CHECK(std::is_standard_layout_v<container_t>);
+}
+
+TYPE_TO_STRING_AS("sparse_map<std::allocator, medium, 4>", inline_map_of<std::allocator>);
+TYPE_TO_STRING_AS("sparse_map<offset_ptr_allocator, medium, 4>", inline_map_of<offset_ptr_allocator>);
+TYPE_TO_STRING_AS("sparse_map<metall, medium, 4>", inline_map_of<metall_allocator>);
+TYPE_TO_STRING_AS("sparse_set<std::allocator, medium, 4>", inline_set_of<std::allocator>);
+TYPE_TO_STRING_AS("sparse_set<offset_ptr_allocator, medium, 4>", inline_set_of<offset_ptr_allocator>);
+TYPE_TO_STRING_AS("sparse_set<metall, medium, 4>", inline_set_of<metall_allocator>);
+
+TEST_CASE_TEMPLATE(
+    "sparse_map and sparse_set with an inline capacity are standard layout",
+    container_t,
+    inline_map_of<std::allocator>,
+    inline_map_of<offset_ptr_allocator>,
+    inline_map_of<metall_allocator>,
+    inline_set_of<std::allocator>,
+    inline_set_of<offset_ptr_allocator>,
+    inline_set_of<metall_allocator>
+) {
     MESSAGE(doctest::toString<container_t>() << ": sizeof " << sizeof(container_t));
     CHECK(std::is_standard_layout_v<container_t>);
 }
@@ -154,7 +206,7 @@ namespace {
         CHECK(reinterpret_cast<char const *>(&pair.second) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, value)));
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("map_slot has the layout of std::pair") {
     check_map_slot_has_the_layout_of_pair<std::uint64_t, std::uint64_t>();
@@ -171,7 +223,7 @@ namespace {
         int first;
         int second;
     };
-}  // namespace
+} // namespace
 
 template<>
 struct std::tuple_size<tuple_size_without_get> : std::integral_constant<std::size_t, 2> {};
@@ -191,13 +243,49 @@ TEST_CASE("sizes") {
     using map_t = dice::sparse_map::sparse_map<int, int>;
     MESSAGE("sizeof(sparse_map<int, int>) = " << sizeof(map_t));
     MESSAGE("sizeof(sparse_set<int>) = " << sizeof(dice::sparse_map::sparse_set<int>));
-    // eight members of 8 bytes: the bucket array, the number of groups, the bucket count, the number of elements, the
-    // first group with an element, the number of deleted buckets and two load thresholds. Then the maximum load
-    // factor, a float, with 4 bytes of padding.
+    // the number of elements (8 bytes) and the maximum load factor (a float, with 4 bytes of padding), then the state
+    // of the buckets: seven members of 8 bytes, the bucket array, the number of groups, the bucket count, the first
+    // group with an element, the number of deleted buckets and two load thresholds
     CHECK(sizeof(map_t) == 72);
     // the pointer to the values, two bitmaps, the number of values, the capacity and the flag of the last group
-    CHECK(sizeof(dice::sparse_map::detail_sparse_hash::sparse_array<entry_t, std::allocator<entry_t>, sh::sparsity::medium, sh::allocation_failure::terminating>) == 32);
+    CHECK(
+        sizeof(dice::sparse_map::detail_sparse_hash::sparse_array<
+            entry_t,
+            std::allocator<entry_t>,
+            sh::sparsity::medium,
+            sh::allocation_failure::terminating
+        >)
+        == 32
+    );
     // the group, the element and the end of the elements of the group
     CHECK(sizeof(map_t::iterator) == 24);
     CHECK(sizeof(map_t::const_iterator) == 24);
+}
+
+TEST_CASE("sizes with the inline capacity 4") {
+    using string_map_t = sparse_map<
+        std::string,
+        std::uint64_t,
+        tests::test_hash<std::string>,
+        std::equal_to<std::string>,
+        std::allocator<std::pair<std::string, std::uint64_t>>,
+        sh::sparsity::medium,
+        sh::allocation_failure::terminating,
+        4
+    >;
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., 4>) = " << sizeof(inline_map_of<std::allocator>));
+    MESSAGE("sizeof(sparse_set<std::uint64_t, ..., 4>) = " << sizeof(inline_set_of<std::allocator>));
+    MESSAGE("sizeof(sparse_map<std::string, std::uint64_t, ..., 4>) = " << sizeof(string_map_t));
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall, ..., 4>) = " << sizeof(inline_map_of<metall_allocator>));
+    MESSAGE("sizeof(sparse_set<std::uint64_t, ..., metall, ..., 4>) = " << sizeof(inline_set_of<metall_allocator>));
+    MESSAGE("sizeof(sparse_map<std::uint64_t, std::uint64_t, ..., metall>) = " << sizeof(map_of<metall_allocator, medium>));
+    // the element count (8 bytes), the maximum load factor (4), the flag (1) and the count of the elements outside
+    // their home bucket (1, with 2 bytes of padding), then the union of the state of the buckets (56 bytes) and the
+    // inline group: two bitmaps of 8 bytes and 4 elements
+    CHECK(sizeof(inline_map_of<std::allocator>) == 16 + 16 + 4 * sizeof(entry_t));
+    CHECK(sizeof(inline_set_of<std::allocator>) == 16 + 56);
+    CHECK(sizeof(string_map_t) == 16 + 16 + 4 * sizeof(dice::sparse_map::detail_sparse_hash::map_slot<std::string, std::uint64_t>));
+    // the allocator of metall holds a pointer of 8 bytes
+    CHECK(sizeof(inline_map_of<metall_allocator>) == 8 + 16 + 16 + 4 * sizeof(entry_t));
+    CHECK(sizeof(map_of<metall_allocator, medium>) == 80);
 }
