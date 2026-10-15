@@ -1,29 +1,38 @@
+find_package(doctest REQUIRED)
 find_package(Boost REQUIRED)
+find_package(Metall REQUIRED)
+find_package(nanobench REQUIRED)
 
-add_executable(tsl_sparse_map_tests "main.cpp"
-        "custom_allocator_tests.cpp"
-        "policy_tests.cpp"
-        "sparse_map_tests.cpp"
-        "sparse_set_tests.cpp"
-        "fancy_pointer/sparse_array_tests.cpp"
-        "fancy_pointer/sparse_hash_map_tests.cpp"
-        "fancy_pointer/sparse_hash_set_tests.cpp"
-        "scoped_allocator_adaptor/sparse_array_tests.cpp"
-        "scoped_allocator_adaptor/sparse_hash_set_tests.cpp"
-        )
+# doctest main and the nanobench implementation, compiled once and linked into every test
+add_library(dice_sparse_map_test_main OBJECT test_main.cpp)
+target_link_libraries(dice_sparse_map_test_main PUBLIC
+        doctest::doctest
+        nanobench::nanobench
+)
 
-target_compile_features(tsl_sparse_map_tests PRIVATE cxx_std_20)
+add_custom_target(build_tests)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(tsl_sparse_map_tests PRIVATE -Werror -Wall -Wextra -Wold-style-cast -DTSL_DEBUG -UNDEBUG)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    target_compile_options(tsl_sparse_map_tests PRIVATE /bigobj /WX /W3 /DTSL_DEBUG /UNDEBUG)
-endif()
-
-target_link_libraries(tsl_sparse_map_tests
-        PRIVATE
-        Boost::unit_test_framework
-        dice-sparse-map::dice-sparse-map
-        )
-
-add_test(NAME tsl_sparse_map_tests COMMAND tsl_sparse_map_tests)
+# Every tests_<name>.cpp is one test executable tests_<name>.
+file(GLOB test_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests_*.cpp")
+foreach (test_source IN LISTS test_sources)
+    get_filename_component(test_name "${test_source}" NAME_WE)
+    add_executable(${test_name} "${test_source}")
+    target_include_directories(${test_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(${test_name} PRIVATE
+            dice_sparse_map_test_main
+            dice-sparse-map::dice-sparse-map
+            doctest::doctest
+            nanobench::nanobench
+            Boost::headers
+            Metall::Metall
+    )
+    # keep the internal assertions active in every build type
+    target_compile_definitions(${test_name} PRIVATE TSL_DEBUG)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        target_compile_options(${test_name} PRIVATE -UNDEBUG -Wall -Wextra -Wold-style-cast)
+    elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        target_compile_options(${test_name} PRIVATE /bigobj /W3 /UNDEBUG)
+    endif ()
+    add_test(NAME ${test_name} COMMAND ${test_name})
+    add_dependencies(build_tests ${test_name})
+endforeach ()
