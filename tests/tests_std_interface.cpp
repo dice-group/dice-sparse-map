@@ -43,11 +43,43 @@ namespace {
         }
     };
 
+    /// copies of `counting_hash` since the counter was last set to 0
+    std::size_t hash_copies = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+    /**
+     * A hash function that counts its copies in `hash_copies`.
+     */
+    struct counting_hash {
+        using is_avalanching = void;
+
+        counting_hash() = default;
+        counting_hash(counting_hash const & /*other*/) {
+            ++hash_copies;
+        }
+        counting_hash(counting_hash &&) = default;
+        counting_hash &operator=(counting_hash const & /*other*/) {
+            ++hash_copies;
+            return *this;
+        }
+        counting_hash &operator=(counting_hash &&) = default;
+        ~counting_hash() = default;
+
+        [[nodiscard]] std::size_t operator()(int key) const noexcept {
+            return tests::test_hash<int>{}(key);
+        }
+    };
+
     using string_map = sparse_map<std::string, int, string_hash, std::equal_to<>>;
     using string_set = sparse_set<std::string, string_hash, std::equal_to<>>;
 
     template<typename Map, typename K>
     concept HasHeterogeneousTryEmplace = requires (Map map, K key) { map.try_emplace(key, 1); };
+
+    template<typename Container, typename K>
+    concept HasHeterogeneousFind = requires (Container container, K key) { container.find(key); };
+
+    template<typename Set, typename K>
+    concept HasHeterogeneousInsert = requires (Set set, K key) { set.insert(key); };
 
 }  // namespace
 
@@ -132,6 +164,22 @@ TEST_SUITE("ranges") {
             other.reserve(input.size());
             CHECK(bucket_count == other.bucket_count());
         }
+    }
+
+    TEST_CASE("a move with an equal allocator does not copy the hash function") {
+        using map_t = sparse_map<int, int, counting_hash>;
+        using allocator_t = std::allocator<std::pair<int, int>>;
+
+        auto source = map_t{};
+        source[1] = 10;
+        source[2] = 20;
+
+        hash_copies = 0;
+        auto moved = map_t{std::move(source), allocator_t{}};
+        CHECK(hash_copies == 0);
+        CHECK(moved.size() == 2);
+        CHECK(moved.at(1) == 10);
+        CHECK(moved.at(2) == 20);
     }
 
     TEST_CASE("insert_range keeps the first element of each key") {
@@ -437,6 +485,14 @@ TEST_SUITE("erase_if and merge") {
 TEST_SUITE("heterogeneous insertion") {
     static_assert(HasHeterogeneousTryEmplace<string_map, std::string_view>);
     static_assert(!HasHeterogeneousTryEmplace<sparse_map<std::string, int>, std::string_view>);
+
+    // The heterogeneous overloads need `is_transparent` on the hash function and on the key equality.
+    static_assert(HasHeterogeneousFind<string_map, std::string_view>);
+    static_assert(HasHeterogeneousInsert<string_set, std::string_view>);
+    static_assert(!HasHeterogeneousTryEmplace<sparse_map<std::string, int, tests::test_hash<std::string>, std::equal_to<>>, std::string_view>);
+    static_assert(!HasHeterogeneousFind<sparse_map<std::string, int, tests::test_hash<std::string>, std::equal_to<>>, std::string_view>);
+    static_assert(!HasHeterogeneousFind<sparse_map<std::string, int, string_hash, std::equal_to<std::string>>, std::string_view>);
+    static_assert(!HasHeterogeneousInsert<sparse_set<std::string, tests::test_hash<std::string>, std::equal_to<>>, std::string_view>);
 
     TEST_CASE("try_emplace, insert_or_assign, operator[] and erase with a string_view") {
         auto map = string_map{};

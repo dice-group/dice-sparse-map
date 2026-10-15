@@ -2,6 +2,7 @@
 #include "fixtures/test_types.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
+#include <dice/sparse-map/sparse_set.hpp>
 
 #include <doctest/doctest.h>
 
@@ -14,8 +15,8 @@
 #include <vector>
 
 /**
- * `sparse_map` with `std::pmr::polymorphic_allocator`. The map allocates its buckets from its memory
- * resource, and `polymorphic_allocator` constructs the keys and values with the same resource
+ * `sparse_map` and `sparse_set` with `std::pmr::polymorphic_allocator`. The containers allocate their
+ * buckets from their memory resource, and `polymorphic_allocator` constructs the keys and values with the same resource
  * (uses-allocator construction). The tests of copy construction, copy assignment and move
  * assignment hold that a copy gets the default resource and that the target of an assignment keeps
  * its resource.
@@ -28,6 +29,7 @@ namespace {
 
     using pmr_value = std::pair<std::pmr::string, std::pmr::vector<int>>;
     using pmr_map = sparse_map<std::pmr::string, std::pmr::vector<int>, tests::test_hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<pmr_value>>;
+    using pmr_set = sparse_set<std::pmr::string, tests::test_hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<std::pmr::string>>;
     using pmr_int_map = sparse_map<int, int, tests::test_hash<int>, std::equal_to<int>, std::pmr::polymorphic_allocator<std::pair<int, int>>>;
 
     /// a key that is too long for the small string buffer, so that the string allocates
@@ -39,6 +41,16 @@ namespace {
     bool entries_use(pmr_map const &map, std::pmr::memory_resource *resource) {
         for (auto const &entry : map) {
             if (entry.first.get_allocator().resource() != resource || entry.second.get_allocator().resource() != resource) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// true if every key of `set` allocates from `resource`
+    bool keys_use(pmr_set const &set, std::pmr::memory_resource *resource) {
+        for (auto const &key : set) {
+            if (key.get_allocator().resource() != resource) {
                 return false;
             }
         }
@@ -144,6 +156,32 @@ TEST_CASE("the keys and values of a pmr map use the resource of the map") {
     }
     CHECK(resource.bytes_in_use() == 0);
     CHECK(resource.deallocations() == resource.allocations());
+}
+
+// `std::unordered_map::emplace` constructs the new element with the allocator of the container. The element does not
+// pass through an object that takes its memory from somewhere else.
+TEST_CASE("emplace and insert of a pair-like value take no memory from the default resource") {
+    auto resource = counting_resource{};
+    auto default_resource = counting_resource{};
+    {
+        auto map = pmr_map{&resource};
+        auto set = pmr_set{&resource};
+        auto const key = std::pmr::string{"a key that is too long for the small string buffer", &resource};
+        auto const value = std::pmr::vector<int>{{1, 2, 3}, &resource};
+        auto const pair_like = std::pair<char const *, std::pmr::vector<int>>{"another string literal that is too long for the small string buffer", value};
+
+        auto const guard = default_resource_guard{&default_resource};
+        map.emplace(key, value);
+        map.emplace_hint(map.end(), "a string literal that is too long for the small string buffer", value);
+        map.insert(pair_like);
+        set.emplace("a string literal that is too long for the small string buffer");
+        CHECK(map.size() == 3);
+        CHECK(set.size() == 1);
+        CHECK(entries_use(map, &resource));
+        CHECK(keys_use(set, &resource));
+        CHECK(default_resource.allocations() == 0);
+    }
+    CHECK(resource.bytes_in_use() == 0);
 }
 
 TEST_CASE("a pmr map never asks its resource for 0 bytes and never gives back a null pointer") {
