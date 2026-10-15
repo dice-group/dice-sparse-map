@@ -171,7 +171,7 @@ namespace {
 
     /// the type in which `Map` stores its elements
     template<typename Map>
-    using stored_t = typename Map::value_type;
+    using stored_t = detail_sparse_hash::map_slot<typename Map::key_type, typename Map::mapped_type>;
 
     /// true if a rehash of `Map` moves its elements and frees each old group right after its elements are moved
     template<typename Map>

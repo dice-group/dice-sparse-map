@@ -317,3 +317,52 @@ TEST_CASE("copy assignment of a pmr map keeps the resource of the target") {
 TEST_CASE("move assignment of a pmr map keeps the resource of the target") {
     check_move_assignment<pmr_map>();
 }
+
+namespace {
+    /**
+     * Copyable, but not movable. `std::pair` copies it, because its defaulted move constructor is deleted.
+     */
+    struct no_move {
+        int data = 0;
+
+        explicit no_move(int data) noexcept
+            : data(data) {
+        }
+
+        no_move(no_move const &) = default;
+        no_move(no_move &&) = delete;
+        no_move &operator=(no_move const &) = default;
+        no_move &operator=(no_move &&) = delete;
+        ~no_move() = default;
+    };
+
+    /// the key uses the allocator, so the elements are constructed with the allocator, see `std::uses_allocator`
+    using pmr_no_move_map = sparse_map<std::pmr::string, no_move, tests::test_hash<std::pmr::string>, std::equal_to<std::pmr::string>, std::pmr::polymorphic_allocator<std::pair<std::pmr::string, no_move>>>;
+}  // namespace
+
+TEST_CASE("a pmr map copies a mapped value whose move constructor is deleted") {
+    auto resource = counting_resource{};
+    {
+        auto map = pmr_no_move_map{&resource};
+
+        auto const value = std::pair<std::pmr::string, no_move>{long_key(1), no_move{10}};
+        map.insert(value);
+        map.insert(std::pair<std::pmr::string, no_move>{long_key(2), no_move{20}});
+        map.emplace(std::piecewise_construct, std::forward_as_tuple(long_key(3)), std::forward_as_tuple(30));
+        map.try_emplace(long_key(4), 40);
+        for (int i = 100; i < 300; ++i) {
+            map.try_emplace(long_key(i), i);  // rehashes
+        }
+
+        CHECK(map.size() == 204);
+        CHECK(map.at(long_key(1)).data == 10);
+        CHECK(map.at(long_key(2)).data == 20);
+        CHECK(map.at(long_key(3)).data == 30);
+        CHECK(map.at(long_key(4)).data == 40);
+        CHECK(map.at(long_key(299)).data == 299);
+        for (auto const &entry : map) {
+            CHECK(entry.first.get_allocator().resource() == &resource);
+        }
+    }
+    CHECK(resource.bytes_in_use() == 0);
+}
