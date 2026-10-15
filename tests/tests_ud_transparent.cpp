@@ -16,9 +16,10 @@
 using namespace dice::sparse_map::tests;
 using namespace std::literals;
 
-// sparse_map has heterogeneous overloads of find, count, contains, equal_range, at and erase. They take part in
-// overload resolution when the key equality has a member type `is_transparent`. insert, emplace, try_emplace,
-// insert_or_assign and operator[] take the key type only, so their argument is converted to a `std::string` first.
+// sparse_map has heterogeneous overloads of find, count, contains, equal_range, at, erase, try_emplace,
+// insert_or_assign and operator[], and sparse_set of find, count, contains, equal_range, erase and insert. They take
+// part in overload resolution when the key equality has a member type `is_transparent`. emplace takes the arguments of
+// the element, so it converts its argument to a `std::string` first.
 //
 // Every container here starts with 16 buckets, so no insert grows the table. An insert that grows the table hashes
 // its key once more after the rehash, and that would blur the hash counts.
@@ -97,119 +98,119 @@ namespace {
 TEST_CASE_MAP("transparent_find", std::string, std::size_t, string_hash, std::equal_to<>) {
     auto map = map_t(16);
     map.try_emplace("hello", 1);
-    check(__LINE__, map, 0, 0, 1);
+    check(__LINE__, map, 1, 0, 0);
 
     auto it = map.find("huh");
-    check(__LINE__, map, 1, 0, 1);
+    check(__LINE__, map, 2, 0, 0);
     REQUIRE(it == map.end());
     it = map.find("hello");
-    check(__LINE__, map, 2, 0, 1);
+    check(__LINE__, map, 3, 0, 0);
     REQUIRE(it != map.end());
 
     auto cit = std::as_const(map).find("huh");
-    check(__LINE__, map, 3, 0, 1);
+    check(__LINE__, map, 4, 0, 0);
     REQUIRE(cit == map.end());
     REQUIRE(cit == map.cend());
     cit = std::as_const(map).find("hello");
-    check(__LINE__, map, 4, 0, 1);
+    check(__LINE__, map, 5, 0, 0);
     REQUIRE(cit != map.end());
 
     // string_view
     it = map.find("huh"sv);
     REQUIRE(it == map.end());
-    check(__LINE__, map, 4, 1, 1);
+    check(__LINE__, map, 5, 1, 0);
     it = map.find("hello"sv);
     REQUIRE(it != map.end());
-    check(__LINE__, map, 4, 2, 1);
+    check(__LINE__, map, 5, 2, 0);
 
     // string
     it = map.find("huh"s);
     REQUIRE(it == map.end());
-    check(__LINE__, map, 4, 2, 2);
+    check(__LINE__, map, 5, 2, 1);
     it = map.find("hello"s);
     REQUIRE(it != map.end());
-    check(__LINE__, map, 4, 2, 3);
+    check(__LINE__, map, 5, 2, 2);
 }
 
 TEST_CASE_MAP("transparent_count", std::string, std::size_t, string_hash, std::equal_to<>) {
     auto map = map_t(16);
     map.try_emplace("hello", 1);
-    check(__LINE__, map, 0, 0, 1);
+    check(__LINE__, map, 1, 0, 0);
 
     REQUIRE(0 == map.count("huh"));
-    check(__LINE__, map, 1, 0, 1);
+    check(__LINE__, map, 2, 0, 0);
     REQUIRE(1 == map.count("hello"));
-    check(__LINE__, map, 2, 0, 1);
+    check(__LINE__, map, 3, 0, 0);
 
     REQUIRE(0 == map.count("huh"sv));
-    check(__LINE__, map, 2, 1, 1);
+    check(__LINE__, map, 3, 1, 0);
     REQUIRE(1 == map.count("hello"sv));
-    check(__LINE__, map, 2, 2, 1);
+    check(__LINE__, map, 3, 2, 0);
 
     REQUIRE(0 == map.count("huh"s));
-    check(__LINE__, map, 2, 2, 2);
+    check(__LINE__, map, 3, 2, 1);
     REQUIRE(1 == map.count("hello"s));
-    check(__LINE__, map, 2, 2, 3);
+    check(__LINE__, map, 3, 2, 2);
 }
 
 TEST_CASE_MAP("transparent_contains", std::string, std::size_t, string_hash, std::equal_to<>) {
     auto map = map_t(16);
     map.try_emplace("hello", 1);
-    check(__LINE__, map, 0, 0, 1);
+    check(__LINE__, map, 1, 0, 0);
 
     REQUIRE(!map.contains("huh"));
-    check(__LINE__, map, 1, 0, 1);
+    check(__LINE__, map, 2, 0, 0);
     REQUIRE(map.contains("hello"));
-    check(__LINE__, map, 2, 0, 1);
+    check(__LINE__, map, 3, 0, 0);
 
     REQUIRE(!map.contains("huh"sv));
-    check(__LINE__, map, 2, 1, 1);
+    check(__LINE__, map, 3, 1, 0);
     REQUIRE(map.contains("hello"sv));
-    check(__LINE__, map, 2, 2, 1);
+    check(__LINE__, map, 3, 2, 0);
 
     REQUIRE(!map.contains("huh"s));
-    check(__LINE__, map, 2, 2, 2);
+    check(__LINE__, map, 3, 2, 1);
     REQUIRE(map.contains("hello"s));
-    check(__LINE__, map, 2, 2, 3);
+    check(__LINE__, map, 3, 2, 2);
 }
 
 TEST_CASE_MAP("transparent_erase", std::string, std::size_t, string_hash, std::equal_to<>) {
     auto map = map_t(16);
     map.try_emplace("hello", 1);
-    check(__LINE__, map, 0, 0, 1);
+    check(__LINE__, map, 1, 0, 0);
     REQUIRE(0 == map.erase("huh"));
-    check(__LINE__, map, 1, 0, 1);
+    check(__LINE__, map, 2, 0, 0);
     REQUIRE(1 == map.erase("hello"));
-    check(__LINE__, map, 2, 0, 1);
+    check(__LINE__, map, 3, 0, 0);
 
     map.try_emplace("hello", 1);
-    check(__LINE__, map, 2, 0, 2);
+    check(__LINE__, map, 4, 0, 0);
     REQUIRE(0 == map.erase("huh"sv));
-    check(__LINE__, map, 2, 1, 2);
+    check(__LINE__, map, 4, 1, 0);
     REQUIRE(1 == map.erase("hello"sv));
-    check(__LINE__, map, 2, 2, 2);
+    check(__LINE__, map, 4, 2, 0);
 
     map.try_emplace("hello", 1);
-    check(__LINE__, map, 2, 2, 3);
+    check(__LINE__, map, 5, 2, 0);
     REQUIRE(0 == map.erase("huh"s));
-    check(__LINE__, map, 2, 2, 4);
+    check(__LINE__, map, 5, 2, 1);
     REQUIRE(1 == map.erase("hello"s));
-    check(__LINE__, map, 2, 2, 5);
+    check(__LINE__, map, 5, 2, 2);
 }
 
 TEST_CASE_MAP("transparent_equal_range", std::string, std::size_t, string_hash, std::equal_to<>) {
     auto map = map_t(16);
     map.try_emplace("hello", 1);
-    check(__LINE__, map, 0, 0, 1);
+    check(__LINE__, map, 1, 0, 0);
 
     auto range = map.equal_range("hello");
-    check(__LINE__, map, 1, 0, 1);
+    check(__LINE__, map, 2, 0, 0);
     REQUIRE(range.first != range.second);
     REQUIRE(range.first->first == "hello");
     REQUIRE(range.second == map.end());
 
     auto crange = std::as_const(map).equal_range("hello"sv);
-    check(__LINE__, map, 1, 1, 1);
+    check(__LINE__, map, 2, 1, 0);
     REQUIRE(crange.first != range.second);
     REQUIRE(crange.first->first == "hello");
     REQUIRE(crange.second == map.end());
@@ -234,15 +235,15 @@ TEST_CASE_MAP("transparent_string_eq", std::string, std::size_t, string_hash, st
 TEST_CASE_MAP("transparent_at", std::string, std::size_t, string_hash, string_eq) {
     auto map = map_t(16);
     map.try_emplace("asdf", 123);
-    check(__LINE__, map, 0, 0, 1);
+    check(__LINE__, map, 1, 0, 0);
 
     auto &vt = map.at("asdf");
-    check(__LINE__, map, 1, 0, 1);
+    check(__LINE__, map, 2, 0, 0);
     REQUIRE(vt == 123);
 
     // NOLINTNEXTLINE(llvm-else-after-return,readability-else-after-return)
     REQUIRE_THROWS_AS(map.at("nope"sv), std::out_of_range);
-    check(__LINE__, map, 1, 1, 1);
+    check(__LINE__, map, 2, 1, 0);
 }
 
 // Without `is_transparent` on the key equality, the lookup converts its argument to a `std::string`.
@@ -264,16 +265,16 @@ TEST_CASE_MAP("transparent_at_not", std::string, std::size_t, string_hash) {
 TEST_CASE_MAP("transparent_at_on_a_const_table", std::string, std::size_t, string_hash, string_eq) {
     auto map = map_t(16);
     map.try_emplace("asdf", 123);
-    check(__LINE__, map, 0, 0, 1);
+    check(__LINE__, map, 1, 0, 0);
 
     auto const &cmap = map;
     REQUIRE(cmap.at("asdf"sv) == 123);
 
     // and it went through the transparent overload rather than building a std::string on the way in
-    check(__LINE__, map, 0, 1, 1);
+    check(__LINE__, map, 1, 1, 0);
 
     REQUIRE_THROWS_AS(static_cast<void>(cmap.at("nope"sv)), std::out_of_range);
-    check(__LINE__, map, 0, 2, 1);
+    check(__LINE__, map, 1, 2, 0);
 }
 
 TEST_CASE_MAP("transparent_insert_or_assign_not", std::string, std::size_t, string_hash) {
@@ -312,6 +313,100 @@ TEST_CASE_MAP("transparent_insert_or_assign_iterator_not", std::string, std::siz
     REQUIRE(r == map.find("asdf"));
     REQUIRE(r->second == 7U);
     REQUIRE(map.size() == 1U);
+}
+
+// With a transparent key equality, try_emplace with a hint takes the string_view as it is (C++26).
+TEST_CASE_MAP("transparent_try_emplace_with_a_hint", std::string, std::size_t, string_hash, string_eq) {
+    auto map = map_t(16);
+
+    auto it = map.try_emplace(map.cend(), "abc"sv, std::size_t{1});
+    check(__LINE__, map, 0, 1, 0);
+    REQUIRE(it->first == "abc");
+    REQUIRE(it->second == 1);
+    REQUIRE(map.size() == 1);
+
+    // a second call with the same key keeps the first value, unlike insert_or_assign
+    auto again = map.try_emplace(map.cend(), "abc"sv, std::size_t{2});
+    check(__LINE__, map, 0, 2, 0);
+    REQUIRE(again->second == 1);
+    REQUIRE(map.size() == 1);
+}
+
+// With a transparent key equality, insert_or_assign hashes the `char const *` and builds no `std::string` for the
+// lookup (C++26).
+TEST_CASE_MAP("transparent_insert_or_assign", std::string, std::size_t, string_hash, string_eq) {
+    auto map = map_t(16);
+    auto r = map.insert_or_assign("asdf", 123U);
+    check(__LINE__, map, 1, 0, 0);
+    REQUIRE(r.first->first == "asdf");
+    REQUIRE(r.first->second == 123U);
+    REQUIRE(r.second);
+
+    r = map.insert_or_assign("asdf", 42U);
+    check(__LINE__, map, 2, 0, 0);
+    REQUIRE(r.first->first == "asdf");
+    REQUIRE(r.first->second == 42U);
+    REQUIRE(!r.second);
+    REQUIRE(map.size() == 1U);
+}
+
+TEST_CASE_MAP("transparent_insert_or_assign_iterator", std::string, std::size_t, string_hash, string_eq) {
+    auto map = map_t(16);
+    auto r = map.insert_or_assign(map.cend(), "asdf", 123U);
+    check(__LINE__, map, 1, 0, 0);
+    REQUIRE(r->first == "asdf");
+    REQUIRE(r->second == 123U);
+
+    r = map.insert_or_assign(map.cend(), "asdf", 42U);
+    check(__LINE__, map, 2, 0, 0);
+    REQUIRE(r->first == "asdf");
+    REQUIRE(r->second == 42U);
+    REQUIRE(map.size() == 1U);
+}
+
+// With a transparent key equality, operator[] hashes the `char const *` and builds no `std::string` for the
+// lookup (C++26).
+TEST_CASE_MAP("transparent_operator_index", std::string, std::size_t, string_hash, string_eq) {
+    auto map = map_t(16);
+    map["asdf"] = 1;
+    check(__LINE__, map, 1, 0, 0);
+    map["asdf"] += 41;
+    check(__LINE__, map, 2, 0, 0);
+    REQUIRE(map.size() == 1U);
+    REQUIRE(map.begin()->first == "asdf");
+    REQUIRE(map.begin()->second == 42U);
+}
+
+// With a transparent key equality, a set inserts a `char const *` without building a `std::string` for the
+// lookup (C++26).
+TEST_CASE_SET("transparent_set_insert", std::string, string_hash, string_eq) {
+    auto set = set_t(16);
+    set.insert("abcdefg");
+    check(__LINE__, set, 1, 0, 0);
+    set.insert("abcdefg");
+    check(__LINE__, set, 2, 0, 0);
+}
+
+// With a transparent key equality, a set insert with a hint hashes the `char const *` only if the hint does not
+// point to an equal key (C++26).
+TEST_CASE_SET("transparent_set_insert_with_a_hint", std::string, string_hash, string_eq) {
+    auto set = set_t(16);
+    auto it = set.insert(set.cend(), "abc");
+    check(__LINE__, set, 1, 0, 0);
+    REQUIRE(set.size() == 1U);
+    REQUIRE(*it == "abc");
+
+    // the hint points to the key: no hash, no insertion
+    it = set.insert(set.cbegin(), "abc");
+    check(__LINE__, set, 1, 0, 0);
+    REQUIRE(set.size() == 1U);
+    REQUIRE(*it == "abc");
+
+    // the hint points to another key
+    it = set.insert(set.cbegin(), "xyz");
+    check(__LINE__, set, 2, 0, 0);
+    REQUIRE(set.size() == 2U);
+    REQUIRE(*it == "xyz");
 }
 
 TEST_CASE_SET("transparent_set_insert_not", std::string, string_hash) {

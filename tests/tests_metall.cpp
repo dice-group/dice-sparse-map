@@ -318,101 +318,85 @@ namespace {
                                         std::equal_to<std::uint64_t>,
                                         std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, inner_map>>>>;
 
-    /**
-     * `std::scoped_allocator_adaptor` moves the inner maps by uses-allocator construction, so the inner
-     * map needs the allocator-extended move constructor `sparse_map(sparse_map &&, Allocator const &)`.
-     * `sparse_map` does not have it yet. Until it has, the test of `scoped_outer_map` is compiled out
-     * and skipped.
-     */
-    constexpr bool scoped_map_of_maps_compiles = std::is_constructible_v<inner_map,
-                                                                         inner_map &&,
-                                                                         std::scoped_allocator_adaptor<metall_allocator<std::pair<std::uint64_t, inner_map>>> const &>;
-
-    /// true if the current `sparse_map` can store the map of maps `OuterMap`
-    template<typename OuterMap>
-    constexpr bool map_of_maps_compiles_v = !std::is_same_v<OuterMap, scoped_outer_map> || scoped_map_of_maps_compiles;
-
     constexpr std::uint64_t num_outer = 100;
     constexpr std::uint64_t num_inner = 100;
 
     /**
      * Fills a map of maps in a new datastore, closes it, opens it again, checks every element and destroys
-     * the map. Does nothing for a map of maps that does not compile yet.
+     * the map.
      */
     template<typename OuterMap>
     void check_map_of_maps_round_trip(std::string const &name) {
-        if constexpr (map_of_maps_compiles_v<OuterMap>) {
-            datastore_path const store{name};
-            char const *object_name = "map_of_maps";
+        datastore_path const store{name};
+        char const *object_name = "map_of_maps";
 
-            std::vector<std::pair<std::uint64_t, std::uint64_t>> expected_inner;
-            std::uint64_t expected_checksum = 1;
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> expected_inner;
+        std::uint64_t expected_checksum = 1;
+        for (std::uint64_t outer_key = 0; outer_key < num_outer; ++outer_key) {
+            expected_inner.clear();
+            for (std::uint64_t inner_key = 0; inner_key < num_inner; ++inner_key) {
+                expected_inner.emplace_back(inner_key, value_of(outer_key * num_inner + inner_key));
+            }
+            expected_checksum ^= checksum::combine(checksum::mix(outer_key), checksum::map(expected_inner));
+        }
+        expected_checksum = checksum::combine(expected_checksum, num_outer);
+
+        mapping last_mapping;
+        {
+            metall::manager manager{metall::create_only, store.path.c_str()};
+            REQUIRE(manager.check_sanity());
+            last_mapping = mapping_of(manager);
+            auto *outer = manager.construct<OuterMap>(object_name)(manager.get_allocator());
+            REQUIRE(outer != nullptr);
             for (std::uint64_t outer_key = 0; outer_key < num_outer; ++outer_key) {
-                expected_inner.clear();
+                auto &inner = (*outer)[outer_key];
                 for (std::uint64_t inner_key = 0; inner_key < num_inner; ++inner_key) {
-                    expected_inner.emplace_back(inner_key, value_of(outer_key * num_inner + inner_key));
+                    inner[inner_key] = value_of(outer_key * num_inner + inner_key);
                 }
-                expected_checksum ^= checksum::combine(checksum::mix(outer_key), checksum::map(expected_inner));
             }
-            expected_checksum = checksum::combine(expected_checksum, num_outer);
+            REQUIRE(outer->size() == num_outer);
+        }
 
-            mapping last_mapping;
-            {
-                metall::manager manager{metall::create_only, store.path.c_str()};
-                REQUIRE(manager.check_sanity());
-                last_mapping = mapping_of(manager);
-                auto *outer = manager.construct<OuterMap>(object_name)(manager.get_allocator());
-                REQUIRE(outer != nullptr);
-                for (std::uint64_t outer_key = 0; outer_key < num_outer; ++outer_key) {
-                    auto &inner = (*outer)[outer_key];
-                    for (std::uint64_t inner_key = 0; inner_key < num_inner; ++inner_key) {
-                        inner[inner_key] = value_of(outer_key * num_inner + inner_key);
-                    }
+        {
+            auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
+            CHECK(blocker.blocks());
+            metall::manager manager{metall::open_only, store.path.c_str()};
+            REQUIRE(manager.check_sanity());
+            REQUIRE(manager.get_address() != last_mapping.address);
+            auto *outer = std::get<0>(manager.find<OuterMap>(object_name));
+            REQUIRE(outer != nullptr);
+            CHECK(outer->size() == num_outer);
+
+            auto const datastore_allocator = typename OuterMap::mapped_type::allocator_type{manager.get_allocator()};
+            bool all_found = true;
+            bool all_in_datastore = true;
+            for (std::uint64_t outer_key = 0; outer_key < num_outer; ++outer_key) {
+                auto const it = outer->find(outer_key);
+                if (it == outer->end()) {
+                    all_found = false;
+                    continue;
                 }
-                REQUIRE(outer->size() == num_outer);
+                auto const &inner = it->second;
+                all_in_datastore = all_in_datastore && inner.get_allocator() == datastore_allocator;
+                all_found = all_found && inner.size() == num_inner;
+                for (std::uint64_t inner_key = 0; inner_key < num_inner; ++inner_key) {
+                    auto const inner_it = inner.find(inner_key);
+                    all_found = all_found && inner_it != inner.end() && inner_it->second == value_of(outer_key * num_inner + inner_key);
+                }
             }
+            CHECK(all_found);
+            CHECK(all_in_datastore);
+            CHECK(checksum::mapmap(*outer) == expected_checksum);
 
-            {
-                auto const blocker = address_blocker{last_mapping.address, last_mapping.size};
-                CHECK(blocker.blocks());
-                metall::manager manager{metall::open_only, store.path.c_str()};
-                REQUIRE(manager.check_sanity());
-                REQUIRE(manager.get_address() != last_mapping.address);
-                auto *outer = std::get<0>(manager.find<OuterMap>(object_name));
-                REQUIRE(outer != nullptr);
-                CHECK(outer->size() == num_outer);
-
-                auto const datastore_allocator = typename OuterMap::mapped_type::allocator_type{manager.get_allocator()};
-                bool all_found = true;
-                bool all_in_datastore = true;
-                for (std::uint64_t outer_key = 0; outer_key < num_outer; ++outer_key) {
-                    auto const it = outer->find(outer_key);
-                    if (it == outer->end()) {
-                        all_found = false;
-                        continue;
-                    }
-                    auto const &inner = it->second;
-                    all_in_datastore = all_in_datastore && inner.get_allocator() == datastore_allocator;
-                    all_found = all_found && inner.size() == num_inner;
-                    for (std::uint64_t inner_key = 0; inner_key < num_inner; ++inner_key) {
-                        auto const inner_it = inner.find(inner_key);
-                        all_found = all_found && inner_it != inner.end() && inner_it->second == value_of(outer_key * num_inner + inner_key);
-                    }
-                }
-                CHECK(all_found);
-                CHECK(all_in_datastore);
-                CHECK(checksum::mapmap(*outer) == expected_checksum);
-
-                // the inner maps still grow after the datastore was opened again
-                auto &first = (*outer)[0];
-                for (std::uint64_t inner_key = num_inner; inner_key < 10 * num_inner; ++inner_key) {
-                    first[inner_key] = inner_key;
-                }
-                CHECK(outer->at(0).size() == 10 * num_inner);
-
-                CHECK(manager.destroy<OuterMap>(object_name));
-                CHECK(manager.all_memory_deallocated());
+            // the inner maps still grow after the datastore was opened again
+            auto &first = (*outer)[0];
+            for (std::uint64_t inner_key = num_inner; inner_key < 10 * num_inner; ++inner_key) {
+                first[inner_key] = inner_key;
             }
+            CHECK(outer->at(0).size() == 10 * num_inner);
+
+            CHECK(manager.destroy<OuterMap>(object_name));
+            CHECK(manager.all_memory_deallocated());
         }
     }
 
@@ -436,7 +420,6 @@ TEST_CASE_TEMPLATE("a container in a metall datastore survives closing and openi
     check_round_trip<container_t>(doctest::toString<container_t>().c_str());
 }
 
-// skipped until `sparse_map` has `sparse_map(sparse_map &&, Allocator const &)`, see `scoped_map_of_maps_compiles`
-TEST_CASE("a map of maps with std::scoped_allocator_adaptor survives closing and opening" * doctest::skip(!scoped_map_of_maps_compiles)) {
+TEST_CASE("a map of maps with std::scoped_allocator_adaptor survives closing and opening") {
     check_map_of_maps_round_trip<scoped_outer_map>("scoped_map_of_maps");
 }
