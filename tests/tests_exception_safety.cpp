@@ -2,6 +2,7 @@
 #include "fixtures/checksum.hpp"
 #include "fixtures/counter.hpp"
 #include "fixtures/test_types.hpp"
+#include "fixtures/throwing_hash.hpp"
 
 #include <dice/sparse-map/sparse_map.hpp>
 #include <dice/sparse-map/sparse_set.hpp>
@@ -22,7 +23,7 @@
 
 /**
  * What a map holds after an allocation or the hash function failed in the middle of an operation. The allocations
- * fail through `tests::bombing_allocator`, the hash function through `throwing_hash`. The elements are
+ * fail through `tests::bombing_allocator`, the hash function through `throwing_test_hash`. The elements are
  * `counter::obj`, so a test sees every element that is not destroyed, or destroyed twice. The maps that allocate
  * through `tests::bombing_allocator` are `tests::throwing_map`, so a failed allocation throws `std::bad_alloc`.
  *
@@ -79,22 +80,17 @@ namespace {
         }
     };
 
-    /// calls of `throwing_hash` that are left before it throws, -1 never throws
-    int hash_calls_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
     /**
-     * Arms the countdown of `throwing_hash` while it is in scope.
+     * `test_hash` of the key. The overload for `counter::obj` also takes the types derived from it, which
+     * `std::hash` is not specialized for.
      */
-    struct hash_bomb_after {
-        explicit hash_bomb_after(int n) noexcept {
-            hash_calls_until_throw = n;
+    struct inner_test_hash {
+        [[nodiscard]] std::size_t operator()(counter::obj const &key) const noexcept {
+            return test_hash<counter::obj>{}(key);
         }
-        hash_bomb_after(hash_bomb_after const &) = delete;
-        hash_bomb_after(hash_bomb_after &&) = delete;
-        hash_bomb_after &operator=(hash_bomb_after const &) = delete;
-        hash_bomb_after &operator=(hash_bomb_after &&) = delete;
-        ~hash_bomb_after() {
-            hash_calls_until_throw = -1;
+
+        [[nodiscard]] std::size_t operator()(std::size_t key) const noexcept {
+            return test_hash<std::size_t>{}(key);
         }
     };
 
@@ -102,26 +98,8 @@ namespace {
      * Hash function that throws `std::runtime_error` on the n-th call after a `hash_bomb_after(n)`. Otherwise it
      * returns the hash of `test_hash`.
      */
-    struct throwing_hash {
-        using is_avalanching = void;
-
-        [[nodiscard]] std::size_t operator()(counter::obj const &key) const {
-            count_down();
-            return test_hash<counter::obj>{}(key);
-        }
-
-        [[nodiscard]] std::size_t operator()(std::size_t key) const {
-            count_down();
-            return test_hash<std::size_t>{}(key);
-        }
-
-    private:
-        static void count_down() {
-            if (hash_calls_until_throw >= 0 && 0 == hash_calls_until_throw--) {
-                throw std::runtime_error{"throwing_hash"};
-            }
-        }
-    };
+    using throwing_test_hash = throwing_hash<inner_test_hash>;
+    using hash_bomb_after = throwing_test_hash::bomb_after;
 
     template<sh::sparsity Sparsity, typename Hash = test_hash<counter::obj>>
     using moving_map = throwing_map<counter::obj,
@@ -236,8 +214,8 @@ TYPE_TO_STRING_AS("moving, high", moving_map<sh::sparsity::high>);
 TYPE_TO_STRING_AS("moving, medium", moving_map<sh::sparsity::medium>);
 TYPE_TO_STRING_AS("moving, low", moving_map<sh::sparsity::low>);
 TYPE_TO_STRING_AS("trivial", trivial_map<>);
-TYPE_TO_STRING_AS("moving, throwing hash", moving_map<sh::sparsity::medium, throwing_hash>);
-TYPE_TO_STRING_AS("trivial, throwing hash", trivial_map<throwing_hash>);
+TYPE_TO_STRING_AS("moving, throwing hash", moving_map<sh::sparsity::medium, throwing_test_hash>);
+TYPE_TO_STRING_AS("trivial, throwing hash", trivial_map<throwing_test_hash>);
 
 // A rehash that moves frees each old group right after its elements are moved, so it leaves the map empty if an
 // allocation fails while it moves. Any other failed allocation leaves the contents unchanged.
@@ -337,8 +315,8 @@ TEST_CASE_TEMPLATE("a reserve that throws leaves the contents unchanged or empty
 // A rehash hashes the elements while it moves them, so it leaves the map empty whenever the hash function throws.
 TEST_CASE_TEMPLATE("a rehash whose hash function throws leaves the contents unchanged or empty",
                    map_t,
-                   moving_map<sh::sparsity::medium, throwing_hash>,
-                   trivial_map<throwing_hash>) {
+                   moving_map<sh::sparsity::medium, throwing_test_hash>,
+                   trivial_map<throwing_test_hash>) {
     auto counts = counter{};
     std::size_t unchanged = 0;
     std::size_t emptied = 0;
@@ -537,33 +515,11 @@ TEST_CASE_TEMPLATE("a copy assignment that throws leaves a usable map",
 
 namespace {
 
-    /// the move assignment of `fragile_hash` throws while this is true
-    bool hash_moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
     /**
-     * A hash whose move assignment throws while `hash_moves_throw` is true. `std::swap` of two of them
-     * move assigns, so it throws, too. Otherwise it returns the hash of `test_hash`.
+     * A hash whose move assignment throws while `fragile_test_hash::moves_throw` is true. `std::swap` of two of
+     * them move assigns, so it throws too. A call cannot throw and returns the hash of `test_hash`.
      */
-    struct fragile_hash {
-        using is_avalanching = void;
-
-        fragile_hash() = default;
-        fragile_hash(fragile_hash const &) = default;
-        fragile_hash(fragile_hash &&) = default;
-        fragile_hash &operator=(fragile_hash const &) = default;
-        ~fragile_hash() = default;
-
-        fragile_hash &operator=(fragile_hash && /*other*/) noexcept(false) {
-            if (hash_moves_throw) {
-                throw std::runtime_error("fragile_hash move assignment");
-            }
-            return *this;
-        }
-
-        std::size_t operator()(std::size_t key) const noexcept {
-            return test_hash<std::size_t>{}(key);
-        }
-    };
+    using fragile_test_hash = throwing_hash<inner_test_hash, false>;
 
     /// `map` holds the keys `first` to `first + count - 1`, each mapped to itself, and nothing else
     template<typename Map>
@@ -580,15 +536,15 @@ namespace {
 }  // namespace
 
 TEST_CASE("a rehash does not swap the hash function") {
-    using map_t = sparse_map<std::size_t, std::string, fragile_hash>;
+    using map_t = sparse_map<std::size_t, std::string, fragile_test_hash>;
     auto map = map_t{};
     for (std::size_t key = 0; key < 100; ++key) {
         map.try_emplace(key, std::to_string(key));
     }
 
-    hash_moves_throw = true;
+    fragile_test_hash::moves_throw = true;
     CHECK_NOTHROW(map.rehash(map.bucket_count() * 2));
-    hash_moves_throw = false;
+    fragile_test_hash::moves_throw = false;
 
     CHECK(map.size() == 100);
     bool all_found = true;
@@ -600,7 +556,7 @@ TEST_CASE("a rehash does not swap the hash function") {
 }
 
 TEST_CASE("a move assignment whose hash throws leaves both maps usable") {
-    using map_t = sparse_map<std::size_t, std::size_t, fragile_hash>;
+    using map_t = sparse_map<std::size_t, std::size_t, fragile_test_hash>;
     auto source = map_t{};
     for (std::size_t key = 0; key < 100; ++key) {
         source[key] = key;
@@ -610,9 +566,9 @@ TEST_CASE("a move assignment whose hash throws leaves both maps usable") {
         target[key] = key;
     }
 
-    hash_moves_throw = true;
+    fragile_test_hash::moves_throw = true;
     CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
-    hash_moves_throw = false;
+    fragile_test_hash::moves_throw = false;
 
     check_holds(target, 0, 0);
     check_holds(source, 0, 100);  // NOLINT(bugprone-use-after-move)
@@ -624,7 +580,7 @@ TEST_CASE("a move assignment whose hash throws leaves both maps usable") {
 
 TEST_CASE("a swap whose hash throws swaps neither the elements nor the allocators") {
     using allocator_t = pocs_allocator<std::pair<std::size_t, std::size_t>>;
-    using map_t = sparse_map<std::size_t, std::size_t, fragile_hash, std::equal_to<std::size_t>, allocator_t>;
+    using map_t = sparse_map<std::size_t, std::size_t, fragile_test_hash, std::equal_to<std::size_t>, allocator_t>;
     auto counts_1 = alloc_counts{};
     auto counts_2 = alloc_counts{};
     {
@@ -635,9 +591,9 @@ TEST_CASE("a swap whose hash throws swaps neither the elements nor the allocator
             map_2[key + 1000] = key + 1000;
         }
 
-        hash_moves_throw = true;
+        fragile_test_hash::moves_throw = true;
         CHECK_THROWS_AS(map_1.swap(map_2), std::runtime_error);
-        hash_moves_throw = false;
+        fragile_test_hash::moves_throw = false;
 
         CHECK(map_1.get_allocator().id == 1);
         CHECK(map_2.get_allocator().id == 2);
@@ -843,7 +799,7 @@ namespace {
     using unequal_map = throwing_map<std::size_t, std::size_t, test_hash<std::size_t>, std::equal_to<std::size_t>, unequal_alloc>;
 
     /// the same with a hash whose move assignment throws
-    using fragile_unequal_map = throwing_map<std::size_t, std::size_t, fragile_hash, std::equal_to<std::size_t>, unequal_alloc>;
+    using fragile_unequal_map = throwing_map<std::size_t, std::size_t, fragile_test_hash, std::equal_to<std::size_t>, unequal_alloc>;
 
     /// the copy assignment of `copy_fragile_hash` throws while this is true
     bool hash_copies_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -927,9 +883,10 @@ TEST_CASE("a move assignment to an unequal allocator whose hash throws leaves th
         auto target = fragile_unequal_map{unequal_alloc{2, &counts}};
         target[5000] = 5000;
 
-        hash_moves_throw = true;
-        CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
-        hash_moves_throw = false;
+        {
+            auto const fragile = fragile_test_hash::fragile_moves{};
+            CHECK_THROWS_AS(target = std::move(source), std::runtime_error);
+        }
 
         CHECK(target.empty());
         check_holds(source, 0, 200);  // NOLINT(bugprone-use-after-move)

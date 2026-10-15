@@ -153,6 +153,7 @@ namespace {
         CHECK(reinterpret_cast<char const *>(&pair.first) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, key)));
         CHECK(reinterpret_cast<char const *>(&pair.second) - base == static_cast<std::ptrdiff_t>(offsetof(slot_t, value)));
     }
+
 }  // namespace
 
 TEST_CASE("map_slot has the layout of std::pair") {
@@ -187,7 +188,16 @@ TEST_CASE("map_slot is constructible from types with two elements that std::get 
 }
 
 TEST_CASE("sizes") {
-    MESSAGE("sizeof(sparse_map<int, int>) = " << sizeof(dice::sparse_map::sparse_map<int, int>));
+    using map_t = dice::sparse_map::sparse_map<int, int>;
+    MESSAGE("sizeof(sparse_map<int, int>) = " << sizeof(map_t));
     MESSAGE("sizeof(sparse_set<int>) = " << sizeof(dice::sparse_map::sparse_set<int>));
-    CHECK(sizeof(dice::sparse_map::sparse_map<int, int>) == 64);
+    // eight members of 8 bytes: the bucket array, the number of groups, the bucket count, the number of elements, the
+    // first group with an element, the number of deleted buckets and two load thresholds. Then the maximum load
+    // factor, a float, with 4 bytes of padding.
+    CHECK(sizeof(map_t) == 72);
+    // the pointer to the values, two bitmaps, the number of values, the capacity and the flag of the last group
+    CHECK(sizeof(dice::sparse_map::detail_sparse_hash::sparse_array<entry_t, std::allocator<entry_t>, sh::sparsity::medium, sh::allocation_failure::terminating>) == 32);
+    // the group, the element and the end of the elements of the group
+    CHECK(sizeof(map_t::iterator) == 24);
+    CHECK(sizeof(map_t::const_iterator) == 24);
 }
