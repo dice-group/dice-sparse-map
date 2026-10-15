@@ -92,7 +92,7 @@ TEST_CASE_MAP("lowering_max_load_factor_applies_to_an_existing_bucket_array", in
         map.try_emplace(i, i);
     }
     auto const before = map.bucket_count();
-    REQUIRE(map.load_factor() < map.max_load_factor());  // nothing is due to grow
+    REQUIRE(map.load_factor() < map.max_load_factor()); // nothing is due to grow
 
     map.max_load_factor(0.1F);
     REQUIRE(map.max_load_factor() == 0.1F);

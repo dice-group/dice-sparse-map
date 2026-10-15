@@ -94,9 +94,7 @@ namespace dice::sparse_map::tests {
      * The default hash function of the containers if it hashes `Key`, otherwise `test_hash<Key>`.
      */
     template<typename Key>
-    using default_or_test_hash = std::conditional_t<hashed_by_dice_hash<Key>,
-                                                    detail_sparse_hash::default_hash<Key>,
-                                                    test_hash<Key>>;
+    using default_or_test_hash = std::conditional_t<hashed_by_dice_hash<Key>, detail_sparse_hash::default_hash<Key>, test_hash<Key>>;
 
     template<typename Key, typename T, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
     using map_medium = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
@@ -137,15 +135,17 @@ namespace dice::sparse_map::tests {
      * allocation throws the exception of the allocator. The tests that make an allocation fail and expect the
      * exception use it.
      */
-    template<typename Key,
-             typename T,
-             typename Hash = detail_sparse_hash::default_hash<Key>,
-             typename KeyEqual = std::equal_to<Key>,
-             typename Allocator = std::allocator<std::pair<Key, T>>,
-             sh::sparsity Sparsity = sh::sparsity::medium>
+    template<
+        typename Key,
+        typename T,
+        typename Hash = detail_sparse_hash::default_hash<Key>,
+        typename KeyEqual = std::equal_to<Key>,
+        typename Allocator = std::allocator<std::pair<Key, T>>,
+        sh::sparsity Sparsity = sh::sparsity::medium
+    >
     using throwing_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, sh::allocation_failure::throwing>;
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
 /**
  * Defines a doctest template test case named `name` with the type parameter `map_t`. It runs once
@@ -153,27 +153,31 @@ namespace dice::sparse_map::tests {
  * `Key, T` and optionally `Hash, KeyEqual`.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_MAP(name, ...)                                                \
-    TEST_CASE_TEMPLATE(name,                                                    \
-                       map_t,                                                   \
-                       ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,      \
-                       ::dice::sparse_map::tests::map_high<__VA_ARGS__>,        \
-                       ::dice::sparse_map::tests::map_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
+#define TEST_CASE_MAP(name, ...)                               \
+    TEST_CASE_TEMPLATE(                                        \
+        name,                                                  \
+        map_t,                                                 \
+        ::dice::sparse_map::tests::map_medium<__VA_ARGS__>,    \
+        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,      \
+        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,       \
+        ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,  \
+        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__> \
+    )
 
 /**
  * Like `TEST_CASE_MAP`, for sets. The type parameter is `set_t`, the remaining arguments are
  * `Key` and optionally `Hash, KeyEqual`.
  */
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TEST_CASE_SET(name, ...)                                                \
-    TEST_CASE_TEMPLATE(name,                                                    \
-                       set_t,                                                   \
-                       ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,      \
-                       ::dice::sparse_map::tests::set_high<__VA_ARGS__>,        \
-                       ::dice::sparse_map::tests::set_low<__VA_ARGS__>,         \
-                       ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__>)
+#define TEST_CASE_SET(name, ...)                               \
+    TEST_CASE_TEMPLATE(                                        \
+        name,                                                  \
+        set_t,                                                 \
+        ::dice::sparse_map::tests::set_medium<__VA_ARGS__>,    \
+        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,      \
+        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,       \
+        ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,  \
+        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__> \
+    )
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_TEST_TYPES_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_TEST_TYPES_HPP

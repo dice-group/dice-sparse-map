@@ -16,15 +16,21 @@ namespace details {
         std::equal_to<T>,
         Alloc,
         dice::sparse_map::sh::sparsity::medium,
-        dice::sparse_map::sh::allocation_failure::terminating>;
-}  // namespace details
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
+} // namespace details
 
 template<typename T>
 void construction() {
     using value_type = typename T::value_type;
-    typename T::set_type(T::set_type::default_init_bucket_count, dice::sparse_map::tests::test_hash<value_type>(), std::equal_to<value_type>(), typename T::allocator_type(), T::set_type::default_max_load_factor);
+    typename T::set_type(
+        T::set_type::default_init_bucket_count,
+        dice::sparse_map::tests::test_hash<value_type>(),
+        std::equal_to<value_type>(),
+        typename T::allocator_type(),
+        T::set_type::default_max_load_factor
+    );
 }
-
 
 template<typename T>
 struct normal_alloc {
@@ -41,7 +47,6 @@ struct scoped_alloc {
 };
 
 TEST_SUITE("scoped_allocators/sparse_hash_set_tests") {
-
     TEST_CASE("normal_construction") {
         construction<normal_alloc<int>>();
     }

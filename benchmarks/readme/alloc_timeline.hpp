@@ -48,8 +48,8 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
     }
 
     struct event {
-        std::uint64_t ticks;  ///< the time stamp counter
-        std::uint64_t bytes;  ///< the allocated bytes after the event
+        std::uint64_t ticks; ///< the time stamp counter
+        std::uint64_t bytes; ///< the allocated bytes after the event
     };
 
     using clock_type = std::chrono::steady_clock;
@@ -63,22 +63,24 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
         asm volatile("mrs %0, cntvct_el0" : "=r"(value));
         return value;
 #else
-        return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(clock_type::now().time_since_epoch()).count());
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(clock_type::now().time_since_epoch()).count()
+        );
 #endif
     }
 
     // The state of the recording. The replaced `malloc` reaches it from everywhere, so it is global.
     inline bool recording = false;
     inline event *events = nullptr;
-    inline std::size_t capacity = 0;   ///< events that fit into `events`
-    inline std::size_t recorded = 0;   ///< events in `events`
-    inline std::size_t seen = 0;       ///< events, also those that were not recorded
-    inline std::size_t every = 1;      ///< only every `every`-th event is recorded
-    inline std::size_t countdown = 1;  ///< events until the next recorded one
-    inline std::size_t live = 0;       ///< allocated bytes
-    inline std::size_t peak = 0;       ///< largest value of `live`
-    inline std::size_t unmatched = 0;  ///< bytes freed that were allocated before the recording
-    inline bool overflow = false;      ///< true if an event did not fit into `events`
+    inline std::size_t capacity = 0; ///< events that fit into `events`
+    inline std::size_t recorded = 0; ///< events in `events`
+    inline std::size_t seen = 0; ///< events, also those that were not recorded
+    inline std::size_t every = 1; ///< only every `every`-th event is recorded
+    inline std::size_t countdown = 1; ///< events until the next recorded one
+    inline std::size_t live = 0; ///< allocated bytes
+    inline std::size_t peak = 0; ///< largest value of `live`
+    inline std::size_t unmatched = 0; ///< bytes freed that were allocated before the recording
+    inline bool overflow = false; ///< true if an event did not fit into `events`
 
     inline void record() noexcept {
         ++seen;
@@ -241,6 +243,6 @@ namespace dice::sparse_map::bench::readme::alloc_timeline {
         }
     };
 
-}  // namespace dice::sparse_map::bench::readme::alloc_timeline
+} // namespace dice::sparse_map::bench::readme::alloc_timeline
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_README_ALLOC_TIMELINE_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_README_ALLOC_TIMELINE_HPP

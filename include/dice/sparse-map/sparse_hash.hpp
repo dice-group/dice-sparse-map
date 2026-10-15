@@ -59,7 +59,7 @@ namespace dice::sparse_map {
         enum class sparsity {
             high,
             medium,
-            low
+            low,
         };
 
         /**
@@ -75,9 +75,9 @@ namespace dice::sparse_map {
          */
         enum class allocation_failure {
             terminating,
-            throwing
+            throwing,
         };
-    }  // namespace sh
+    } // namespace sh
 
     namespace detail_sparse_hash {
         /**
@@ -103,7 +103,7 @@ namespace dice::sparse_map {
          */
         template<typename Key>
         using default_hash = dice::hash::DiceHash<Key, dice::hash::Policies::wyhash>;
-    }  // namespace detail_sparse_hash
+    } // namespace detail_sparse_hash
 
     namespace sh {
         /**
@@ -124,7 +124,7 @@ namespace dice::sparse_map {
 
         template<typename Hash>
         inline constexpr bool hash_is_avalanching_v = hash_is_avalanching<Hash>::value;
-    }  // namespace sh
+    } // namespace sh
 
     namespace detail_sparse_hash {
         template<typename T>
@@ -143,8 +143,8 @@ namespace dice::sparse_map {
          */
         template<typename Allocator, typename T>
         concept HasConstructOrDestroy = requires (Allocator &alloc, T *p, T &value) { alloc.construct(p, std::move(value)); }
-                                        || requires (Allocator &alloc, T *p, T const &value) { alloc.construct(p, value); }
-                                        || requires (Allocator &alloc, T *p) { alloc.destroy(p); };
+            || requires (Allocator &alloc, T *p, T const &value) { alloc.construct(p, value); }
+            || requires (Allocator &alloc, T *p) { alloc.destroy(p); };
 
         /**
          * A type that meets the parts of the allocator requirements that the deduction guides check.
@@ -234,7 +234,8 @@ namespace dice::sparse_map {
         template<sh::allocation_failure AllocationFailure, typename Allocator>
         [[nodiscard]] constexpr typename std::allocator_traits<Allocator>::pointer allocate(
             Allocator &alloc,
-            typename std::allocator_traits<Allocator>::size_type n) {
+            typename std::allocator_traits<Allocator>::size_type n
+        ) {
             if constexpr (AllocationFailure == dice::sparse_map::sh::allocation_failure::terminating) {
                 try {
                     return std::allocator_traits<Allocator>::allocate(alloc, n);
@@ -256,8 +257,7 @@ namespace dice::sparse_map {
         template<typename T, typename Allocator>
         struct value_holder {
             template<typename... Args>
-            constexpr explicit value_holder(Allocator &alloc, Args &&...args)
-                : alloc_(alloc) {
+            constexpr explicit value_holder(Allocator &alloc, Args &&...args) : alloc_(alloc) {
                 std::allocator_traits<Allocator>::construct(alloc_, std::addressof(storage_.value), std::forward<Args>(args)...);
             }
 
@@ -279,11 +279,9 @@ namespace dice::sparse_map {
              * Storage for a `T` that is constructed and destroyed by hand.
              */
             union storage_type {
-                constexpr storage_type() noexcept {
-                }
+                constexpr storage_type() noexcept {}
 
-                constexpr ~storage_type() {
-                }
+                constexpr ~storage_type() {}
 
                 T value;
             };
@@ -324,10 +322,12 @@ namespace dice::sparse_map {
          */
         template<typename T, typename Alloc, typename Tuple>
         [[nodiscard]] constexpr T make_from_tuple_using_allocator(Alloc const &alloc, Tuple &&args) {
-            return std::apply([&alloc](auto &&...unpacked) {
-                return std::make_obj_using_allocator<T>(alloc, std::forward<decltype(unpacked)>(unpacked)...);
-            },
-                              std::forward<Tuple>(args));
+            return std::apply(
+                [&alloc](auto &&...unpacked) {
+                    return std::make_obj_using_allocator<T>(alloc, std::forward<decltype(unpacked)>(unpacked)...);
+                },
+                std::forward<Tuple>(args)
+            );
         }
 
         /**
@@ -343,31 +343,33 @@ namespace dice::sparse_map {
             T value;
 
             template<typename... KeyArgs, typename... ValueArgs>
-            constexpr map_slot(std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
-                : key(std::make_from_tuple<Key>(std::move(key_args))),
-                  value(std::make_from_tuple<T>(std::move(value_args))) {
-            }
+            constexpr map_slot(std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args) :
+                key(std::make_from_tuple<Key>(std::move(key_args))),
+                value(std::make_from_tuple<T>(std::move(value_args))) {}
 
             /**
              * Constructs the slot from the two elements of a pair-like object, e.g. a `std::pair`.
              */
             template<PairLike P>
-            constexpr explicit map_slot(P &&pair)
-                : key(forward_or_copy<Key>(std::get<0>(std::forward<P>(pair)))),
-                  value(forward_or_copy<T>(std::get<1>(std::forward<P>(pair)))) {
-            }
+            constexpr explicit map_slot(P &&pair) :
+                key(forward_or_copy<Key>(std::get<0>(std::forward<P>(pair)))),
+                value(forward_or_copy<T>(std::get<1>(std::forward<P>(pair)))) {}
 
             template<typename Alloc, typename... KeyArgs, typename... ValueArgs>
-            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...> value_args)
-                : key(make_from_tuple_using_allocator<Key>(alloc, std::move(key_args))),
-                  value(make_from_tuple_using_allocator<T>(alloc, std::move(value_args))) {
-            }
+            constexpr map_slot(
+                std::allocator_arg_t,
+                Alloc const &alloc,
+                std::piecewise_construct_t,
+                std::tuple<KeyArgs...> key_args,
+                std::tuple<ValueArgs...> value_args
+            ) :
+                key(make_from_tuple_using_allocator<Key>(alloc, std::move(key_args))),
+                value(make_from_tuple_using_allocator<T>(alloc, std::move(value_args))) {}
 
             template<typename Alloc, PairLike P>
-            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, P &&pair)
-                : key(std::make_obj_using_allocator<Key>(alloc, forward_or_copy<Key>(std::get<0>(std::forward<P>(pair))))),
-                  value(std::make_obj_using_allocator<T>(alloc, forward_or_copy<T>(std::get<1>(std::forward<P>(pair))))) {
-            }
+            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, P &&pair) :
+                key(std::make_obj_using_allocator<Key>(alloc, forward_or_copy<Key>(std::get<0>(std::forward<P>(pair))))),
+                value(std::make_obj_using_allocator<T>(alloc, forward_or_copy<T>(std::get<1>(std::forward<P>(pair))))) {}
 
             /**
              * Transfers the key and the value of `other` one by one, so that a member without a move constructor is
@@ -376,11 +378,9 @@ namespace dice::sparse_map {
              * Only declared when a member has no move constructor, so that a slot of two members that have one keeps
              * the defaulted move constructor and stays trivially copyable (see `copies_bytes`).
              */
-            constexpr map_slot(map_slot &&other) noexcept(nothrow_transferable<Key> &&nothrow_transferable<T>)
-                requires(!std::is_move_constructible_v<Key> || !std::is_move_constructible_v<T>)
-                : key(forward_or_copy<Key>(std::move(other.key))),
-                  value(forward_or_copy<T>(std::move(other.value))) {
-            }
+            constexpr map_slot(map_slot &&other) noexcept(nothrow_transferable<Key> && nothrow_transferable<T>)
+            requires (!std::is_move_constructible_v<Key> || !std::is_move_constructible_v<T>)
+                : key(forward_or_copy<Key>(std::move(other.key))), value(forward_or_copy<T>(std::move(other.value))) {}
 
             constexpr map_slot(map_slot &&other) = default;
             constexpr map_slot(map_slot const &other) = default;
@@ -389,16 +389,14 @@ namespace dice::sparse_map {
             constexpr ~map_slot() = default;
 
             template<typename Alloc>
-            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot const &other)
-                : key(std::make_obj_using_allocator<Key>(alloc, other.key)),
-                  value(std::make_obj_using_allocator<T>(alloc, other.value)) {
-            }
+            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot const &other) :
+                key(std::make_obj_using_allocator<Key>(alloc, other.key)),
+                value(std::make_obj_using_allocator<T>(alloc, other.value)) {}
 
             template<typename Alloc>
-            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot &&other)
-                : key(std::make_obj_using_allocator<Key>(alloc, forward_or_copy<Key>(std::move(other.key)))),
-                  value(std::make_obj_using_allocator<T>(alloc, forward_or_copy<T>(std::move(other.value)))) {
-            }
+            constexpr map_slot(std::allocator_arg_t, Alloc const &alloc, map_slot &&other) :
+                key(std::make_obj_using_allocator<Key>(alloc, forward_or_copy<Key>(std::move(other.key)))),
+                value(std::make_obj_using_allocator<T>(alloc, forward_or_copy<T>(std::move(other.value)))) {}
         };
 
         /**
@@ -524,7 +522,8 @@ namespace dice::sparse_map {
              * Otherwise each moved value is constructed at its new place and destroyed at its old place through the
              * allocator.
              */
-            static constexpr bool shifts_by_assignment = std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_move_assignable_v<value_type>;
+            static constexpr bool shifts_by_assignment = std::is_nothrow_move_constructible_v<value_type>
+                && std::is_nothrow_move_assignable_v<value_type>;
 
             /**
              * True if a group copies its values as bytes, with `std::memcpy`, instead of one by one through the
@@ -536,25 +535,27 @@ namespace dice::sparse_map {
              * itself: for such a type, the standard library can do the move assignments of `shifts_by_assignment` with
              * one `std::memmove`.
              */
-            static constexpr bool copies_bytes = std::is_trivially_copyable_v<value_type> && std::is_trivially_move_constructible_v<value_type> && !HasConstructOrDestroy<Allocator, value_type>;
+            static constexpr bool copies_bytes = std::is_trivially_copyable_v<value_type>
+                && std::is_trivially_move_constructible_v<value_type>
+                && !HasConstructOrDestroy<Allocator, value_type>;
 
         private:
             static constexpr std::size_t bitmap_nb_bits = nb_buckets;
-            static constexpr size_type capacity_growth_step = (sparsity == sh::sparsity::high)     ? 2
-                                                              : (sparsity == sh::sparsity::medium) ? 4
-                                                                                                   : 8;
+            static constexpr size_type capacity_growth_step = (sparsity == sh::sparsity::high) ? 2
+                : (sparsity == sh::sparsity::medium)                                           ? 4
+                                                                                               : 8;
 
             using bitmap_type = std::uint_least64_t;
             static constexpr std::size_t bucket_shift = 6;
             static constexpr std::size_t bucket_mask = bitmap_nb_bits - 1;
 
             static_assert(std::has_single_bit(bitmap_nb_bits), "bitmap_nb_bits must be a power of two.");
-            static_assert(std::numeric_limits<bitmap_type>::digits >= bitmap_nb_bits,
-                          "bitmap_type must be able to hold at least bitmap_nb_bits.");
-            static_assert((std::size_t{1} << bucket_shift) == bitmap_nb_bits,
-                          "(1 << bucket_shift) must be equal to bitmap_nb_bits.");
-            static_assert(std::numeric_limits<size_type>::max() >= bitmap_nb_bits,
-                          "size_type must be big enough to hold bitmap_nb_bits.");
+            static_assert(
+                std::numeric_limits<bitmap_type>::digits >= bitmap_nb_bits,
+                "bitmap_type must be able to hold at least bitmap_nb_bits."
+            );
+            static_assert((std::size_t{1} << bucket_shift) == bitmap_nb_bits, "(1 << bucket_shift) must be equal to bitmap_nb_bits.");
+            static_assert(std::numeric_limits<size_type>::max() >= bitmap_nb_bits, "size_type must be big enough to hold bitmap_nb_bits.");
             static_assert(std::is_unsigned_v<bitmap_type>, "bitmap_type must be unsigned.");
             static_assert((std::numeric_limits<bitmap_type>::max() & bucket_mask) == bitmap_nb_bits - 1);
 
@@ -589,8 +590,7 @@ namespace dice::sparse_map {
             /**
              * Allocates storage for `capacity` values. The allocator is const for the MoveInsertable requirement.
              */
-            constexpr sparse_array(size_type capacity, Allocator const &const_alloc)
-                : capacity_(capacity) {
+            constexpr sparse_array(size_type capacity, Allocator const &const_alloc) : capacity_(capacity) {
                 if (capacity_ > 0) {
                     Allocator alloc(const_alloc);
                     values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
@@ -601,32 +601,31 @@ namespace dice::sparse_map {
             /**
              * Copies `other` into storage from `const_alloc`.
              */
-            constexpr sparse_array(sparse_array const &other, Allocator const &const_alloc)
-                : bitmap_vals_(other.bitmap_vals_),
-                  bitmap_deleted_vals_(other.bitmap_deleted_vals_),
-                  capacity_(other.capacity_),
-                  last_array_(other.last_array_) {
+            constexpr sparse_array(sparse_array const &other, Allocator const &const_alloc) :
+                bitmap_vals_(other.bitmap_vals_),
+                bitmap_deleted_vals_(other.bitmap_deleted_vals_),
+                capacity_(other.capacity_),
+                last_array_(other.last_array_) {
                 transfer_values_from(const_alloc, other);
             }
 
-            constexpr sparse_array(sparse_array &&other) noexcept
-                : values_(std::exchange(other.values_, nullptr)),
-                  bitmap_vals_(std::exchange(other.bitmap_vals_, 0)),
-                  bitmap_deleted_vals_(std::exchange(other.bitmap_deleted_vals_, 0)),
-                  nb_elements_(std::exchange(other.nb_elements_, 0)),
-                  capacity_(std::exchange(other.capacity_, 0)),
-                  last_array_(other.last_array_) {
-            }
+            constexpr sparse_array(sparse_array &&other) noexcept :
+                values_(std::exchange(other.values_, nullptr)),
+                bitmap_vals_(std::exchange(other.bitmap_vals_, 0)),
+                bitmap_deleted_vals_(std::exchange(other.bitmap_deleted_vals_, 0)),
+                nb_elements_(std::exchange(other.nb_elements_, 0)),
+                capacity_(std::exchange(other.capacity_, 0)),
+                last_array_(other.last_array_) {}
 
             /**
              * Transfers the values of `other` into storage from `const_alloc`. `other` keeps its slots, with the
              * moved values in a moved-from state.
              */
-            constexpr sparse_array(sparse_array &&other, Allocator const &const_alloc)
-                : bitmap_vals_(other.bitmap_vals_),
-                  bitmap_deleted_vals_(other.bitmap_deleted_vals_),
-                  capacity_(other.capacity_),
-                  last_array_(other.last_array_) {
+            constexpr sparse_array(sparse_array &&other, Allocator const &const_alloc) :
+                bitmap_vals_(other.bitmap_vals_),
+                bitmap_deleted_vals_(other.bitmap_deleted_vals_),
+                capacity_(other.capacity_),
+                last_array_(other.last_array_) {
                 transfer_values_from(const_alloc, other);
             }
 
@@ -830,7 +829,12 @@ namespace dice::sparse_map {
                 allocator_traits::destroy(alloc, value);
             }
 
-            static constexpr void destroy_and_deallocate_values(allocator_type &alloc, pointer values, size_type nb_values, size_type capacity_values) noexcept {
+            static constexpr void destroy_and_deallocate_values(
+                allocator_type &alloc,
+                pointer values,
+                size_type nb_values,
+                size_type capacity_values
+            ) noexcept {
                 if (capacity_values == 0) {
                     // nothing to deallocate, alloc.deallocate(nullptr, 0) is invalid
                     DICE_SPARSE_MAP_ASSERT(nb_values == 0);
@@ -861,7 +865,7 @@ namespace dice::sparse_map {
 
                 bitmap_type bitmap = bitmap_vals_;
                 for (size_type i = 0; i < offset; ++i) {
-                    bitmap &= bitmap - 1;  // clears the lowest set bit
+                    bitmap &= bitmap - 1; // clears the lowest set bit
                 }
 
                 return static_cast<size_type>(std::countr_zero(bitmap));
@@ -1053,7 +1057,14 @@ namespace dice::sparse_map {
          * whenever `Hash`, `KeyEqual`, the allocator and the allocator's pointer type are standard layout.
          * Empty members take no space.
          */
-        template<typename Access, typename Hash, typename KeyEqual, typename Allocator, sh::sparsity sparsity, sh::allocation_failure AllocationFailure>
+        template<
+            typename Access,
+            typename Hash,
+            typename KeyEqual,
+            typename Allocator,
+            sh::sparsity sparsity,
+            sh::allocation_failure AllocationFailure
+        >
         struct sparse_hash {
         public:
             template<bool is_const>
@@ -1122,17 +1133,15 @@ namespace dice::sparse_map {
                 /**
                  * `slot_` is nullptr if `bucket_` is the end of the bucket array.
                  */
-                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot) noexcept
-                    : bucket_(bucket),
-                      slot_(slot),
-                      slot_end_(slot == nullptr ? nullptr : bucket->end()) {
-                }
+                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot) noexcept :
+                    bucket_(bucket),
+                    slot_(slot),
+                    slot_end_(slot == nullptr ? nullptr : bucket->end()) {}
 
-                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot, slot_pointer slot_end) noexcept
-                    : bucket_(bucket),
-                      slot_(slot),
-                      slot_end_(slot_end) {
-                }
+                constexpr sparse_iterator(bucket_type *bucket, slot_pointer slot, slot_pointer slot_end) noexcept :
+                    bucket_(bucket),
+                    slot_(slot),
+                    slot_end_(slot_end) {}
 
             public:
                 using iterator_concept = std::forward_iterator_tag;
@@ -1152,11 +1161,11 @@ namespace dice::sparse_map {
                  */
                 template<bool other_is_const>
                 requires (is_const && !other_is_const)
-                constexpr sparse_iterator(sparse_iterator<other_is_const> const &other) noexcept  // NOLINT(google-explicit-constructor)
-                    : bucket_(other.bucket_),
-                      slot_(other.slot_),
-                      slot_end_(other.slot_end_) {
-                }
+                constexpr sparse_iterator(sparse_iterator<other_is_const> const &other) noexcept // NOLINT(google-explicit-constructor)
+                    :
+                    bucket_(other.bucket_),
+                    slot_(other.slot_),
+                    slot_end_(other.slot_end_) {}
 
                 [[nodiscard]] constexpr reference operator*() const noexcept {
                     if constexpr (Access::is_map) {
@@ -1231,64 +1240,72 @@ namespace dice::sparse_map {
              */
             template<typename Alloc>
             requires std::constructible_from<slot_allocator_type, Alloc const &>
-            constexpr sparse_hash(size_type bucket_count, Hash const &hash, KeyEqual const &equal, Alloc const &alloc, float max_load_factor)
-                : sparse_hash(
-                      rounded_count_t{},
-                      rounded_bucket_count(bucket_count, max_bucket_count_of(slot_allocator_type(alloc))),
-                      hash,
-                      equal,
-                      alloc,
-                      max_load_factor
-                  ) {
+            constexpr sparse_hash(
+                size_type bucket_count,
+                Hash const &hash,
+                KeyEqual const &equal,
+                Alloc const &alloc,
+                float max_load_factor
+            ) :
+                sparse_hash(
+                    rounded_count_t{},
+                    rounded_bucket_count(bucket_count, max_bucket_count_of(slot_allocator_type(alloc))),
+                    hash,
+                    equal,
+                    alloc,
+                    max_load_factor
+                ) {
                 // checked here instead of at class scope, so that value_type may be incomplete there
-                static_assert(nothrow_transferable<slot_type>,
-                              "Key, and T if present, must be nothrow move constructible, or nothrow copy "
-                              "constructible without a move constructor.");
+                static_assert(
+                    nothrow_transferable<slot_type>,
+                    "Key, and T if present, must be nothrow move constructible, or nothrow copy "
+                    "constructible without a move constructor."
+                );
             }
 
             constexpr ~sparse_hash() {
                 destroy_buckets();
             }
 
-            constexpr sparse_hash(sparse_hash const &other)
-                : sparse_hash(other, slot_allocator_traits::select_on_container_copy_construction(other.alloc_)) {
-            }
+            constexpr sparse_hash(sparse_hash const &other) :
+                sparse_hash(other, slot_allocator_traits::select_on_container_copy_construction(other.alloc_)) {}
 
             /**
              * Copies `other`, with storage from `alloc`.
              */
             template<typename Alloc>
             requires std::constructible_from<slot_allocator_type, Alloc const &>
-            constexpr sparse_hash(sparse_hash const &other, Alloc const &alloc)
-                : alloc_(alloc),
-                  hash_(other.hash_),
-                  key_equal_(other.key_equal_),
-                  bucket_count_(other.bucket_count_),
-                  nb_elements_(other.nb_elements_),
-                  first_nonempty_group_(other.first_nonempty_group_),
-                  nb_deleted_buckets_(other.nb_deleted_buckets_),
-                  load_threshold_rehash_(other.load_threshold_rehash_),
-                  load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
-                  max_load_factor_(other.max_load_factor_) {
+            constexpr sparse_hash(sparse_hash const &other, Alloc const &alloc) :
+                alloc_(alloc),
+                hash_(other.hash_),
+                key_equal_(other.key_equal_),
+                bucket_count_(other.bucket_count_),
+                nb_elements_(other.nb_elements_),
+                first_nonempty_group_(other.first_nonempty_group_),
+                nb_deleted_buckets_(other.nb_deleted_buckets_),
+                load_threshold_rehash_(other.load_threshold_rehash_),
+                load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
+                max_load_factor_(other.max_load_factor_) {
                 copy_buckets_from(other);
             }
 
-            constexpr sparse_hash(sparse_hash &&other) noexcept(std::is_nothrow_move_constructible_v<slot_allocator_type>
-                                                                && std::is_nothrow_move_constructible_v<Hash>
-                                                                && std::is_nothrow_move_constructible_v<KeyEqual>)
-                : alloc_(std::move(other.alloc_)),
-                  hash_(std::move(other.hash_)),
-                  key_equal_(std::move(other.key_equal_)),
-                  buckets_(std::exchange(other.buckets_, nullptr)),
-                  nb_sparse_buckets_(std::exchange(other.nb_sparse_buckets_, 0)),
-                  bucket_count_(std::exchange(other.bucket_count_, 0)),
-                  nb_elements_(std::exchange(other.nb_elements_, 0)),
-                  first_nonempty_group_(std::exchange(other.first_nonempty_group_, 0)),
-                  nb_deleted_buckets_(std::exchange(other.nb_deleted_buckets_, 0)),
-                  load_threshold_rehash_(std::exchange(other.load_threshold_rehash_, 0)),
-                  load_threshold_clear_deleted_(std::exchange(other.load_threshold_clear_deleted_, 0)),
-                  max_load_factor_(other.max_load_factor_) {
-            }
+            constexpr sparse_hash(sparse_hash &&other) noexcept(
+                std::is_nothrow_move_constructible_v<slot_allocator_type>
+                && std::is_nothrow_move_constructible_v<Hash>
+                && std::is_nothrow_move_constructible_v<KeyEqual>
+            ) :
+                alloc_(std::move(other.alloc_)),
+                hash_(std::move(other.hash_)),
+                key_equal_(std::move(other.key_equal_)),
+                buckets_(std::exchange(other.buckets_, nullptr)),
+                nb_sparse_buckets_(std::exchange(other.nb_sparse_buckets_, 0)),
+                bucket_count_(std::exchange(other.bucket_count_, 0)),
+                nb_elements_(std::exchange(other.nb_elements_, 0)),
+                first_nonempty_group_(std::exchange(other.first_nonempty_group_, 0)),
+                nb_deleted_buckets_(std::exchange(other.nb_deleted_buckets_, 0)),
+                load_threshold_rehash_(std::exchange(other.load_threshold_rehash_, 0)),
+                load_threshold_clear_deleted_(std::exchange(other.load_threshold_clear_deleted_, 0)),
+                max_load_factor_(other.max_load_factor_) {}
 
             /**
              * Moves `other` into a table with storage from `alloc`. If `alloc` is not equal to the allocator of
@@ -1301,17 +1318,17 @@ namespace dice::sparse_map {
              */
             template<typename Alloc>
             requires std::constructible_from<slot_allocator_type, Alloc const &>
-            constexpr sparse_hash(sparse_hash &&other, Alloc const &alloc)
-                : alloc_(alloc),
-                  hash_(take_functor(other.hash_, alloc_, other.alloc_)),
-                  key_equal_(take_functor(other.key_equal_, alloc_, other.alloc_)),
-                  bucket_count_(other.bucket_count_),
-                  nb_elements_(other.nb_elements_),
-                  first_nonempty_group_(other.first_nonempty_group_),
-                  nb_deleted_buckets_(other.nb_deleted_buckets_),
-                  load_threshold_rehash_(other.load_threshold_rehash_),
-                  load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
-                  max_load_factor_(other.max_load_factor_) {
+            constexpr sparse_hash(sparse_hash &&other, Alloc const &alloc) :
+                alloc_(alloc),
+                hash_(take_functor(other.hash_, alloc_, other.alloc_)),
+                key_equal_(take_functor(other.key_equal_, alloc_, other.alloc_)),
+                bucket_count_(other.bucket_count_),
+                nb_elements_(other.nb_elements_),
+                first_nonempty_group_(other.first_nonempty_group_),
+                nb_deleted_buckets_(other.nb_deleted_buckets_),
+                load_threshold_rehash_(other.load_threshold_rehash_),
+                load_threshold_clear_deleted_(other.load_threshold_clear_deleted_),
+                max_load_factor_(other.max_load_factor_) {
                 if (allocator_is_always_equal || alloc_ == other.alloc_) {
                     buckets_ = std::exchange(other.buckets_, nullptr);
                     nb_sparse_buckets_ = std::exchange(other.nb_sparse_buckets_, 0);
@@ -1351,9 +1368,9 @@ namespace dice::sparse_map {
                 return *this;
             }
 
-            constexpr sparse_hash &operator=(sparse_hash &&other) noexcept(always_takes_over
-                                                                           && std::is_nothrow_move_assignable_v<Hash>
-                                                                           && std::is_nothrow_move_assignable_v<KeyEqual>) {
+            constexpr sparse_hash &operator=(
+                sparse_hash &&other
+            ) noexcept(always_takes_over && std::is_nothrow_move_assignable_v<Hash> && std::is_nothrow_move_assignable_v<KeyEqual>) {
                 if (this == &other) {
                     return *this;
                 }
@@ -1580,7 +1597,12 @@ namespace dice::sparse_map {
              */
             template<typename K, typename... Args>
             constexpr std::pair<iterator, bool> try_emplace(K &&key, Args &&...args) {
-                return insert_impl(key, std::piecewise_construct, std::forward_as_tuple(std::forward<K>(key)), std::forward_as_tuple(std::forward<Args>(args)...));
+                return insert_impl(
+                    key,
+                    std::piecewise_construct,
+                    std::forward_as_tuple(std::forward<K>(key)),
+                    std::forward_as_tuple(std::forward<Args>(args)...)
+                );
             }
 
             template<typename K, typename... Args>
@@ -1681,8 +1703,7 @@ namespace dice::sparse_map {
                 }
             }
 
-            constexpr void swap(sparse_hash &other) noexcept(std::is_nothrow_swappable_v<Hash>
-                                                             && std::is_nothrow_swappable_v<KeyEqual>) {
+            constexpr void swap(sparse_hash &other) noexcept(std::is_nothrow_swappable_v<Hash> && std::is_nothrow_swappable_v<KeyEqual>) {
                 using std::swap;
 
                 // the functors first: if one of them throws, the storage and the allocators are not swapped
@@ -1812,7 +1833,9 @@ namespace dice::sparse_map {
 
                 float const max_load_factor_with_deleted_buckets = max_load_factor_ + 0.5f * (1.0f - max_load_factor_);
                 DICE_SPARSE_MAP_ASSERT(max_load_factor_with_deleted_buckets > 0.0f && max_load_factor_with_deleted_buckets <= 1.0f);
-                load_threshold_clear_deleted_ = static_cast<size_type>(static_cast<float>(bucket_count()) * max_load_factor_with_deleted_buckets);
+                load_threshold_clear_deleted_ = static_cast<size_type>(
+                    static_cast<float>(bucket_count()) * max_load_factor_with_deleted_buckets
+                );
             }
 
             /**
@@ -1843,7 +1866,11 @@ namespace dice::sparse_map {
              * Other
              */
             [[nodiscard]] constexpr iterator mutable_iterator(const_iterator pos) noexcept {
-                return iterator(const_cast<sparse_array *>(pos.bucket_), const_cast<slot_type *>(pos.slot_), const_cast<slot_type *>(pos.slot_end_));
+                return iterator(
+                    const_cast<sparse_array *>(pos.bucket_),
+                    const_cast<slot_type *>(pos.slot_),
+                    const_cast<slot_type *>(pos.slot_end_)
+                );
             }
 
         private:
@@ -1970,11 +1997,14 @@ namespace dice::sparse_map {
              * as an argument, so that a constructor can ask before the table exists.
              */
             [[nodiscard]] static constexpr size_type max_bucket_count_of(slot_allocator_type const &alloc) noexcept {
-                constexpr std::uintmax_t largest_count = std::min<std::uintmax_t>(std::numeric_limits<size_type>::max(), std::numeric_limits<std::size_t>::max());
+                constexpr std::uintmax_t largest_count = std::min<std::uintmax_t>(
+                    std::numeric_limits<size_type>::max(),
+                    std::numeric_limits<std::size_t>::max()
+                );
                 std::uintmax_t const max_nb_sparse_buckets = bucket_allocator_traits::max_size(bucket_allocator_type(alloc));
                 std::uintmax_t const count = max_nb_sparse_buckets > largest_count / sparse_array::nb_buckets
-                                                 ? largest_count
-                                                 : max_nb_sparse_buckets * sparse_array::nb_buckets;
+                    ? largest_count
+                    : max_nb_sparse_buckets * sparse_array::nb_buckets;
                 return static_cast<size_type>(std::bit_floor(count));
             }
 
@@ -2000,10 +2030,10 @@ namespace dice::sparse_map {
                 KeyEqual const &equal,
                 Alloc const &alloc,
                 float max_load_factor
-            )
-                : alloc_(alloc),
-                  hash_(hash),
-                  key_equal_(equal) {
+            ) :
+                alloc_(alloc),
+                hash_(hash),
+                key_equal_(equal) {
                 DICE_SPARSE_MAP_ASSERT(count == 0 || (std::has_single_bit(count) && count <= max_bucket_count()));
                 bucket_count_ = count;
                 if (bucket_count_ > 0) {
@@ -2305,7 +2335,13 @@ namespace dice::sparse_map {
                             ibucket_first_deleted = ibucket;
                         }
                     } else if (ibucket_first_deleted != bucket_count_) {
-                        return insert_new(hash, sparse_array::sparse_ibucket(ibucket_first_deleted), sparse_array::index_in_sparse_bucket(ibucket_first_deleted), true, std::forward<Args>(args)...);
+                        return insert_new(
+                            hash,
+                            sparse_array::sparse_ibucket(ibucket_first_deleted),
+                            sparse_array::index_in_sparse_bucket(ibucket_first_deleted),
+                            true,
+                            std::forward<Args>(args)...
+                        );
                     } else {
                         return insert_new(hash, sparse_ibucket, index_in_sparse_bucket, false, std::forward<Args>(args)...);
                     }
@@ -2321,7 +2357,13 @@ namespace dice::sparse_map {
              * new element.
              */
             template<typename... Args>
-            constexpr std::pair<iterator, bool> insert_new(std::size_t hash, std::size_t sparse_ibucket, array_size_type index_in_sparse_bucket, bool reuses_deleted_bucket, Args &&...args) {
+            constexpr std::pair<iterator, bool> insert_new(
+                std::size_t hash,
+                std::size_t sparse_ibucket,
+                array_size_type index_in_sparse_bucket,
+                bool reuses_deleted_bucket,
+                Args &&...args
+            ) {
                 bool const grows = size() >= load_threshold_rehash_;
                 if (grows || size() + nb_deleted_buckets_ >= load_threshold_clear_deleted_) {
                     // `key` and the arguments may refer to elements that the rehash moves, so the new element is
@@ -2565,15 +2607,14 @@ namespace dice::sparse_map {
             float max_load_factor_ = default_max_load_factor;
         };
 
-    }  // namespace detail_sparse_hash
-}  // namespace dice::sparse_map
+    } // namespace detail_sparse_hash
+} // namespace dice::sparse_map
 
 /**
  * A `map_slot` uses an allocator if its key or its mapped value does.
  */
 template<typename Key, typename T, typename Alloc>
-struct std::uses_allocator<dice::sparse_map::detail_sparse_hash::map_slot<Key, T>, Alloc>
-    : std::bool_constant<std::uses_allocator_v<Key, Alloc> || std::uses_allocator_v<T, Alloc>> {
-};
+struct std::uses_allocator<dice::sparse_map::detail_sparse_hash::map_slot<Key, T>, Alloc> :
+    std::bool_constant<std::uses_allocator_v<Key, Alloc> || std::uses_allocator_v<T, Alloc>> {};
 
 #endif

@@ -30,14 +30,16 @@ namespace {
     using counted_set = sparse_set<int, tests::test_hash<int>, std::equal_to<int>, counting_allocator<int>, Sparsity>;
 
     /// the sparsity levels, with `test_hash` and an allocator that counts
-    using counted_containers = std::tuple<counted_map<sh::sparsity::high>,
-                                          counted_map<sh::sparsity::medium>,
-                                          counted_map<sh::sparsity::low>,
-                                          counted_set<sh::sparsity::high>,
-                                          counted_set<sh::sparsity::medium>,
-                                          counted_set<sh::sparsity::low>>;
+    using counted_containers = std::tuple<
+        counted_map<sh::sparsity::high>,
+        counted_map<sh::sparsity::medium>,
+        counted_map<sh::sparsity::low>,
+        counted_set<sh::sparsity::high>,
+        counted_set<sh::sparsity::medium>,
+        counted_set<sh::sparsity::low>
+    >;
 
-}  // namespace
+} // namespace
 
 TYPE_TO_STRING_AS("map<high>", counted_map<sh::sparsity::high>);
 TYPE_TO_STRING_AS("map<medium>", counted_map<sh::sparsity::medium>);
@@ -136,8 +138,8 @@ TEST_CASE_TEMPLATE_DEFINE("a moved from container keeps no buckets and works", c
     auto const target = std::move(source);
     CHECK(num_allocations == before);
     CHECK(target.size() == 100);
-    CHECK(source.bucket_count() == 0);  // NOLINT(bugprone-use-after-move)
-    CHECK(source.empty());              // NOLINT(bugprone-use-after-move)
+    CHECK(source.bucket_count() == 0); // NOLINT(bugprone-use-after-move)
+    CHECK(source.empty()); // NOLINT(bugprone-use-after-move)
     CHECK(source.find(1) == source.end());
 
     tests::insert_one(source, 1);

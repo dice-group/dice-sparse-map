@@ -18,12 +18,12 @@ namespace {
      * A key type with its own `dice_hash_overload`. The overload declares no `is_avalanching`.
      */
     struct overload_key {
-        std::uint64_t value{};  // NOLINT
+        std::uint64_t value{}; // NOLINT
 
         bool operator==(overload_key const &other) const = default;
     };
 
-}  // namespace
+} // namespace
 
 namespace dice::hash {
     template<typename Policy>
@@ -32,7 +32,7 @@ namespace dice::hash {
             return dice_hash_templates<Policy>::dice_hash(key.value);
         }
     };
-}  // namespace dice::hash
+} // namespace dice::hash
 
 namespace {
 
@@ -107,7 +107,7 @@ namespace {
         CHECK(map.contains(make_key<Key>(1)));
     }
 
-}  // namespace
+} // namespace
 
 template<>
 struct dice::sparse_map::sh::hash_is_avalanching<specialized_hash> : std::true_type {};

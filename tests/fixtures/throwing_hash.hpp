@@ -36,10 +36,10 @@ namespace dice::sparse_map::tests {
         using is_avalanching = void;
 
         /// calls left before a call throws, -1 never throws
-        static inline int calls_until_throw = -1;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        inline static int calls_until_throw = -1; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
         /// the move assignment throws while this is true
-        static inline bool moves_throw = false;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        inline static bool moves_throw = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
         throwing_hash() = default;
         throwing_hash(throwing_hash const &) = default;
@@ -97,6 +97,6 @@ namespace dice::sparse_map::tests {
         };
     };
 
-}  // namespace dice::sparse_map::tests
+} // namespace dice::sparse_map::tests
 
-#endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_THROWING_HASH_HPP
+#endif // DICE_SPARSE_MAP_TESTS_FIXTURES_THROWING_HASH_HPP

@@ -21,12 +21,10 @@ namespace {
         if (a.size() != b.size()) {
             return false;
         }
-        return std::all_of(a.begin(), a.end(), [&b](auto const &k) {
-            return b.end() != b.find(k);
-        });
+        return std::all_of(a.begin(), a.end(), [&b](auto const &k) { return b.end() != b.find(k); });
     }
 
-}  // namespace
+} // namespace
 
 // erase
 
@@ -152,7 +150,7 @@ TEST_CASE_MAP("erase_churn_keeps_every_live_key_findable", std::uint64_t, std::u
         if (cycle % check_every == check_every - 1) {
             INFO("after " << cycle + 1 << " cycles");
             REQUIRE(map.size() == live.size());
-            REQUIRE(map.bucket_count() == buckets);  // no growth
+            REQUIRE(map.bucket_count() == buckets); // no growth
             for (auto const key : live) {
                 auto it = map.find(key);
                 REQUIRE(it != map.end());

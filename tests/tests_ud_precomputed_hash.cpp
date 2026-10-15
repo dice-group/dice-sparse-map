@@ -32,7 +32,7 @@ namespace {
      * Number of calls of `hash_call_counter`. It is global, because the table stores the hasher by value and copies
      * it.
      */
-    std::size_t num_hashed = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    std::size_t num_hashed = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     struct hash_call_counter {
         using is_avalanching = void;
@@ -56,7 +56,7 @@ namespace {
 
     using transparent_map = dice::sparse_map::sparse_map<std::string, int, transparent_hash, std::equal_to<>>;
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("precomputed_hash_answers_the_same_as_hashing_again", std::string, int) {
     auto map = map_t();
@@ -274,7 +274,7 @@ namespace {
         }
     };
 
-}  // namespace
+} // namespace
 
 TEST_CASE("precomputed_lookups_work_with_weak_and_narrow_hashes") {
     auto weak = dice::sparse_map::sparse_map<int, int, weak_hash, std::equal_to<int>>();

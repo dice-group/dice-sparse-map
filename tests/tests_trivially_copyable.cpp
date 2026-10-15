@@ -29,10 +29,12 @@ using namespace dice::sparse_map::tests;
 namespace {
 
     template<typename Key, typename T, typename Allocator>
-    using array_of = dice::sparse_map::detail_sparse_hash::sparse_array<dice::sparse_map::detail_sparse_hash::map_slot<Key, T>,
-                                                                        Allocator,
-                                                                        dice::sparse_map::sh::sparsity::medium,
-                                                                        dice::sparse_map::sh::allocation_failure::terminating>;
+    using array_of = dice::sparse_map::detail_sparse_hash::sparse_array<
+        dice::sparse_map::detail_sparse_hash::map_slot<Key, T>,
+        Allocator,
+        dice::sparse_map::sh::sparsity::medium,
+        dice::sparse_map::sh::allocation_failure::terminating
+    >;
 
     using slot_u64 = dice::sparse_map::detail_sparse_hash::map_slot<std::uint64_t, std::uint64_t>;
     using slot_obj = dice::sparse_map::detail_sparse_hash::map_slot<counter::obj, counter::obj>;
@@ -129,40 +131,32 @@ namespace {
         REQUIRE(same_contents(map, reference));
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("trivially copyable values: random insertions and erasures", std::uint64_t, std::uint64_t) {
     for (std::uint64_t seed = 0; seed < 4; ++seed) {
         auto map = map_t();
-        run_random_operations(map, [](std::uint64_t v) {
-            return v;
-        },
-                              seed);
+        run_random_operations(map, [](std::uint64_t v) { return v; }, seed);
     }
 }
 
 TEST_CASE_MAP("trivially copyable wide values: random insertions and erasures", std::uint64_t, wide_value) {
     for (std::uint64_t seed = 0; seed < 4; ++seed) {
         auto map = map_t();
-        run_random_operations(map, [](std::uint64_t v) {
-            return wide(v);
-        },
-                              seed);
+        run_random_operations(map, [](std::uint64_t v) { return wide(v); }, seed);
     }
 }
 
 TEST_CASE_MAP("trivially copyable values: high load factor", std::uint64_t, std::uint64_t) {
     auto map = map_t();
     map.max_load_factor(0.8f);
-    run_random_operations(map, [](std::uint64_t v) {
-        return v;
-    },
-                          42);
+    run_random_operations(map, [](std::uint64_t v) { return v; }, 42);
 }
 
 TEST_CASE("trivially copyable values: copy and move into a table with an unequal allocator") {
     using alloc_t = pmr_like_allocator<std::pair<std::uint64_t, std::uint64_t>>;
-    using map_t = dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t, test_hash<std::uint64_t>, std::equal_to<std::uint64_t>, alloc_t>;
+    using map_t =
+        dice::sparse_map::sparse_map<std::uint64_t, std::uint64_t, test_hash<std::uint64_t>, std::equal_to<std::uint64_t>, alloc_t>;
     auto source = map_t(alloc_t(1));
     std::unordered_map<std::uint64_t, std::uint64_t> reference;
     for (std::uint64_t key = 0; key < 1000; ++key) {
@@ -173,6 +167,5 @@ TEST_CASE("trivially copyable values: copy and move into a table with an unequal
     CHECK(same_contents(copy, reference));
     auto moved = map_t(std::move(source), alloc_t(3));
     CHECK(same_contents(moved, reference));
-    CHECK(source.empty());  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    CHECK(source.empty()); // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
 }
-

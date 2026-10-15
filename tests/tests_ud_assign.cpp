@@ -184,7 +184,7 @@ TEST_CASE_MAP("assign_to_moved", int, int) {
     c[3] = 4;
 
     // assign to a moved from map
-    a = c;  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    a = c; // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     REQUIRE(a.size() == 1U);
     REQUIRE(a.at(3) == 4);
     REQUIRE(a == c);
@@ -199,7 +199,7 @@ TEST_CASE_MAP("move_to_moved", int, int) {
     c[3] = 4;
 
     // move assign to a moved from map
-    a = std::move(c);  // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
+    a = std::move(c); // NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
 
     a[5] = 6;
     moved[6] = 7;
@@ -226,7 +226,7 @@ namespace {
         return m;
     }
 
-}  // namespace
+} // namespace
 
 TEST_CASE_MAP("copy_and_assign_maps_1", int, int) {
     auto a = create_map<map_t>(15);

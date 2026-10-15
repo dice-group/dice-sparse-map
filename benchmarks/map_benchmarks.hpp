@@ -63,9 +63,7 @@ namespace dice::sparse_map::bench {
      */
     template<typename Map, typename Sizes, typename Source>
     void bench_all(ankerl::nanobench::Bench &bench, std::string_view name, Source const &source) {
-        auto const make_map = [&source] {
-            return source.template make<Map>();
-        };
+        auto const make_map = [&source] { return source.template make<Map>(); };
         bench.run(std::format("{} iterate while adding then removing", name), [&] {
             CHECK(iterate<Map, Sizes::iterate_elements>(make_map) == Sizes::iterate_checksum);
         });
@@ -100,16 +98,19 @@ namespace dice::sparse_map::bench {
             bench_all<typename Family::template map<std::uint64_t, std::size_t>, Sizes>(
                 bench,
                 std::format("{} uint64_t -> size_t", container),
-                source);
+                source
+            );
             bench_all<typename Family::template map<std::string, std::size_t>, Sizes>(
                 bench,
                 std::format("{} std::string -> size_t", container),
-                source);
+                source
+            );
             // A 64 byte mapped value. See `big_value` for what the other two cannot show.
             bench_all<typename Family::template map<std::uint64_t, big_value>, Sizes>(
                 bench,
                 std::format("{} uint64_t -> big_value", container),
-                source);
+                source
+            );
             std::cout << std::format("quick_overall {}: geomean {:.4f} ms\n", container, geomean_elapsed(bench) * 1e3);
         });
     }
@@ -139,18 +140,12 @@ namespace dice::sparse_map::bench {
             ankerl::nanobench::Bench bench;
             bench.title(std::format("find_all {}", container));
             configure(bench);
-            auto ints = lookup_table<int_map>(Sizes::table_elements, [&source] {
-                return source.template make<int_map>();
-            });
-            auto strings = lookup_table<str_map>(Sizes::table_elements, [&source] {
-                return source.template make<str_map>();
-            });
+            auto ints = lookup_table<int_map>(Sizes::table_elements, [&source] { return source.template make<int_map>(); });
+            auto strings = lookup_table<str_map>(Sizes::table_elements, [&source] { return source.template make<str_map>(); });
             bench.run(std::format("{} uint64_t -> size_t all hits", container), [&] {
                 ankerl::nanobench::doNotOptimizeAway(find_all<true, Sizes::lookups>(&ints));
             });
-            bench.run(std::format("{} uint64_t -> size_t no hits", container), [&] {
-                CHECK(find_all<false, Sizes::lookups>(&ints) == 0);
-            });
+            bench.run(std::format("{} uint64_t -> size_t no hits", container), [&] { CHECK(find_all<false, Sizes::lookups>(&ints) == 0); });
             bench.run(std::format("{} std::string -> size_t all hits", container), [&] {
                 ankerl::nanobench::doNotOptimizeAway(find_all<true, Sizes::lookups>(&strings));
             });
@@ -160,6 +155,6 @@ namespace dice::sparse_map::bench {
         });
     }
 
-}  // namespace dice::sparse_map::bench
+} // namespace dice::sparse_map::bench
 
-#endif  // DICE_SPARSE_MAP_BENCHMARKS_MAP_BENCHMARKS_HPP
+#endif // DICE_SPARSE_MAP_BENCHMARKS_MAP_BENCHMARKS_HPP
