@@ -477,11 +477,9 @@ namespace dice::sparse_map {
          * position of the slot of an index in `values_`: the number of occupied buckets before the index.
          *
          * Every occupied bucket holds a value. An erase removes the value and moves the values after it one slot to
-         * the front, and an insertion moves them one slot to the back. The storage grows by `capacity_growth_step`
-         * slots when it is full and does not shrink. If `value_type` is nothrow move assignable
-         * (`shifts_by_assignment`), the values move by move assignment, as in `std::vector`: an insertion constructs
-         * one value behind the last one (besides the new value in its holder), and an erase destroys the last one.
-         * Otherwise each moved value is constructed at its new place and destroyed at its old place.
+         * the front, and an insertion moves them one slot to the back, see `shifts_by_assignment`. The storage grows
+         * by `capacity_growth_step` slots when it is full and does not shrink. A trivially copyable `value_type` is
+         * copied as bytes into new storage, see `copies_bytes`.
          *
          * `nb_elements_` counts the values, which is the number of occupied buckets.
          *
@@ -531,9 +529,8 @@ namespace dice::sparse_map {
             /**
              * True if a group copies its values as bytes, with `std::memcpy`, instead of one by one through the
              * allocator, when it grows its storage and when it is copied or moved into new storage. That is the case
-             * if `value_type` is trivially copyable and trivially move
-             * constructible (so a copy one by one would also use the trivial move, not a constructor template), and the
-             * allocator has no `construct` and no `destroy` of its own (`HasConstructOrDestroy`), so that
+             * if `value_type` is trivially copyable and trivially move constructible, and the allocator has no
+             * `construct` and no `destroy` of its own (`HasConstructOrDestroy`), so that
              * `std::allocator_traits` constructs with `std::construct_at` and destroys with `std::destroy_at`. A
              * constant evaluation copies one by one. An insertion or an erase in the middle of a group copies no bytes
              * itself: for such a type, the standard library can do the move assignments of `shifts_by_assignment` with
@@ -609,30 +606,7 @@ namespace dice::sparse_map {
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
-                if (capacity_ == 0) {
-                    return;
-                }
-
-                Allocator alloc(const_alloc);
-                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
-                if constexpr (copies_bytes) {
-                    if !consteval {
-                        copy_bytes(values(), other.values(), other.nb_elements_);
-                        nb_elements_ = other.nb_elements_;
-                        return;
-                    }
-                }
-                try {
-                    for (size_type i = 0; i < other.nb_elements_; ++i) {
-                        construct_value(alloc, values() + i, other.values()[i]);
-                        ++nb_elements_;
-                    }
-                } catch (...) {
-                    clear(alloc);
-                    throw;
-                }
+                transfer_values_from(const_alloc, other);
             }
 
             constexpr sparse_array(sparse_array &&other) noexcept
@@ -653,30 +627,7 @@ namespace dice::sparse_map {
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
-                if (capacity_ == 0) {
-                    return;
-                }
-
-                Allocator alloc(const_alloc);
-                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
-                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
-                if constexpr (copies_bytes) {
-                    if !consteval {
-                        copy_bytes(values(), other.values(), other.nb_elements_);
-                        nb_elements_ = other.nb_elements_;
-                        return;
-                    }
-                }
-                try {
-                    for (size_type i = 0; i < other.nb_elements_; ++i) {
-                        construct_value(alloc, values() + i, forward_or_copy<value_type>(std::move(other.values()[i])));
-                        ++nb_elements_;
-                    }
-                } catch (...) {
-                    clear(alloc);
-                    throw;
-                }
+                transfer_values_from(const_alloc, other);
             }
 
             /**
@@ -825,6 +776,42 @@ namespace dice::sparse_map {
             }
 
             /**
+             * Allocates storage for `capacity_` values from `const_alloc` and fills it with the values of `other`: a
+             * const `other` is copied, a non-const one is moved. The bitmaps and `capacity_` are already set.
+             */
+            template<typename Other>
+            constexpr void transfer_values_from(Allocator const &const_alloc, Other &other) {
+                DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
+                if (capacity_ == 0) {
+                    return;
+                }
+
+                Allocator alloc(const_alloc);
+                values_ = detail_sparse_hash::allocate<AllocationFailure>(alloc, capacity_);
+                DICE_SPARSE_MAP_ASSERT(values_ != nullptr);
+                if constexpr (copies_bytes) {
+                    if !consteval {
+                        copy_bytes(values(), other.values(), other.nb_elements_);
+                        nb_elements_ = other.nb_elements_;
+                        return;
+                    }
+                }
+                try {
+                    for (size_type i = 0; i < other.nb_elements_; ++i) {
+                        if constexpr (std::is_const_v<Other>) {
+                            construct_value(alloc, values() + i, other.values()[i]);
+                        } else {
+                            construct_value(alloc, values() + i, forward_or_copy<value_type>(std::move(other.values()[i])));
+                        }
+                        ++nb_elements_;
+                    }
+                } catch (...) {
+                    clear(alloc);
+                    throw;
+                }
+            }
+
+            /**
              * Copies `count` values from `source` to `target` as bytes, with `std::memcpy`. The ranges do not overlap.
              */
             static void copy_bytes(value_type *target, value_type const *source, size_type count) noexcept {
@@ -957,8 +944,8 @@ namespace dice::sparse_map {
                     if !consteval {
                         copy_bytes(raw_new_values, raw_values, offset);
                         copy_bytes(raw_new_values + offset + 1, raw_values + offset, static_cast<size_type>(nb_elements_ - offset));
-                        // the values were copied as bytes and their destructor is trivial, so this only frees the storage
-                        destroy_and_deallocate_values(alloc, values_, nb_elements_, capacity_);
+                        // the values were copied as bytes, so the old storage is only freed
+                        destroy_and_deallocate_values(alloc, values_, 0, capacity_);
                         values_ = new_values;
                         capacity_ = new_capacity;
                         return;
