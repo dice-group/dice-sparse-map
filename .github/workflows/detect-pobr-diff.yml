@@ -1,6 +1,8 @@
 name: Detect POBR diff
 
-on: [ pull_request ]
+on:
+  pull_request:
+    branches: [ develop, main ]
 
 concurrency:
   group: detect-pobr-diff-${{ github.workflow }}-${{ github.ref }}
@@ -8,17 +10,14 @@ concurrency:
 
 jobs:
   detect-pobr-diff:
-    uses: dice-group/cpp-conan-release-reusable-workflow/.github/workflows/abi-diff.yml@v2.0.5
+    uses: dice-group/cpp-conan-release-reusable-workflow/.github/workflows/abi-diff.yml@v2.1.1
     with:
       os: ubuntu-24.04
       setup_tools: true
       cc: clang-19
       cxx: clang++-19
-      cmake-version: 4.4.0
-      conan-version: 2.31.2
       base-branch: ${{ github.base_ref }}
       search-path: >
-        include/dice/sparse-map/sparse_growth_policy.hpp
         include/dice/sparse-map/sparse_hash.hpp
         include/dice/sparse-map/sparse_map.hpp
         include/dice/sparse-map/sparse_set.hpp

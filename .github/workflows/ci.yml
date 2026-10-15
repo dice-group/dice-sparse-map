@@ -3,6 +3,18 @@ name: CI
 on: [pull_request]
 
 jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the clang-format configuration of the coding guidelines
+        run: curl -fsSL https://raw.githubusercontent.com/dice-group/tentris-cpp-coding-guidelines/main/.clang-format -o .clang-format
+      - name: Install clang-format
+        run: pip install clang-format==23.1.3
+      - name: Check the formatting
+        run: clang-format --dry-run -Werror $(git ls-files '*.hpp' '*.cpp')
+
   build:
     strategy:
       fail-fast: false
@@ -16,21 +28,21 @@ jobs:
             cxx: clang++-20
             cxx-flags: "-fsanitize=address,undefined"
 
-          - name: linux-x64-gcc-13
-            os: ubuntu-24.04
-            cxx: g++-13
-          - name: linux-x64-gcc-14-coverage
+          - name: linux-x64-gcc-14
             os: ubuntu-24.04
             cxx: g++-14
-            cxx-flags: -Werror --coverage
-            gcov-tool: gcov-10
+            cxx-flags: -Werror
+          - name: linux-x64-gcc-14-sanitize
+            os: ubuntu-24.04
+            cxx: g++-14
+            cxx-flags: "-fsanitize=address,undefined"
 
     name: ${{matrix.config.name}}
     runs-on: ${{matrix.config.os}}
     steps:
       # setup env
-      - name: Add repos for for gcc-13 and clang-16
-        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/setup_apt@v2.0.5
+      - name: Add repos for gcc and clang
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/setup_apt@v2.1.1
 
       - name: Install tools
         run: |
@@ -43,7 +55,7 @@ jobs:
 
       - name: Install compiler
         id: install_cc
-        uses: rlalik/setup-cpp-compiler@v1.2
+        uses: rlalik/setup-cpp-compiler@v2
         with:
           compiler: ${{ matrix.config.cxx }}
 
@@ -51,13 +63,12 @@ jobs:
         uses: rui314/setup-mold@v1
 
       - name: Configure conan
-        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/configure_conan@v2.0.5
-        with:
-          conan-version: 2.31.2
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/configure_conan@v2.1.1
 
       - name: add conan user
         run: |
           conan remote add -f dice-group https://conan.dice-research.org/artifactory/api/conan/tentris
+          conan remote add -f branch-packages https://conan.tentris.io/artifactory/api/conan/tentris
 
       - name: Cache conan data
         id: cache-conan
@@ -70,14 +81,14 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Get dependency provider
-        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/add_conan_provider@v2.0.5
+        uses: dice-group/cpp-conan-release-reusable-workflow/.github/actions/add_conan_provider@v2.1.1
 
       - name: Configure CMake
         env:
           CC: ${{ steps.install_cc.outputs.cc }}
           CXX: ${{ steps.install_cc.outputs.cxx }}
           CXXFLAGS: ${{ matrix.config.cxx-flags }}
-        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=conan_provider.cmake
+        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DBUILD_BENCHMARKS=ON -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=conan_provider.cmake
 
       - name: Build
         working-directory: build_dir
@@ -87,9 +98,3 @@ jobs:
         working-directory: build_dir
         run: ctest --parallel 2 --verbose
 
-      #- name: Coverage
-      #  run: |
-      #    sudo apt-get install -y lcov
-      #    lcov -c -b ${{github.workspace}}/include -d ${{github.workspace}}/build -o ${{github.workspace}}/coverage.info --no-external --gcov-tool ${{matrix.config.gcov-tool}}
-      #    bash <(curl -s https://codecov.io/bash) -f ${{github.workspace}}/coverage.info
-      #  if: ${{matrix.config.name == 'linux-x64-gcc-13-coverage'}}
