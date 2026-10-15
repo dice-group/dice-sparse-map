@@ -18,8 +18,8 @@
 
 /**
  * The container configurations that every `TEST_CASE_MAP` and `TEST_CASE_SET` runs against:
- * the three sparsity levels, `std::hash` without mixing (the identity for integers), the strong
- * exception guarantee, and an allocator with fancy pointers.
+ * the three sparsity levels, `std::hash` without mixing (the identity for integers), and an
+ * allocator with fancy pointers.
  *
  * Without a `Hash` argument, the `medium` configuration takes the default hash function of the
  * containers for the key types that `DiceHash` hashes (see `hashed_by_dice_hash`), and `test_hash<Key>`
@@ -99,44 +99,51 @@ namespace dice::sparse_map::tests {
                                                     test_hash<Key>>;
 
     template<typename Key, typename T, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_medium = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using map_medium = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_high = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::high>;
+    using map_high = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::high>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_low = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::low>;
+    using map_low = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::low>;
 
     template<typename Key, typename T, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_std_hash = sparse_map<Key, T, marked_avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using map_std_hash = sparse_map<Key, T, marked_avalanching<Hash>, KeyEqual, std::allocator<std::pair<Key, T>>, sh::sparsity::medium>;
 
     template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_strong = sparse_map<Key, T, Hash, KeyEqual, std::allocator<std::pair<Key, T>>, sh::exception_safety::strong, sh::sparsity::medium>;
-
-    template<typename Key, typename T, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using map_offset_ptr = sparse_map<Key, T, Hash, KeyEqual, offset_ptr_allocator<std::pair<Key, T>>, sh::exception_safety::basic, sh::sparsity::high>;
+    using map_offset_ptr = sparse_map<Key, T, Hash, KeyEqual, offset_ptr_allocator<std::pair<Key, T>>, sh::sparsity::high>;
 
     template<typename Key, typename Hash = default_or_test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_medium = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using set_medium = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::sparsity::medium>;
 
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_high = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::high>;
+    using set_high = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::sparsity::high>;
 
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_low = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::low>;
+    using set_low = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::sparsity::low>;
 
     template<typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_std_hash = sparse_set<Key, marked_avalanching<Hash>, KeyEqual, std::allocator<Key>, sh::exception_safety::basic, sh::sparsity::medium>;
+    using set_std_hash = sparse_set<Key, marked_avalanching<Hash>, KeyEqual, std::allocator<Key>, sh::sparsity::medium>;
 
     template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_strong = sparse_set<Key, Hash, KeyEqual, std::allocator<Key>, sh::exception_safety::strong, sh::sparsity::medium>;
-
-    template<typename Key, typename Hash = test_hash<Key>, typename KeyEqual = std::equal_to<Key>>
-    using set_offset_ptr = sparse_set<Key, Hash, KeyEqual, offset_ptr_allocator<Key>, sh::exception_safety::basic, sh::sparsity::high>;
+    using set_offset_ptr = sparse_set<Key, Hash, KeyEqual, offset_ptr_allocator<Key>, sh::sparsity::high>;
 
     // The default hash function runs in the `medium` configuration for integer and string keys.
     static_assert(std::is_same_v<map_medium<int, int>::hasher, detail_sparse_hash::default_hash<int>>);
     static_assert(std::is_same_v<set_medium<std::string>::hasher, detail_sparse_hash::default_hash<std::string>>);
+
+    /**
+     * `sparse_map` with `sh::allocation_failure::throwing`, the other parameters as in `sparse_map`. A failed
+     * allocation throws the exception of the allocator. The tests that make an allocation fail and expect the
+     * exception use it.
+     */
+    template<typename Key,
+             typename T,
+             typename Hash = detail_sparse_hash::default_hash<Key>,
+             typename KeyEqual = std::equal_to<Key>,
+             typename Allocator = std::allocator<std::pair<Key, T>>,
+             sh::sparsity Sparsity = sh::sparsity::medium>
+    using throwing_map = sparse_map<Key, T, Hash, KeyEqual, Allocator, Sparsity, sh::allocation_failure::throwing>;
 
 }  // namespace dice::sparse_map::tests
 
@@ -153,7 +160,6 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::map_high<__VA_ARGS__>,        \
                        ::dice::sparse_map::tests::map_low<__VA_ARGS__>,         \
                        ::dice::sparse_map::tests::map_std_hash<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::map_strong<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::map_offset_ptr<__VA_ARGS__>)
 
 /**
@@ -168,7 +174,6 @@ namespace dice::sparse_map::tests {
                        ::dice::sparse_map::tests::set_high<__VA_ARGS__>,        \
                        ::dice::sparse_map::tests::set_low<__VA_ARGS__>,         \
                        ::dice::sparse_map::tests::set_std_hash<__VA_ARGS__>,    \
-                       ::dice::sparse_map::tests::set_strong<__VA_ARGS__>,      \
                        ::dice::sparse_map::tests::set_offset_ptr<__VA_ARGS__>)
 
 #endif  // DICE_SPARSE_MAP_TESTS_FIXTURES_TEST_TYPES_HPP

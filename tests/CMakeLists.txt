@@ -1,5 +1,6 @@
 find_package(doctest REQUIRED)
 find_package(Boost REQUIRED)
+find_package(dice-template-library REQUIRED)
 find_package(Metall REQUIRED)
 find_package(nanobench REQUIRED)
 
@@ -39,3 +40,6 @@ foreach (test_source IN LISTS test_sources)
 endforeach ()
 
 add_subdirectory(compile)
+
+# the sandbox runs the cases that abort in a child process
+target_link_libraries(tests_allocation_failure PRIVATE dice-template-library::dice-template-library)

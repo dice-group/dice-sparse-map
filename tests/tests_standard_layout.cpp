@@ -35,7 +35,6 @@ namespace {
                               tests::test_hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<entry_t>,
-                              sh::exception_safety::basic,
                               Sparsity>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
@@ -43,11 +42,10 @@ namespace {
                               tests::test_hash<std::uint64_t>,
                               std::equal_to<std::uint64_t>,
                               AllocatorOf<std::uint64_t>,
-                              sh::exception_safety::basic,
                               Sparsity>;
 
     template<template<typename> typename AllocatorOf, sh::sparsity Sparsity>
-    using array_of = detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity>;
+    using array_of = detail_sparse_hash::sparse_array<entry_t, AllocatorOf<entry_t>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
 
     constexpr auto high = sh::sparsity::high;
     constexpr auto medium = sh::sparsity::medium;

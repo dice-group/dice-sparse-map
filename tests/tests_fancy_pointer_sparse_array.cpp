@@ -109,14 +109,14 @@ void const_iterator() {
 template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 struct std_alloc {
     using allocator_type = std::allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, std::allocator<T>, Sparsity>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, std::allocator<T>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
     using const_iterator_type = T const *;
 };
 
 template<typename T, dice::sparse_map::sh::sparsity Sparsity = dice::sparse_map::sh::sparsity::medium>
 struct custom_alloc {
     using allocator_type = dice::sparse_map::tests::offset_ptr_allocator<T>;
-    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, dice::sparse_map::tests::offset_ptr_allocator<T>, Sparsity>;
+    using array_type = dice::sparse_map::detail_sparse_hash::sparse_array<T, dice::sparse_map::tests::offset_ptr_allocator<T>, Sparsity, dice::sparse_map::sh::allocation_failure::terminating>;
     using const_iterator_type = boost::interprocess::offset_ptr<T const>;
 };
 
