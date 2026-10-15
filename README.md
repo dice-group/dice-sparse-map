@@ -16,6 +16,7 @@ A **benchmark** of `dice::sparse_map::sparse_map` against other hash maps may be
 - If the hash is known before a lookup, it is possible to pass it as parameter to speed-up the lookup (see `precalculated_hash` parameter in [API](https://tessil.github.io/sparse-map/classtsl_1_1sparse__map.html)).
 - Possibility to control the balance between insertion speed and memory usage with the `Sparsity` template parameter. A high sparsity means less memory but longer insertion times, and vice-versa for low sparsity. The default medium sparsity offers a good compromise (see [API](https://tessil.github.io/sparse-map/classtsl_1_1sparse__map.html#details) for details). For reference, with simple 64 bits integers as keys and values, a low sparsity offers ~15% faster insertions times but uses ~12% more memory. Nothing change regarding lookup speed.
 - API closely similar to `std::unordered_map` and `std::unordered_set`.
+- All member functions are `constexpr`. A map or a set works in a constant expression if its hash function, key equality, allocator and elements do. The default hash function `dice::hash::DiceHash` is not `constexpr`, so a map or a set in a constant expression needs another hash function.
 
 ### Differences compared to `std::unordered_map`
 
