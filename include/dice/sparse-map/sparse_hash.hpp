@@ -606,7 +606,7 @@ namespace dice::sparse_map {
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                copy_values_from(const_alloc, other);
+                transfer_values_from(const_alloc, other);
             }
 
             constexpr sparse_array(sparse_array &&other) noexcept
@@ -627,7 +627,7 @@ namespace dice::sparse_map {
                   bitmap_deleted_vals_(other.bitmap_deleted_vals_),
                   capacity_(other.capacity_),
                   last_array_(other.last_array_) {
-                copy_values_from(const_alloc, other);
+                transfer_values_from(const_alloc, other);
             }
 
             /**
@@ -780,7 +780,7 @@ namespace dice::sparse_map {
              * const `other` is copied, a non-const one is moved. The bitmaps and `capacity_` are already set.
              */
             template<typename Other>
-            constexpr void copy_values_from(Allocator const &const_alloc, Other &other) {
+            constexpr void transfer_values_from(Allocator const &const_alloc, Other &other) {
                 DICE_SPARSE_MAP_ASSERT(other.capacity_ >= other.nb_elements_);
                 if (capacity_ == 0) {
                     return;
