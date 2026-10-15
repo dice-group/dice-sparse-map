@@ -438,6 +438,24 @@ namespace dice::sparse_map::bench {
     }
 
     /**
+     * Erases one element after the other with `map.erase(map.begin())` until the map is empty, the pattern of a
+     * worklist. Returns the sum of the mapped values. Not from upstream.
+     *
+     * The elements at the front of the iteration order go first, so the buckets at the front empty first. A table
+     * whose `begin()` searches its buckets for the first element searches a longer way in every step.
+     */
+    template<typename Map>
+    std::size_t drain(Map &map) {
+        std::size_t sum = 0;
+        while (!map.empty()) {
+            auto const it = map.begin();
+            sum += it->second;
+            map.erase(it);
+        }
+        return sum;
+    }
+
+    /**
      * Hashing alone, over the keys of the string workloads.
      *
      * A whole lookup is many more instructions than the hash, so a change to the hash is easier to

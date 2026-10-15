@@ -71,12 +71,9 @@ namespace dice::sparse_map {
      * The exception guarantee follows from the type of the elements. If the insertion of one element throws, the map
      * holds the same elements as before, except in one case: a rehash can leave the map empty. An insertion, `merge`,
      * `rehash` or `reserve` can rehash. `reserve` avoids rehashes.
-     * How a rehash transfers the elements depends on their type:
-     * - Elements whose move constructor cannot throw are moved in the order of their buckets. The memory of the old
-     *   buckets is freed while they are moved. If the hash function throws while the elements are moved, or the
-     *   allocator with `allocation_failure::throwing`, the map is empty. Any other exception leaves the map unchanged.
-     * - Elements whose move constructor can throw are copied. The old buckets are freed at the end, so the old and
-     *   the new buckets are in memory at the same time. An exception leaves the map unchanged.
+     * A rehash moves the elements in the order of their buckets. The memory of the old buckets is freed while they
+     * are moved. If the hash function throws while the elements are moved, or the allocator with
+     * `allocation_failure::throwing`, the map is empty. Any other exception leaves the map unchanged.
      *
      * `Sparsity` trades insertion speed for memory. A group grows its storage by 2 (`sh::sparsity::high`),
      * 4 (`sh::sparsity::medium`, default) or 8 (`sh::sparsity::low`) elements at a time. High sparsity means
@@ -93,11 +90,12 @@ namespace dice::sparse_map {
      * operator. The default hash function `dice::hash::DiceHash` is not `constexpr`, so a map in a constant
      * expression needs another hash function.
      *
-     * `Key` and `T` must be nothrow move constructible and/or copy constructible. The behaviour is undefined if
-     * the destructor of `Key` or `T` throws. If `Key` and `T` are nothrow move constructible, the map moves its
-     * elements with `std::allocator_traits<Allocator>::construct` and expects that this does not throw either. With a
-     * scoped or a polymorphic allocator, that is the allocator-extended move constructor of `Key` and `T`, which does
-     * not throw when the allocators are equal. `std::vector` makes the same assumption.
+     * `Key` and `T` must be nothrow move constructible, or nothrow copy constructible without a move constructor.
+     * A type that can throw while the map transfers it is not allowed, because the map cannot undo a transfer that
+     * throws halfway. The behaviour is undefined if the destructor of `Key` or `T` throws. The map moves its
+     * elements with `std::allocator_traits<Allocator>::construct` and expects that this does not throw either. With
+     * a scoped or a polymorphic allocator, that is the allocator-extended move constructor of `Key` and `T`, which
+     * does not throw when the allocators are equal. `std::vector` makes the same assumption.
      *
      * Invalidation of iterators, references and pointers to elements: a group stores its elements densely and moves
      * them when an element is inserted or erased. So, unlike with `std::unordered_map`, references and pointers to
@@ -270,7 +268,7 @@ namespace dice::sparse_map {
 
         /**
          * Moves `other` into a map with the allocator `alloc`. If `alloc` is not equal to the allocator of `other`,
-         * the elements are moved one by one, or copied if their move constructor can throw.
+         * the elements are moved one by one.
          */
         constexpr sparse_map(sparse_map &&other, std::type_identity_t<Allocator> const &alloc)
             : ht_(std::move(other.ht_), alloc) {
@@ -476,11 +474,11 @@ namespace dice::sparse_map {
             return ht_.try_emplace_hint(hint, std::forward<K>(k), std::forward<Args>(args)...);
         }
 
-        constexpr iterator erase(iterator pos) {
+        constexpr iterator erase(iterator pos) noexcept {
             return ht_.erase(pos);
         }
 
-        constexpr iterator erase(const_iterator pos) {
+        constexpr iterator erase(const_iterator pos) noexcept {
             return ht_.erase(pos);
         }
 
@@ -527,7 +525,7 @@ namespace dice::sparse_map {
 
         /**
          * Moves the elements of `source` whose keys are not in this map into this map, and erases them from `source`
-         * (C++17). An element is copied if its move constructor can throw. On an exception, the element being merged
+         * (C++17). On an exception, the element being merged
          * and the ones after it stay in `source`; the ones merged before are in this map, unless a rehash emptied it
          * (see the class documentation).
          */
