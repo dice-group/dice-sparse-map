@@ -28,7 +28,7 @@ class Recipe(ConanFile):
         if self.options.with_test_deps:
             self.test_requires("boost/1.91.0")
             self.test_requires("dice-template-library/2.9.0")
-            self.test_requires("doctest/2.4.12")
+            self.test_requires("doctest/2.5.3")
             self.test_requires("nanobench/4.3.11")
             self.test_requires("metall/0.36-pre2@tentris/develop")
             self.test_requires("unordered_dense/5.2.0")
