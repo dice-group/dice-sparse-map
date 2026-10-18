@@ -7,7 +7,7 @@ jobs:
     name: clang-format
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Fetch the clang-format configuration of the coding guidelines
         run: curl -fsSL https://raw.githubusercontent.com/dice-group/tentris-cpp-coding-guidelines/main/.clang-format -o .clang-format
       - name: Install clang-format
